@@ -40,7 +40,7 @@ const Hero = () => {
             Get Started
             <ArrowRight className="ml-2 w-5 h-5" />
           </Button>
-          <Button size="lg" variant="outline" className="border-2 border-blue-300 text-blue-100 bg-slate-900/50 hover:bg-blue-800/70 hover:border-blue-200 px-8 py-4 text-lg font-semibold rounded-xl backdrop-blur-sm transition-all duration-300">
+          <Button size="lg" variant="outline" className="border-2 border-blue-300 text-blue-100 bg-slate-900/50 hover:bg-blue-800/70 hover:border-blue-200 hover:text-white px-8 py-4 text-lg font-semibold rounded-xl backdrop-blur-sm transition-all duration-300">
             View Demo
           </Button>
         </div>
