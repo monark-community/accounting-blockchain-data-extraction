@@ -1,4 +1,3 @@
-
 import { ArrowRight, TrendingUp, DollarSign, PieChart, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,8 +120,8 @@ const Hero = () => {
       
       <div className="relative z-10 container mx-auto px-4 py-4">
         <div className="grid lg:grid-cols-2 gap-12 items-start">
-          {/* Left Column - Main Content - Adjusted positioning */}
-          <div className="text-center lg:text-left mt-[-40px]">
+          {/* Left Column - Main Content - Moved down further */}
+          <div className="text-center lg:text-left mt-[80px]">
             <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
               Multi-Chain
               <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Crypto </span>
@@ -171,11 +170,11 @@ const Hero = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-blue-200 text-sm">Total Value</p>
-                    <p className="text-2xl font-bold text-green-400">$127,450</p>
+                    <p className="text-2xl font-bold text-blue-400">$127,450</p>
                   </div>
                   <div>
                     <p className="text-blue-200 text-sm">This Month</p>
-                    <p className="text-2xl font-bold text-blue-400">+$18,200</p>
+                    <p className="text-2xl font-bold text-green-400">+$18,200</p>
                   </div>
                 </div>
                 
@@ -204,9 +203,6 @@ const Hero = () => {
                           strokeWidth={2}
                           fillOpacity={1} 
                           fill="url(#colorValue)" 
-                        />
-                        <ChartTooltip 
-                          content={<ChartTooltipContent formatter={(value) => [`$${value.toLocaleString()}`, 'Portfolio Value']} />} 
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -265,7 +261,6 @@ const Hero = () => {
                         <YAxis hide />
                         <Bar dataKey="income" fill="#3b82f6" radius={[2, 2, 0, 0]} />
                         <Bar dataKey="expenses" fill="#f59e0b" radius={[2, 2, 0, 0]} />
-                        <ChartTooltip content={<ChartTooltipContent />} />
                       </BarChart>
                     </ResponsiveContainer>
                   </ChartContainer>
