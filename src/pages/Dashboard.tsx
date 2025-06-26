@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BarChart3, TrendingUp, TrendingDown, Repeat, Coins, Filter, Search, Calendar, Plus, Eye, EyeOff, Wallet, Settings } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, Repeat, Coins, Filter, Search, Calendar, Plus, Eye, EyeOff, Wallet, Settings, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import Navbar from "@/components/Navbar";
@@ -26,7 +26,9 @@ const Dashboard = () => {
   const [dateTo, setDateTo] = useState<Date>();
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isWalletDialogOpen, setIsWalletDialogOpen] = useState(false);
+  const [isManageWalletsDialogOpen, setIsManageWalletsDialogOpen] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState("");
+  const [editingWallet, setEditingWallet] = useState<{ id: string; name: string } | null>(null);
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -329,6 +331,21 @@ const Dashboard = () => {
     }
   };
 
+  const updateWalletName = (walletId: string, newName: string) => {
+    setConnectedWallets(prev => 
+      prev.map(wallet => 
+        wallet.id === walletId ? { ...wallet, name: newName } : wallet
+      )
+    );
+    setEditingWallet(null);
+  };
+
+  const removeWallet = (walletId: string) => {
+    setConnectedWallets(prev => prev.filter(wallet => wallet.id !== walletId));
+    // Update selected wallets filter if the removed wallet was selected
+    setSelectedWallets(prev => prev.filter(w => w !== walletId));
+  };
+
   const getWalletName = (walletId: string) => {
     const wallet = connectedWallets.find(w => w.id === walletId);
     return wallet ? wallet.name : "Unknown Wallet";
@@ -364,38 +381,107 @@ const Dashboard = () => {
                 <h1 className="text-3xl font-bold text-slate-800 mb-2">Accounting Dashboard</h1>
                 <p className="text-slate-600">Overview of your connected wallets and transactions</p>
               </div>
-              <Dialog open={isWalletDialogOpen} onOpenChange={setIsWalletDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="flex items-center gap-2">
-                    <Plus className="w-4 h-4" />
-                    Connect Wallet
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Connect New Wallet</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="wallet-address">Wallet Address</Label>
-                      <Input
-                        id="wallet-address"
-                        placeholder="0x..."
-                        value={newWalletAddress}
-                        onChange={(e) => setNewWalletAddress(e.target.value)}
-                      />
+              <div className="flex items-center gap-2">
+                <Dialog open={isManageWalletsDialogOpen} onOpenChange={setIsManageWalletsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <Settings className="w-4 h-4" />
+                      Manage Wallets
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle>Manage Wallets</DialogTitle>
+                      <DialogDescription>
+                        View and manage your connected wallets
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 max-h-96 overflow-y-auto">
+                      {connectedWallets.map((wallet) => (
+                        <div key={wallet.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <Wallet className="w-5 h-5 text-slate-500" />
+                            <div>
+                              {editingWallet?.id === wallet.id ? (
+                                <Input
+                                  defaultValue={wallet.name}
+                                  onBlur={(e) => updateWalletName(wallet.id, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      updateWalletName(wallet.id, e.currentTarget.value);
+                                    }
+                                  }}
+                                  className="w-32"
+                                  autoFocus
+                                />
+                              ) : (
+                                <div
+                                  className="font-medium cursor-pointer hover:text-blue-600"
+                                  onClick={() => setEditingWallet({ id: wallet.id, name: wallet.name })}
+                                >
+                                  {wallet.name}
+                                </div>
+                              )}
+                              <div className="text-sm text-slate-500">{wallet.address}</div>
+                              <Badge variant="outline" className="text-xs mt-1 capitalize">
+                                {wallet.network}
+                              </Badge>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeWallet(wallet.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                      {connectedWallets.length === 0 && (
+                        <div className="text-center py-8 text-slate-500">
+                          No wallets connected yet.
+                        </div>
+                      )}
                     </div>
-                    <div className="flex gap-2">
-                      <Button onClick={addWallet} className="flex-1">
-                        Add Wallet
-                      </Button>
-                      <Button variant="outline" onClick={() => setIsWalletDialogOpen(false)}>
-                        Cancel
-                      </Button>
+                  </DialogContent>
+                </Dialog>
+                <Dialog open={isWalletDialogOpen} onOpenChange={setIsWalletDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="flex items-center gap-2">
+                      <Plus className="w-4 h-4" />
+                      Connect Wallet
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Connect New Wallet</DialogTitle>
+                      <DialogDescription>
+                        Add a new wallet address to track transactions
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="wallet-address">Wallet Address</Label>
+                        <Input
+                          id="wallet-address"
+                          placeholder="0x..."
+                          value={newWalletAddress}
+                          onChange={(e) => setNewWalletAddress(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button onClick={addWallet} className="flex-1">
+                          Add Wallet
+                        </Button>
+                        <Button variant="outline" onClick={() => setIsWalletDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
           </div>
 
