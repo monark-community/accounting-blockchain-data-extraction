@@ -12,10 +12,10 @@ import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar,
 const Hero = () => {
   // Sample data for charts
   const pieData = [
-    { name: 'DeFi Income', value: 45, color: '#3b82f6' },
-    { name: 'Trading', value: 30, color: '#8b5cf6' },
-    { name: 'Staking', value: 15, color: '#06d6a0' },
-    { name: 'Expenses', value: 10, color: '#f59e0b' },
+    { name: 'DeFi Income', value: 45, fill: '#3b82f6' },
+    { name: 'Trading', value: 30, fill: '#8b5cf6' },
+    { name: 'Staking', value: 15, fill: '#06d6a0' },
+    { name: 'Expenses', value: 10, fill: '#f59e0b' },
   ];
 
   const barData = [
@@ -31,6 +31,15 @@ const Hero = () => {
     { type: 'DeFi', amount: '$890', token: 'Compound', status: 'Income' },
     { type: 'Gas', amount: '$45', token: 'ETH', status: 'Expense' },
   ];
+
+  const chartConfig = {
+    income: {
+      label: "Income",
+    },
+    expenses: {
+      label: "Expenses",
+    },
+  };
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden pt-20">
@@ -101,16 +110,18 @@ const Hero = () => {
                 
                 {/* Mini Pie Chart */}
                 <div className="h-32">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <RechartsPieChart data={pieData}>
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
+                  <ChartContainer config={chartConfig} className="h-full w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsPieChart>
+                        <RechartsPieChart data={pieData}>
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </RechartsPieChart>
+                        <ChartTooltip content={<ChartTooltipContent />} />
                       </RechartsPieChart>
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
+                    </ResponsiveContainer>
+                  </ChartContainer>
                 </div>
               </CardContent>
             </Card>
@@ -147,15 +158,17 @@ const Hero = () => {
               </CardHeader>
               <CardContent>
                 <div className="h-32">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={barData}>
-                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                      <YAxis hide />
-                      <Bar dataKey="income" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="expenses" fill="#f59e0b" radius={[2, 2, 0, 0]} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <ChartContainer config={chartConfig} className="h-full w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={barData}>
+                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                        <YAxis hide />
+                        <Bar dataKey="income" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                        <Bar dataKey="expenses" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
                 </div>
               </CardContent>
             </Card>
