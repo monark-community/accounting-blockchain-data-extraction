@@ -1,9 +1,11 @@
 
+
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import Features from "@/components/Features";
 import UseCases from "@/components/UseCases";
 import CTA from "@/components/CTA";
+import Footer from "@/components/Footer";
 
 const Index = () => {
   return (
@@ -13,8 +15,10 @@ const Index = () => {
       <Features />
       <UseCases />
       <CTA />
+      <Footer />
     </div>
   );
 };
 
 export default Index;
+

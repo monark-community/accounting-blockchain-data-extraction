@@ -23,7 +23,7 @@ const Navbar = () => {
     setUserWallet("0x1234567890abcdef");
     setUserAlias("CryptoUser");
     setIsConnected(true);
-    navigate("/demo"); // Go to dashboard/demo page
+    navigate("/dashboard"); // Redirect to dashboard
   };
 
   const handleLogout = () => {
