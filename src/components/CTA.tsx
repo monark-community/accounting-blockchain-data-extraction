@@ -1,7 +1,6 @@
 
-import { ArrowRight, Github, ExternalLink } from "lucide-react";
+import { ArrowRight, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
 
 const CTA = () => {
   return (
@@ -19,11 +18,9 @@ const CTA = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-            <Button asChild size="lg" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
-              <Link to="/demo">
-                Start Analyzing
-                <ArrowRight className="ml-2 w-5 h-5" />
-              </Link>
+            <Button size="lg" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
+              Get Started
+              <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
             
             <Button size="lg" variant="outline" className="border-2 border-blue-300 text-blue-100 bg-slate-900/50 hover:bg-blue-800/70 hover:border-blue-200 hover:text-white px-8 py-4 text-lg font-semibold rounded-xl backdrop-blur-sm transition-all duration-300">

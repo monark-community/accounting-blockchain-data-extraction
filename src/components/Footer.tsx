@@ -16,7 +16,7 @@ const Footer = () => {
               <span className="text-xl font-bold text-white">LedgerLift</span>
             </div>
             <p className="text-blue-200 text-sm leading-relaxed">
-              Transform your crypto transactions into audit-ready financial reports with ease.
+              Multi-chain crypto accounting and transaction classification for modern blockchain businesses.
             </p>
           </div>
 
@@ -24,14 +24,14 @@ const Footer = () => {
           <div>
             <h3 className="text-white font-semibold mb-4">Product</h3>
             <div className="space-y-2">
-              <Link to="/demo" className="block text-blue-200 hover:text-white text-sm transition-colors">
-                Demo
-              </Link>
               <Link to="#" className="block text-blue-200 hover:text-white text-sm transition-colors">
                 Features
               </Link>
               <Link to="#" className="block text-blue-200 hover:text-white text-sm transition-colors">
                 Pricing
+              </Link>
+              <Link to="#" className="block text-blue-200 hover:text-white text-sm transition-colors">
+                Integrations
               </Link>
             </div>
           </div>

@@ -1,7 +1,6 @@
 
-import { ArrowRight, Shield, FileText, BarChart3 } from "lucide-react";
+import { ArrowRight, Shield, FileText, BarChart3, Wallet, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
 
 const Hero = () => {
   return (
@@ -13,27 +12,38 @@ const Hero = () => {
       
       <div className="relative z-10 container mx-auto px-4 py-16 flex flex-col items-center text-center">
         {/* Main Headline */}
-        <h2 className="text-5xl md:text-7xl font-extrabold text-white mb-6 leading-tight">
-          Transform Your
+        <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-6 leading-tight">
+          Multi-Chain
           <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Crypto </span>
-          Transactions
-        </h2>
+          Accounting
+        </h1>
         
-        <p className="text-xl text-blue-100 mb-8 max-w-3xl leading-relaxed">
-          Extract, categorize, and format wallet transactions into human-readable financial reports. 
-          Perfect for DAOs, freelancers, and crypto businesses preparing for tax season.
+        <p className="text-xl text-blue-100 mb-8 max-w-4xl leading-relaxed">
+          Connect multiple wallets across different blockchains and automatically classify your transactions. 
+          Transform complex crypto activity into clear financial reports for taxes, audits, and business accounting.
         </p>
 
-        {/* CTA Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-16">
+        {/* Key Features */}
+        <div className="flex flex-wrap justify-center gap-6 mb-12">
+          <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
+            <Wallet className="w-5 h-5 text-blue-400" />
+            <span className="text-blue-100 font-medium">Multi-Wallet Support</span>
+          </div>
+          <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
+            <Globe className="w-5 h-5 text-purple-400" />
+            <span className="text-blue-100 font-medium">Cross-Chain Compatible</span>
+          </div>
+          <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
+            <BarChart3 className="w-5 h-5 text-green-400" />
+            <span className="text-blue-100 font-medium">Auto Classification</span>
+          </div>
+        </div>
+
+        {/* CTA Button */}
+        <div className="mb-16">
           <Button size="lg" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
-            Get Started
+            Start Tracking Now
             <ArrowRight className="ml-2 w-5 h-5" />
-          </Button>
-          <Button asChild size="lg" variant="outline" className="border-2 border-blue-300 text-blue-100 bg-slate-900/50 hover:bg-blue-800/70 hover:border-blue-200 hover:text-white px-8 py-4 text-lg font-semibold rounded-xl backdrop-blur-sm transition-all duration-300">
-            <Link to="/demo">
-              View Demo
-            </Link>
           </Button>
         </div>
 
@@ -42,19 +52,19 @@ const Hero = () => {
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/15 transition-all duration-300">
             <Shield className="w-12 h-12 text-blue-400 mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">Audit-Ready Reports</h3>
-            <p className="text-blue-200">Generate time-stamped, exportable financial reports that meet audit standards.</p>
+            <p className="text-blue-200">Generate comprehensive financial reports that meet professional audit standards and tax requirements.</p>
           </div>
           
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/15 transition-all duration-300">
             <BarChart3 className="w-12 h-12 text-purple-400 mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">Smart Categorization</h3>
-            <p className="text-blue-200">Automatically classify transactions into income, expenses, and gas fees.</p>
+            <h3 className="text-xl font-bold text-white mb-2">Smart Classification</h3>
+            <p className="text-blue-200">Automatically categorize transactions as income, expenses, swaps, DeFi activity, and more across all chains.</p>
           </div>
           
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20 hover:bg-white/15 transition-all duration-300">
             <FileText className="w-12 h-12 text-green-400 mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">Multi-Format Export</h3>
-            <p className="text-blue-200">Export reports in CSV, PDF, and other formats for easy integration.</p>
+            <p className="text-blue-200">Export consolidated reports in CSV, PDF, and other formats for seamless integration with accounting software.</p>
           </div>
         </div>
       </div>
