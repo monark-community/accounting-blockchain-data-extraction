@@ -7,16 +7,17 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Pie } from "recharts";
+import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Pie, AreaChart, Area } from "recharts";
 import { useState, useEffect } from "react";
 
 const Hero = () => {
-  // Sample data for charts
-  const pieData = [
-    { name: 'DeFi Income', value: 45, fill: '#3b82f6' },
-    { name: 'Trading', value: 30, fill: '#8b5cf6' },
-    { name: 'Staking', value: 15, fill: '#06d6a0' },
-    { name: 'Expenses', value: 10, fill: '#f59e0b' },
+  // Sample data for area chart showing portfolio growth
+  const areaData = [
+    { month: 'Jan', value: 85000 },
+    { month: 'Feb', value: 92000 },
+    { month: 'Mar', value: 105000 },
+    { month: 'Apr', value: 118000 },
+    { month: 'May', value: 127450 },
   ];
 
   const barData = [
@@ -41,28 +42,21 @@ const Hero = () => {
   ];
 
   const [visibleTransactions, setVisibleTransactions] = useState(transactionPool.slice(0, 4));
-  const [animatingIn, setAnimatingIn] = useState<number | null>(null);
-  const [animatingOut, setAnimatingOut] = useState<number | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
       // Get a random transaction from the pool
       const randomTransaction = transactionPool[Math.floor(Math.random() * transactionPool.length)];
       
-      // Start animation sequence
-      setAnimatingOut(3); // Bottom transaction fades out
+      setIsAnimating(true);
       
       setTimeout(() => {
         setVisibleTransactions(prev => {
           const newTransactions = [randomTransaction, ...prev.slice(0, 3)];
           return newTransactions;
         });
-        setAnimatingOut(null);
-        setAnimatingIn(0); // Top transaction fades in
-        
-        setTimeout(() => {
-          setAnimatingIn(null);
-        }, 500);
+        setIsAnimating(false);
       }, 300);
       
     }, 3000);
@@ -71,6 +65,10 @@ const Hero = () => {
   }, []);
 
   const chartConfig = {
+    value: {
+      label: "Portfolio Value",
+      color: "#10b981",
+    },
     income: {
       label: "Income",
     },
@@ -88,8 +86,8 @@ const Hero = () => {
       
       <div className="relative z-10 container mx-auto px-4 py-4">
         <div className="grid lg:grid-cols-2 gap-12 items-start">
-          {/* Left Column - Main Content - Moved up */}
-          <div className="text-center lg:text-left mt-[-150px]">
+          {/* Left Column - Main Content - Adjusted positioning */}
+          <div className="text-center lg:text-left mt-[-80px]">
             <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
               Multi-Chain
               <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Crypto </span>
@@ -126,7 +124,7 @@ const Hero = () => {
 
           {/* Right Column - Accounting Visuals */}
           <div className="space-y-6">
-            {/* Portfolio Overview Card */}
+            {/* Portfolio Overview Card with Area Chart */}
             <Card className="bg-white/10 backdrop-blur-lg border-white/20 text-white">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -146,52 +144,61 @@ const Hero = () => {
                   </div>
                 </div>
                 
-                {/* Fixed Pie Chart */}
+                {/* Area Chart showing portfolio growth */}
                 <div className="h-40">
                   <ChartContainer config={chartConfig} className="h-full w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <RechartsPieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={30}
-                          outerRadius={60}
-                          paddingAngle={5}
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <ChartTooltip content={<ChartTooltipContent />} />
-                      </RechartsPieChart>
+                      <AreaChart data={areaData}>
+                        <defs>
+                          <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis 
+                          dataKey="month" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: '#94a3b8', fontSize: 12 }} 
+                        />
+                        <YAxis hide />
+                        <Area 
+                          type="monotone" 
+                          dataKey="value" 
+                          stroke="#10b981" 
+                          strokeWidth={2}
+                          fillOpacity={1} 
+                          fill="url(#colorValue)" 
+                        />
+                        <ChartTooltip 
+                          content={<ChartTooltipContent formatter={(value) => [`$${value.toLocaleString()}`, 'Portfolio Value']} />} 
+                        />
+                      </AreaChart>
                     </ResponsiveContainer>
                   </ChartContainer>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Recent Transactions with Animation */}
+            {/* Recent Transactions with Scrolling Animation */}
             <Card className="bg-white/10 backdrop-blur-lg border-white/20 text-white">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Recent Transactions</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
+                <div className="space-y-3 overflow-hidden">
                   {visibleTransactions.map((tx, index) => (
                     <div 
-                      key={`${tx.type}-${tx.amount}-${index}`}
-                      className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ${
-                        animatingIn === index 
-                          ? 'animate-[fade-in_0.5s_ease-out,translateY(-10px)_0.5s_ease-out] opacity-0' 
-                          : animatingOut === index 
-                          ? 'animate-[fade-out_0.3s_ease-out,translateY(10px)_0.3s_ease-out] opacity-100' 
-                          : 'opacity-100'
+                      key={`${tx.type}-${tx.amount}-${index}-${Date.now()}`}
+                      className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${
+                        isAnimating 
+                          ? index === 0 
+                            ? 'transform -translate-y-2 opacity-0 animate-[fadeInDown_0.5s_ease-out_0.3s_forwards]'
+                            : index === 3
+                            ? 'transform translate-y-2 opacity-100 animate-[fadeOutDown_0.3s_ease-out_forwards]'
+                            : 'transform translate-y-6 transition-transform duration-500 ease-out'
+                          : 'opacity-100 transform translate-y-0'
                       }`}
-                      style={{
-                        animationFillMode: 'forwards'
-                      }}
                     >
                       <div>
                         <p className="font-medium">{tx.type}</p>
@@ -233,6 +240,30 @@ const Hero = () => {
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fadeInDown {
+          0% {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        @keyframes fadeOutDown {
+          0% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+        }
+      `}</style>
     </div>
   );
 };
