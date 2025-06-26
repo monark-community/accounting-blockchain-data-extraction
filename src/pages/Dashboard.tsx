@@ -1,6 +1,5 @@
-
 import { useState } from "react";
-import { BarChart3, TrendingUp, TrendingDown, Repeat, Coins, Filter, Search, Calendar } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, Repeat, Coins, Filter, Search, Calendar, Plus, Eye, EyeOff, Wallet, Settings } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +11,8 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 import Navbar from "@/components/Navbar";
 
@@ -19,12 +20,33 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<string[]>(["all"]);
   const [selectedNetworks, setSelectedNetworks] = useState<string[]>(["all"]);
+  const [selectedWallets, setSelectedWallets] = useState<string[]>(["all"]);
   const [amountRange, setAmountRange] = useState([0, 50000]);
   const [dateFrom, setDateFrom] = useState<Date>();
   const [dateTo, setDateTo] = useState<Date>();
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isWalletDialogOpen, setIsWalletDialogOpen] = useState(false);
+  const [newWalletAddress, setNewWalletAddress] = useState("");
 
-  // Expanded transaction data with more entries
+  // Column visibility state
+  const [visibleColumns, setVisibleColumns] = useState({
+    type: true,
+    date: true,
+    description: true,
+    network: true,
+    wallet: true,
+    amount: true,
+    usdValue: true,
+    transaction: true
+  });
+
+  // Connected wallets
+  const [connectedWallets, setConnectedWallets] = useState([
+    { id: "1", address: "0x1234...5678", name: "Main Wallet", network: "ethereum" },
+    { id: "2", address: "0x9876...5432", name: "Trading Wallet", network: "ethereum" },
+    { id: "3", address: "0xabcd...efgh", name: "DeFi Wallet", network: "polygon" }
+  ]);
+
   const allTransactions = [
     {
       id: "1",
@@ -34,7 +56,8 @@ const Dashboard = () => {
       usdValue: 6250.00,
       hash: "0x1234...5678",
       type: "income",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "1"
     },
     {
       id: "2",
@@ -44,7 +67,8 @@ const Dashboard = () => {
       usdValue: 8250.00,
       hash: "0x9876...5432",
       type: "income",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "1"
     },
     {
       id: "3",
@@ -54,7 +78,8 @@ const Dashboard = () => {
       usdValue: 0.00,
       hash: "0xabcd...efgh",
       type: "swap",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "2"
     },
     {
       id: "4",
@@ -64,7 +89,8 @@ const Dashboard = () => {
       usdValue: 0.00,
       hash: "0xdef0...1234",
       type: "swap",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "1"
     },
     {
       id: "5",
@@ -74,7 +100,8 @@ const Dashboard = () => {
       usdValue: -25.00,
       hash: "0x5678...90ab",
       type: "expense",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "2"
     },
     {
       id: "6",
@@ -84,7 +111,8 @@ const Dashboard = () => {
       usdValue: 375.00,
       hash: "0x1111...2222",
       type: "income",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "1"
     },
     {
       id: "7",
@@ -94,7 +122,8 @@ const Dashboard = () => {
       usdValue: 0.00,
       hash: "0x3333...4444",
       type: "swap",
-      network: "polygon"
+      network: "polygon",
+      walletId: "3"
     },
     {
       id: "8",
@@ -104,7 +133,8 @@ const Dashboard = () => {
       usdValue: -3.64,
       hash: "0x5555...6666",
       type: "expense",
-      network: "polygon"
+      network: "polygon",
+      walletId: "3"
     },
     {
       id: "9",
@@ -114,7 +144,8 @@ const Dashboard = () => {
       usdValue: 9500.00,
       hash: "0x7777...8888",
       type: "income",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "1"
     },
     {
       id: "10",
@@ -124,7 +155,8 @@ const Dashboard = () => {
       usdValue: 45.60,
       hash: "0x9999...aaaa",
       type: "income",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "2"
     },
     {
       id: "11",
@@ -134,7 +166,8 @@ const Dashboard = () => {
       usdValue: 0.00,
       hash: "0xbbbb...cccc",
       type: "swap",
-      network: "solana"
+      network: "solana",
+      walletId: "1"
     },
     {
       id: "12",
@@ -144,7 +177,8 @@ const Dashboard = () => {
       usdValue: 73.50,
       hash: "0xdddd...eeee",
       type: "income",
-      network: "solana"
+      network: "solana",
+      walletId: "1"
     },
     {
       id: "13",
@@ -154,7 +188,8 @@ const Dashboard = () => {
       usdValue: 50.00,
       hash: "0xffff...0000",
       type: "income",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "2"
     },
     {
       id: "14",
@@ -164,7 +199,8 @@ const Dashboard = () => {
       usdValue: 0.00,
       hash: "0x1010...1111",
       type: "swap",
-      network: "bsc"
+      network: "bsc",
+      walletId: "1"
     },
     {
       id: "15",
@@ -174,7 +210,8 @@ const Dashboard = () => {
       usdValue: -125.00,
       hash: "0x1212...1313",
       type: "expense",
-      network: "bsc"
+      network: "bsc",
+      walletId: "1"
     },
     {
       id: "16",
@@ -184,7 +221,8 @@ const Dashboard = () => {
       usdValue: 628.00,
       hash: "0x1414...1515",
       type: "income",
-      network: "bsc"
+      network: "bsc",
+      walletId: "1"
     },
     {
       id: "17",
@@ -194,7 +232,8 @@ const Dashboard = () => {
       usdValue: 45.00,
       hash: "0x1616...1717",
       type: "income",
-      network: "avalanche"
+      network: "avalanche",
+      walletId: "2"
     },
     {
       id: "18",
@@ -204,7 +243,8 @@ const Dashboard = () => {
       usdValue: -5.00,
       hash: "0x1818...1919",
       type: "expense",
-      network: "ethereum"
+      network: "ethereum",
+      walletId: "3"
     }
   ];
 
@@ -218,6 +258,7 @@ const Dashboard = () => {
     
     const matchesType = selectedTypes.includes("all") || selectedTypes.includes(tx.type);
     const matchesNetwork = selectedNetworks.includes("all") || selectedNetworks.includes(tx.network);
+    const matchesWallet = selectedWallets.includes("all") || selectedWallets.includes(tx.walletId);
     const matchesAmount = Math.abs(tx.usdValue) >= amountRange[0] && Math.abs(tx.usdValue) <= amountRange[1];
     
     let matchesDate = true;
@@ -227,7 +268,7 @@ const Dashboard = () => {
       if (dateTo && txDate > dateTo) matchesDate = false;
     }
     
-    return matchesSearch && matchesType && matchesNetwork && matchesAmount && matchesDate;
+    return matchesSearch && matchesType && matchesNetwork && matchesWallet && matchesAmount && matchesDate;
   });
 
   const summary = {
@@ -259,6 +300,40 @@ const Dashboard = () => {
     }
   };
 
+  const handleWalletChange = (walletId: string, checked: boolean) => {
+    if (walletId === "all") {
+      setSelectedWallets(checked ? ["all"] : []);
+    } else {
+      const newWallets = checked 
+        ? [...selectedWallets.filter(w => w !== "all"), walletId]
+        : selectedWallets.filter(w => w !== walletId);
+      setSelectedWallets(newWallets.length === 0 ? ["all"] : newWallets);
+    }
+  };
+
+  const handleColumnVisibilityChange = (columnKey: string, visible: boolean) => {
+    setVisibleColumns(prev => ({ ...prev, [columnKey]: visible }));
+  };
+
+  const addWallet = () => {
+    if (newWalletAddress.trim()) {
+      const newWallet = {
+        id: (connectedWallets.length + 1).toString(),
+        address: newWalletAddress,
+        name: `Wallet ${connectedWallets.length + 1}`,
+        network: "ethereum"
+      };
+      setConnectedWallets([...connectedWallets, newWallet]);
+      setNewWalletAddress("");
+      setIsWalletDialogOpen(false);
+    }
+  };
+
+  const getWalletName = (walletId: string) => {
+    const wallet = connectedWallets.find(w => w.id === walletId);
+    return wallet ? wallet.name : "Unknown Wallet";
+  };
+
   const getTransactionColor = (type: string) => {
     switch (type) {
       case "income": return "text-green-600";
@@ -284,12 +359,49 @@ const Dashboard = () => {
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-slate-800 mb-2">Accounting Dashboard</h1>
-            <p className="text-slate-600">Overview of your connected wallets and transactions</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold text-slate-800 mb-2">Accounting Dashboard</h1>
+                <p className="text-slate-600">Overview of your connected wallets and transactions</p>
+              </div>
+              <Dialog open={isWalletDialogOpen} onOpenChange={setIsWalletDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="flex items-center gap-2">
+                    <Plus className="w-4 h-4" />
+                    Connect Wallet
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Connect New Wallet</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="wallet-address">Wallet Address</Label>
+                      <Input
+                        id="wallet-address"
+                        placeholder="0x..."
+                        value={newWalletAddress}
+                        onChange={(e) => setNewWalletAddress(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={addWallet} className="flex-1">
+                        Add Wallet
+                      </Button>
+                      <Button variant="outline" onClick={() => setIsWalletDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
 
           {/* Summary Cards */}
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            
             <Card className="p-6 bg-white shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
@@ -331,10 +443,42 @@ const Dashboard = () => {
             </Card>
           </div>
 
-          {/* Search and Filters */}
-          <Card className="bg-white shadow-sm mb-6">
-            <div className="p-6">
-              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between mb-4">
+          {/* Transactions Table */}
+          <Card className="bg-white shadow-sm">
+            <div className="p-6 border-b">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-slate-800">
+                  Transactions ({filteredTransactions.length})
+                </h2>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Eye className="w-4 h-4 mr-2" />
+                        Columns
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      {Object.entries(visibleColumns).map(([key, visible]) => (
+                        <DropdownMenuCheckboxItem
+                          key={key}
+                          checked={visible}
+                          onCheckedChange={(checked) => handleColumnVisibilityChange(key, !!checked)}
+                        >
+                          {key.charAt(0).toUpperCase() + key.slice(1)}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button variant="outline" size="sm">
+                    <Filter className="w-4 h-4 mr-2" />
+                    Export
+                  </Button>
+                </div>
+              </div>
+
+              {/* Search and Filters */}
+              <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
                 <div className="flex-1 max-w-md">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
@@ -355,6 +499,7 @@ const Dashboard = () => {
                   Filters
                   {(selectedTypes.length > 1 || !selectedTypes.includes("all") || 
                     selectedNetworks.length > 1 || !selectedNetworks.includes("all") ||
+                    selectedWallets.length > 1 || !selectedWallets.includes("all") ||
                     dateFrom || dateTo) && (
                     <Badge variant="secondary" className="ml-1 text-xs">
                       Active
@@ -365,7 +510,7 @@ const Dashboard = () => {
 
               <Collapsible open={isFiltersOpen} onOpenChange={setIsFiltersOpen}>
                 <CollapsibleContent className="space-y-6">
-                  <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 pt-4 border-t">
+                  <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6 pt-4 border-t">
                     {/* Transaction Types */}
                     <div className="space-y-3">
                       <Label className="text-sm font-medium">Transaction Types</Label>
@@ -415,6 +560,34 @@ const Dashboard = () => {
                             />
                             <Label htmlFor={`network-${network}`} className="text-sm font-normal capitalize">
                               {network}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Wallets */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Wallets</Label>
+                      <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="wallet-all"
+                            checked={selectedWallets.includes("all")}
+                            onCheckedChange={(checked) => handleWalletChange("all", !!checked)}
+                          />
+                          <Label htmlFor="wallet-all" className="text-sm font-normal">All Wallets</Label>
+                        </div>
+                        {connectedWallets.map((wallet) => (
+                          <div key={wallet.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`wallet-${wallet.id}`}
+                              checked={selectedWallets.includes(wallet.id)}
+                              onCheckedChange={(checked) => handleWalletChange(wallet.id, !!checked)}
+                            />
+                            <Label htmlFor={`wallet-${wallet.id}`} className="text-sm font-normal flex items-center gap-1">
+                              <Wallet className="w-3 h-3" />
+                              {wallet.name}
                             </Label>
                           </div>
                         ))}
@@ -482,69 +655,72 @@ const Dashboard = () => {
                 </CollapsibleContent>
               </Collapsible>
             </div>
-          </Card>
-
-          {/* Transactions Table */}
-          <Card className="bg-white shadow-sm">
-            <div className="p-6 border-b">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-slate-800">
-                  Transactions ({filteredTransactions.length})
-                </h2>
-                <Button variant="outline" size="sm">
-                  <Filter className="w-4 h-4 mr-2" />
-                  Export
-                </Button>
-              </div>
-            </div>
 
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Network</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>USD Value</TableHead>
-                    <TableHead>Transaction</TableHead>
+                    {visibleColumns.type && <TableHead>Type</TableHead>}
+                    {visibleColumns.date && <TableHead>Date</TableHead>}
+                    {visibleColumns.description && <TableHead>Description</TableHead>}
+                    {visibleColumns.network && <TableHead>Network</TableHead>}
+                    {visibleColumns.wallet && <TableHead>Wallet</TableHead>}
+                    {visibleColumns.amount && <TableHead>Amount</TableHead>}
+                    {visibleColumns.usdValue && <TableHead>USD Value</TableHead>}
+                    {visibleColumns.transaction && <TableHead>Transaction</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredTransactions.map((tx) => (
                     <TableRow key={tx.id}>
-                      <TableCell>
-                        <div className={`flex items-center gap-2 ${getTransactionColor(tx.type)}`}>
-                          {getTransactionIcon(tx.type)}
-                          <span className="capitalize text-xs font-medium">{tx.type}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">{tx.date}</TableCell>
-                      <TableCell>{tx.description}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize text-xs">
-                          {tx.network}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className={`font-mono ${getTransactionColor(tx.type)}`}>
-                        {tx.amount}
-                      </TableCell>
-                      <TableCell className={`font-mono ${getTransactionColor(tx.type)}`}>
-                        {tx.usdValue === 0 ? "$0.00" : 
-                         tx.usdValue > 0 ? `+$${tx.usdValue.toFixed(2)}` : 
-                         `-$${Math.abs(tx.usdValue).toFixed(2)}`}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="font-mono text-xs">
-                          {tx.hash}
-                        </Badge>
-                      </TableCell>
+                      {visibleColumns.type && (
+                        <TableCell>
+                          <div className={`flex items-center gap-2 ${getTransactionColor(tx.type)}`}>
+                            {getTransactionIcon(tx.type)}
+                            <span className="capitalize text-xs font-medium">{tx.type}</span>
+                          </div>
+                        </TableCell>
+                      )}
+                      {visibleColumns.date && <TableCell className="font-medium">{tx.date}</TableCell>}
+                      {visibleColumns.description && <TableCell>{tx.description}</TableCell>}
+                      {visibleColumns.network && (
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize text-xs">
+                            {tx.network}
+                          </Badge>
+                        </TableCell>
+                      )}
+                      {visibleColumns.wallet && (
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {getWalletName(tx.walletId)}
+                          </Badge>
+                        </TableCell>
+                      )}
+                      {visibleColumns.amount && (
+                        <TableCell className={`font-mono ${getTransactionColor(tx.type)}`}>
+                          {tx.amount}
+                        </TableCell>
+                      )}
+                      {visibleColumns.usdValue && (
+                        <TableCell className={`font-mono ${getTransactionColor(tx.type)}`}>
+                          {tx.usdValue === 0 ? "$0.00" : 
+                           tx.usdValue > 0 ? `+$${tx.usdValue.toFixed(2)}` : 
+                           `-$${Math.abs(tx.usdValue).toFixed(2)}`}
+                        </TableCell>
+                      )}
+                      {visibleColumns.transaction && (
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {tx.hash}
+                          </Badge>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                   {filteredTransactions.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                      <TableCell colSpan={Object.values(visibleColumns).filter(Boolean).length} className="text-center py-8 text-slate-500">
                         No transactions found matching your filters.
                       </TableCell>
                     </TableRow>
