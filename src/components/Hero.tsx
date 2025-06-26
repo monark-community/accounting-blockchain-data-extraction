@@ -5,24 +5,13 @@ import { Link } from "react-router-dom";
 
 const Hero = () => {
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden">
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden pt-20">
       {/* Background Effects */}
       <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:50px_50px]" />
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
       
       <div className="relative z-10 container mx-auto px-4 py-16 flex flex-col items-center text-center">
-        {/* Logo/Brand */}
-        <div className="mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12 bg-gradient-to-r from-blue-400 to-purple-500 rounded-lg flex items-center justify-center mr-3">
-              <BarChart3 className="text-white w-6 h-6" />
-            </div>
-            <h1 className="text-3xl font-bold text-white">LedgerLift</h1>
-          </div>
-          <p className="text-blue-200 text-lg">Blockchain Analytics for Audit-Ready Financial Reporting</p>
-        </div>
-
         {/* Main Headline */}
         <h2 className="text-5xl md:text-7xl font-extrabold text-white mb-6 leading-tight">
           Transform Your

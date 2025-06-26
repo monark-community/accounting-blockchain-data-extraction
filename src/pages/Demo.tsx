@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { ArrowLeft, Wallet, Download, FileText, BarChart3, TrendingUp, TrendingDown, Fuel } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Link } from "react-router-dom";
+import Navbar from "@/components/Navbar";
 
 const Demo = () => {
   const [walletAddress, setWalletAddress] = useState("");
@@ -86,8 +86,9 @@ const Demo = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <Navbar />
+      <div className="pt-20">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <Link to="/" className="flex items-center text-blue-200 hover:text-white transition-colors">
