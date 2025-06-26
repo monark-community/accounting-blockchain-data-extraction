@@ -7,7 +7,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from "recharts";
+import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Pie } from "recharts";
+import { useState, useEffect } from "react";
 
 const Hero = () => {
   // Sample data for charts
@@ -25,12 +26,49 @@ const Hero = () => {
     { month: 'Apr', income: 16900, expenses: 2950 },
   ];
 
-  const recentTransactions = [
+  // Transaction pool for animation
+  const transactionPool = [
     { type: 'Swap', amount: '$2,450', token: 'ETH → USDC', status: 'Income' },
     { type: 'Stake', amount: '$1,200', token: 'MATIC', status: 'Income' },
     { type: 'DeFi', amount: '$890', token: 'Compound', status: 'Income' },
     { type: 'Gas', amount: '$45', token: 'ETH', status: 'Expense' },
+    { type: 'Swap', amount: '$3,200', token: 'BTC → USDT', status: 'Income' },
+    { type: 'Liquidity', amount: '$750', token: 'Uniswap', status: 'Income' },
+    { type: 'Bridge', amount: '$120', token: 'Polygon', status: 'Expense' },
+    { type: 'Yield', amount: '$340', token: 'Aave', status: 'Income' },
+    { type: 'NFT', amount: '$2,100', token: 'OpenSea', status: 'Income' },
+    { type: 'Gas', amount: '$23', token: 'BSC', status: 'Expense' },
   ];
+
+  const [visibleTransactions, setVisibleTransactions] = useState(transactionPool.slice(0, 4));
+  const [animatingIn, setAnimatingIn] = useState<number | null>(null);
+  const [animatingOut, setAnimatingOut] = useState<number | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Get a random transaction from the pool
+      const randomTransaction = transactionPool[Math.floor(Math.random() * transactionPool.length)];
+      
+      // Start animation sequence
+      setAnimatingOut(3); // Bottom transaction fades out
+      
+      setTimeout(() => {
+        setVisibleTransactions(prev => {
+          const newTransactions = [randomTransaction, ...prev.slice(0, 3)];
+          return newTransactions;
+        });
+        setAnimatingOut(null);
+        setAnimatingIn(0); // Top transaction fades in
+        
+        setTimeout(() => {
+          setAnimatingIn(null);
+        }, 500);
+      }, 300);
+      
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const chartConfig = {
     income: {
@@ -48,10 +86,10 @@ const Hero = () => {
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
       
-      <div className="relative z-10 container mx-auto px-4 py-16">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left Column - Main Content */}
-          <div className="text-center lg:text-left">
+      <div className="relative z-10 container mx-auto px-4 py-4">
+        <div className="grid lg:grid-cols-2 gap-12 items-start">
+          {/* Left Column - Main Content - Moved up */}
+          <div className="text-center lg:text-left mt-[-150px]">
             <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
               Multi-Chain
               <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Crypto </span>
@@ -108,16 +146,24 @@ const Hero = () => {
                   </div>
                 </div>
                 
-                {/* Mini Pie Chart */}
-                <div className="h-32">
+                {/* Fixed Pie Chart */}
+                <div className="h-40">
                   <ChartContainer config={chartConfig} className="h-full w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <RechartsPieChart>
-                        <RechartsPieChart data={pieData}>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={30}
+                          outerRadius={60}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
                           {pieData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.fill} />
                           ))}
-                        </RechartsPieChart>
+                        </Pie>
                         <ChartTooltip content={<ChartTooltipContent />} />
                       </RechartsPieChart>
                     </ResponsiveContainer>
@@ -126,15 +172,27 @@ const Hero = () => {
               </CardContent>
             </Card>
 
-            {/* Recent Transactions */}
+            {/* Recent Transactions with Animation */}
             <Card className="bg-white/10 backdrop-blur-lg border-white/20 text-white">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Recent Transactions</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {recentTransactions.map((tx, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
+                  {visibleTransactions.map((tx, index) => (
+                    <div 
+                      key={`${tx.type}-${tx.amount}-${index}`}
+                      className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ${
+                        animatingIn === index 
+                          ? 'animate-[fade-in_0.5s_ease-out,translateY(-10px)_0.5s_ease-out] opacity-0' 
+                          : animatingOut === index 
+                          ? 'animate-[fade-out_0.3s_ease-out,translateY(10px)_0.3s_ease-out] opacity-100' 
+                          : 'opacity-100'
+                      }`}
+                      style={{
+                        animationFillMode: 'forwards'
+                      }}
+                    >
                       <div>
                         <p className="font-medium">{tx.type}</p>
                         <p className="text-blue-200 text-sm">{tx.token}</p>
