@@ -79,6 +79,41 @@ const Hero = () => {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden pt-20">
+      {/* Custom CSS for animations */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes fadeInDown {
+            0% {
+              opacity: 0;
+              transform: translateY(-10px);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          
+          @keyframes fadeOutDown {
+            0% {
+              opacity: 1;
+              transform: translateY(0);
+            }
+            100% {
+              opacity: 0;
+              transform: translateY(10px);
+            }
+          }
+          
+          .animate-fade-in-down {
+            animation: fadeInDown 0.5s ease-out 0.3s forwards;
+          }
+          
+          .animate-fade-out-down {
+            animation: fadeOutDown 0.3s ease-out forwards;
+          }
+        `
+      }} />
+      
       {/* Background Effects */}
       <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:50px_50px]" />
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
@@ -87,7 +122,7 @@ const Hero = () => {
       <div className="relative z-10 container mx-auto px-4 py-4">
         <div className="grid lg:grid-cols-2 gap-12 items-start">
           {/* Left Column - Main Content - Adjusted positioning */}
-          <div className="text-center lg:text-left mt-[-80px]">
+          <div className="text-center lg:text-left mt-[-40px]">
             <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
               Multi-Chain
               <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Crypto </span>
@@ -193,11 +228,11 @@ const Hero = () => {
                       className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${
                         isAnimating 
                           ? index === 0 
-                            ? 'transform -translate-y-2 opacity-0 animate-[fadeInDown_0.5s_ease-out_0.3s_forwards]'
+                            ? 'opacity-0 -translate-y-2 animate-fade-in-down'
                             : index === 3
-                            ? 'transform translate-y-2 opacity-100 animate-[fadeOutDown_0.3s_ease-out_forwards]'
-                            : 'transform translate-y-6 transition-transform duration-500 ease-out'
-                          : 'opacity-100 transform translate-y-0'
+                            ? 'opacity-100 translate-y-2 animate-fade-out-down'
+                            : 'translate-y-6 transition-transform duration-500 ease-out'
+                          : 'opacity-100 translate-y-0'
                       }`}
                     >
                       <div>
@@ -240,30 +275,6 @@ const Hero = () => {
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes fadeInDown {
-          0% {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        @keyframes fadeOutDown {
-          0% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-          100% {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-        }
-      `}</style>
     </div>
   );
 };
