@@ -8,8 +8,18 @@ import {
 } from "@/components/ui/chart";
 import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Pie, AreaChart, Area } from "recharts";
 import { useState, useEffect } from "react";
+import { useWallet } from "@/contexts/WalletContext";
+import { useNavigate } from "react-router-dom";
 
 const Hero = () => {
+  const { connectWallet } = useWallet();
+  const navigate = useNavigate();
+
+  const handleConnectWallet = () => {
+    connectWallet();
+    navigate("/dashboard");
+  };
+
   // Sample data for area chart showing portfolio growth
   const areaData = [
     { month: 'Jan', value: 85000 },
@@ -150,7 +160,11 @@ const Hero = () => {
             </div>
 
             {/* CTA Button */}
-            <Button size="lg" className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300">
+            <Button 
+              size="lg" 
+              onClick={handleConnectWallet}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+            >
               Connect Wallet
               <ArrowRight className="ml-2 w-5 h-5" />
             </Button>

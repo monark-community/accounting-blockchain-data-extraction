@@ -1,53 +1,23 @@
-import { useState, useMemo } from "react";
-import { TrendingUp, TrendingDown, Repeat, Coins, Calculator, PieChart, Plus, Settings, FileText } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { useMemo } from "react";
+import { TrendingUp, TrendingDown, Repeat, Coins, Calculator, PieChart, FileText, Settings } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import Navbar from "@/components/Navbar";
 import { CapitalGainsCalculator, parseAssetFromAmount, parseSwapTransaction, type CapitalGainEntry, type AccountingMethod } from "@/utils/capitalGains";
 import IncomeTab from "@/components/dashboard/IncomeTab";
 import ExpensesTab from "@/components/dashboard/ExpensesTab";
 import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
 import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
+import { useWallet } from "@/contexts/WalletContext";
+import { useState } from "react";
 
 const Dashboard = () => {
-  const [isWalletDialogOpen, setIsWalletDialogOpen] = useState(false);
-  const [isManageWalletsDialogOpen, setIsManageWalletsDialogOpen] = useState(false);
-  const [newWalletAddress, setNewWalletAddress] = useState("");
+  const { connectedWallets, getWalletName, userPreferences } = useWallet();
   const [accountingMethod, setAccountingMethod] = useState<AccountingMethod>('FIFO');
 
-  // Connected wallets
-  const [connectedWallets, setConnectedWallets] = useState([
-    { id: "1", address: "0x1234...5678", name: "Main Wallet", network: "ethereum" },
-    { id: "2", address: "0x9876...5432", name: "Trading Wallet", network: "ethereum" },
-    { id: "3", address: "0xabcd...efgh", name: "DeFi Wallet", network: "polygon" }
-  ]);
-
-  // Add wallet function
-  const addWallet = () => {
-    if (newWalletAddress.trim()) {
-      const newWallet = {
-        id: (connectedWallets.length + 1).toString(),
-        address: newWalletAddress,
-        name: `Wallet ${connectedWallets.length + 1}`,
-        network: "ethereum" // Default network
-      };
-      setConnectedWallets([...connectedWallets, newWallet]);
-      setNewWalletAddress("");
-      setIsWalletDialogOpen(false);
-    }
-  };
-
-  // Get wallet name function
-  const getWalletName = (walletId: string) => {
-    const wallet = connectedWallets.find(w => w.id === walletId);
-    return wallet ? wallet.name : 'Unknown Wallet';
-  };
-
-  // All transactions
   const allTransactions = [
     {
       id: "1",
@@ -249,12 +219,10 @@ const Dashboard = () => {
     }
   ];
 
-  // Calculate capital gains using the transactions
   const capitalGainsData = useMemo(() => {
     const calculator = new CapitalGainsCalculator(accountingMethod);
     const realizedGains: CapitalGainEntry[] = [];
     
-    // Mock current prices for unrealized gains calculation
     const currentPrices = new Map([
       ['ETH', 2500],
       ['USDC', 1],
@@ -268,14 +236,12 @@ const Dashboard = () => {
       ['AVAX', 25]
     ]);
 
-    // Sort transactions by date to process in chronological order
     const sortedTransactions = [...allTransactions].sort(
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
     for (const tx of sortedTransactions) {
       if (tx.type === 'income') {
-        // Add to cost basis
         const { asset, quantity } = parseAssetFromAmount(tx.amount);
         if (asset !== 'UNKNOWN' && quantity > 0) {
           calculator.addToCostBasis({
@@ -288,11 +254,9 @@ const Dashboard = () => {
           });
         }
       } else if (tx.type === 'swap') {
-        // Handle swap transactions
         const { sold, bought } = parseSwapTransaction(tx.amount);
         
         if (sold.asset !== 'UNKNOWN' && sold.quantity > 0) {
-          // Calculate gains for sold asset
           const salePrice = currentPrices.get(sold.asset) || 0;
           const gains = calculator.calculateGains(
             sold.asset,
@@ -305,7 +269,6 @@ const Dashboard = () => {
         }
         
         if (bought.asset !== 'UNKNOWN' && bought.quantity > 0) {
-          // Add bought asset to cost basis
           const purchasePrice = currentPrices.get(bought.asset) || 0;
           calculator.addToCostBasis({
             id: `${tx.id}_buy`,
@@ -331,7 +294,6 @@ const Dashboard = () => {
     };
   }, [accountingMethod, allTransactions]);
 
-  // Updated summary with capital gains
   const summary = {
     totalIncome: allTransactions.filter(tx => tx.type === 'income').reduce((sum, tx) => sum + tx.usdValue, 0),
     totalExpenses: Math.abs(allTransactions.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + tx.usdValue, 0)),
@@ -349,64 +311,25 @@ const Dashboard = () => {
       <Navbar />
       <div className="pt-28 p-6">
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-slate-800 mb-2">Accounting Dashboard</h1>
                 <p className="text-slate-600">Comprehensive crypto accounting with tax reporting and capital gains tracking</p>
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="outline">Currency: {userPreferences.currency}</Badge>
+                  <Badge variant="outline">Location: {userPreferences.country}, {userPreferences.state}</Badge>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   Tax Report
                 </Button>
-                
-                <Button variant="outline" className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  Manage Wallets
-                </Button>
-                
-                <Dialog open={isWalletDialogOpen} onOpenChange={setIsWalletDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="flex items-center gap-2">
-                      <Plus className="w-4 h-4" />
-                      Connect Wallet
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Connect New Wallet</DialogTitle>
-                      <DialogDescription>
-                        Add a new wallet address to track transactions
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="wallet-address">Wallet Address</Label>
-                        <Input
-                          id="wallet-address"
-                          placeholder="0x..."
-                          value={newWalletAddress}
-                          onChange={(e) => setNewWalletAddress(e.target.value)}
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button onClick={addWallet} className="flex-1">
-                          Add Wallet
-                        </Button>
-                        <Button variant="outline" onClick={() => setIsWalletDialogOpen(false)}>
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
               </div>
             </div>
           </div>
 
-          {/* Enhanced Summary Cards */}
           <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
             <Card className="p-6 bg-white shadow-sm">
               <div className="flex items-center justify-between">
@@ -473,7 +396,6 @@ const Dashboard = () => {
             </Card>
           </div>
 
-          {/* Main Content Tabs */}
           <Tabs defaultValue="overview" className="w-full">
             <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -484,47 +406,102 @@ const Dashboard = () => {
             </TabsList>
             
             <TabsContent value="overview" className="space-y-4">
-              <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-xl font-bold text-slate-800 mb-4">Quick Overview</h3>
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="font-semibold text-slate-700 mb-2">Tax Summary</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Short-term Gains:</span>
-                        <span className="font-mono">${summary.shortTermGains.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Long-term Gains:</span>
-                        <span className="font-mono">${summary.longTermGains.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span>Total Taxable Income:</span>
-                        <span className="font-mono font-bold">${(summary.totalIncome + summary.realizedGains).toFixed(2)}</span>
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <Card className="p-6 bg-white shadow-sm">
+                  <h3 className="text-xl font-bold text-slate-800 mb-4">Tax Summary</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">Short-term Gains:</span>
+                      <span className={`font-mono font-bold ${summary.shortTermGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${summary.shortTermGains.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">Long-term Gains:</span>
+                      <span className={`font-mono font-bold ${summary.longTermGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${summary.longTermGains.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="border-t pt-3">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold">Total Taxable Income:</span>
+                        <span className="font-mono font-bold text-lg">
+                          ${(summary.totalIncome + summary.realizedGains).toFixed(2)}
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-700 mb-2">Portfolio Performance</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>Realized P&L:</span>
-                        <span className={`font-mono ${summary.realizedGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          ${summary.realizedGains.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Unrealized P&L:</span>
-                        <span className={`font-mono ${summary.unrealizedGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          ${summary.unrealizedGains.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span>Total P&L:</span>
-                        <span className={`font-mono font-bold ${(summary.realizedGains + summary.unrealizedGains) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                </Card>
+
+                <Card className="p-6 bg-white shadow-sm">
+                  <h3 className="text-xl font-bold text-slate-800 mb-4">Portfolio Performance</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">Realized P&L:</span>
+                      <span className={`font-mono font-bold ${summary.realizedGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${summary.realizedGains.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">Unrealized P&L:</span>
+                      <span className={`font-mono font-bold ${summary.unrealizedGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ${summary.unrealizedGains.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="border-t pt-3">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold">Total P&L:</span>
+                        <span className={`font-mono font-bold text-lg ${(summary.realizedGains + summary.unrealizedGains) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           ${(summary.realizedGains + summary.unrealizedGains).toFixed(2)}
                         </span>
                       </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-6 bg-white shadow-sm">
+                  <h3 className="text-xl font-bold text-slate-800 mb-4">Connected Wallets</h3>
+                  <div className="space-y-2">
+                    {connectedWallets.slice(0, 3).map((wallet) => (
+                      <div key={wallet.id} className="flex items-center justify-between p-2 bg-slate-50 rounded">
+                        <span className="font-medium text-sm">{wallet.name}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {wallet.network}
+                        </Badge>
+                      </div>
+                    ))}
+                    {connectedWallets.length > 3 && (
+                      <p className="text-slate-500 text-sm text-center pt-2">
+                        +{connectedWallets.length - 3} more wallets
+                      </p>
+                    )}
+                  </div>
+                </Card>
+              </div>
+
+              <Card className="p-6 bg-white shadow-sm">
+                <h3 className="text-xl font-bold text-slate-800 mb-4">Income vs Expenses Breakdown</h3>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-slate-600">Income Progress</span>
+                      <span className="font-mono">${summary.totalIncome.toFixed(2)}</span>
+                    </div>
+                    <Progress value={85} className="h-3" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <span className="text-slate-600">Expense Ratio</span>
+                      <span className="font-mono">${summary.totalExpenses.toFixed(2)}</span>
+                    </div>
+                    <Progress value={25} className="h-3" />
+                  </div>
+                  <div className="pt-2 border-t">
+                    <div className="flex justify-between">
+                      <span className="font-semibold">Net Position:</span>
+                      <span className="font-mono font-bold text-lg text-green-600">
+                        ${(summary.totalIncome - summary.totalExpenses).toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 </div>

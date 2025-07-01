@@ -1,7 +1,6 @@
 
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { BarChart3, CircleUser } from "lucide-react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { BarChart3, CircleUser, Settings, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,37 +10,34 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useWallet } from "@/contexts/WalletContext";
 
 const Navbar = () => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [userWallet, setUserWallet] = useState("");
-  const [userAlias, setUserAlias] = useState("");
+  const { isConnected, userWallet, userAlias, disconnectWallet } = useWallet();
   const navigate = useNavigate();
-
-  const handleConnectWallet = () => {
-    // Simulate wallet connection
-    setUserWallet("0x1234567890abcdef");
-    setUserAlias("CryptoUser");
-    setIsConnected(true);
-    navigate("/dashboard"); // Redirect to dashboard
-  };
+  const location = useLocation();
 
   const handleLogout = () => {
-    setIsConnected(false);
-    setUserWallet("");
-    setUserAlias("");
+    disconnectWallet();
     navigate("/");
   };
 
-  const handleProfile = () => {
-    // Navigate to profile page (to be implemented)
-    console.log("Navigate to profile");
+  const handleManageWallets = () => {
+    navigate("/manage-wallets");
   };
+
+  const handlePreferences = () => {
+    navigate("/preferences");
+  };
+
+  // Show connected state only on dashboard pages
+  const showConnectedState = location.pathname.includes('/dashboard') || 
+                            location.pathname.includes('/manage-wallets') || 
+                            location.pathname.includes('/preferences');
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
       <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-        {/* Logo */}
         <Link to="/" className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-gradient-to-r from-blue-400 to-purple-500 rounded-lg flex items-center justify-center">
             <BarChart3 className="text-white w-5 h-5" />
@@ -49,19 +45,17 @@ const Navbar = () => {
           <span className="text-xl font-bold text-white">LedgerLift</span>
         </Link>
 
-        {/* Navigation Links (placeholder for future) */}
         <div className="hidden md:flex items-center space-x-8">
           {/* Future navigation links will go here */}
         </div>
 
-        {/* Connect Wallet / User Menu */}
         <div className="flex items-center">
-          {!isConnected ? (
+          {!isConnected || !showConnectedState ? (
             <Button
-              onClick={handleConnectWallet}
+              onClick={() => navigate("/")}
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300"
             >
-              Connect Wallet
+              Get Started
             </Button>
           ) : (
             <DropdownMenu>
@@ -79,8 +73,13 @@ const Navbar = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleProfile} className="cursor-pointer">
-                  Profile
+                <DropdownMenuItem onClick={handleManageWallets} className="cursor-pointer">
+                  <Wallet className="w-4 h-4 mr-2" />
+                  Manage Wallets
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handlePreferences} className="cursor-pointer">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Preferences
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
