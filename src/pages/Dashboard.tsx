@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { BarChart3, TrendingUp, TrendingDown, Repeat, Coins, Filter, Search, Calendar, Plus, Eye, EyeOff, Wallet, Settings, Trash2 } from "lucide-react";
+import { useState, useMemo } from "react";
+import { BarChart3, TrendingUp, TrendingDown, Repeat, Coins, Filter, Search, Calendar, Plus, Eye, EyeOff, Wallet, Settings, Trash2, Calculator, FileText, PieChart } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,8 +13,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import Navbar from "@/components/Navbar";
+import { CapitalGainsCalculator, parseAssetFromAmount, parseSwapTransaction, type CapitalGainEntry, type AccountingMethod } from "@/utils/capitalGains";
 
 const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -27,8 +30,10 @@ const Dashboard = () => {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isWalletDialogOpen, setIsWalletDialogOpen] = useState(false);
   const [isManageWalletsDialogOpen, setIsManageWalletsDialogOpen] = useState(false);
+  const [isTaxReportDialogOpen, setIsTaxReportDialogOpen] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState("");
   const [editingWallet, setEditingWallet] = useState<{ id: string; name: string } | null>(null);
+  const [accountingMethod, setAccountingMethod] = useState<AccountingMethod>('FIFO');
 
   // Column visibility state
   const [visibleColumns, setVisibleColumns] = useState({
@@ -57,7 +62,7 @@ const Dashboard = () => {
       amount: "2.5 ETH",
       usdValue: 6250.00,
       hash: "0x1234...5678",
-      type: "income",
+      type: "income" as const,
       network: "ethereum",
       walletId: "1"
     },
@@ -68,7 +73,7 @@ const Dashboard = () => {
       amount: "150.0 COMP",
       usdValue: 8250.00,
       hash: "0x9876...5432",
-      type: "income",
+      type: "income" as const,
       network: "ethereum",
       walletId: "1"
     },
@@ -79,7 +84,7 @@ const Dashboard = () => {
       amount: "-1000 USDC / +0.4 ETH",
       usdValue: 0.00,
       hash: "0xabcd...efgh",
-      type: "swap",
+      type: "swap" as const,
       network: "ethereum",
       walletId: "2"
     },
@@ -90,7 +95,7 @@ const Dashboard = () => {
       amount: "-0.5 ETH / +1250 USDT",
       usdValue: 0.00,
       hash: "0xdef0...1234",
-      type: "swap",
+      type: "swap" as const,
       network: "ethereum",
       walletId: "1"
     },
@@ -101,7 +106,7 @@ const Dashboard = () => {
       amount: "-25 USDC",
       usdValue: -25.00,
       hash: "0x5678...90ab",
-      type: "expense",
+      type: "expense" as const,
       network: "ethereum",
       walletId: "2"
     },
@@ -112,7 +117,7 @@ const Dashboard = () => {
       amount: "0.15 ETH",
       usdValue: 375.00,
       hash: "0x1111...2222",
-      type: "income",
+      type: "income" as const,
       network: "ethereum",
       walletId: "1"
     },
@@ -123,7 +128,7 @@ const Dashboard = () => {
       amount: "-500 MATIC / +350 USDC",
       usdValue: 0.00,
       hash: "0x3333...4444",
-      type: "swap",
+      type: "swap" as const,
       network: "polygon",
       walletId: "3"
     },
@@ -134,7 +139,7 @@ const Dashboard = () => {
       amount: "-5.2 MATIC",
       usdValue: -3.64,
       hash: "0x5555...6666",
-      type: "expense",
+      type: "expense" as const,
       network: "polygon",
       walletId: "3"
     },
@@ -145,7 +150,7 @@ const Dashboard = () => {
       amount: "3.8 ETH",
       usdValue: 9500.00,
       hash: "0x7777...8888",
-      type: "income",
+      type: "income" as const,
       network: "ethereum",
       walletId: "1"
     },
@@ -156,7 +161,7 @@ const Dashboard = () => {
       amount: "45.6 USDC",
       usdValue: 45.60,
       hash: "0x9999...aaaa",
-      type: "income",
+      type: "income" as const,
       network: "ethereum",
       walletId: "2"
     },
@@ -167,7 +172,7 @@ const Dashboard = () => {
       amount: "-25 SOL / +875 USDC",
       usdValue: 0.00,
       hash: "0xbbbb...cccc",
-      type: "swap",
+      type: "swap" as const,
       network: "solana",
       walletId: "1"
     },
@@ -178,7 +183,7 @@ const Dashboard = () => {
       amount: "2.1 SOL",
       usdValue: 73.50,
       hash: "0xdddd...eeee",
-      type: "income",
+      type: "income" as const,
       network: "solana",
       walletId: "1"
     },
@@ -189,7 +194,7 @@ const Dashboard = () => {
       amount: "0.02 ETH",
       usdValue: 50.00,
       hash: "0xffff...0000",
-      type: "income",
+      type: "income" as const,
       network: "ethereum",
       walletId: "2"
     },
@@ -200,7 +205,7 @@ const Dashboard = () => {
       amount: "-5 BNB / +1250 BUSD",
       usdValue: 0.00,
       hash: "0x1010...1111",
-      type: "swap",
+      type: "swap" as const,
       network: "bsc",
       walletId: "1"
     },
@@ -211,7 +216,7 @@ const Dashboard = () => {
       amount: "-0.5 BNB",
       usdValue: -125.00,
       hash: "0x1212...1313",
-      type: "expense",
+      type: "expense" as const,
       network: "bsc",
       walletId: "1"
     },
@@ -222,7 +227,7 @@ const Dashboard = () => {
       amount: "125.4 CAKE",
       usdValue: 628.00,
       hash: "0x1414...1515",
-      type: "income",
+      type: "income" as const,
       network: "bsc",
       walletId: "1"
     },
@@ -233,7 +238,7 @@ const Dashboard = () => {
       amount: "1.8 AVAX",
       usdValue: 45.00,
       hash: "0x1616...1717",
-      type: "income",
+      type: "income" as const,
       network: "avalanche",
       walletId: "2"
     },
@@ -244,11 +249,93 @@ const Dashboard = () => {
       amount: "-100 USDC",
       usdValue: -5.00,
       hash: "0x1818...1919",
-      type: "expense",
+      type: "expense" as const,
       network: "ethereum",
       walletId: "3"
     }
   ];
+
+  // Calculate capital gains using the transactions
+  const capitalGainsData = useMemo(() => {
+    const calculator = new CapitalGainsCalculator(accountingMethod);
+    const realizedGains: CapitalGainEntry[] = [];
+    
+    // Mock current prices for unrealized gains calculation
+    const currentPrices = new Map([
+      ['ETH', 2500],
+      ['USDC', 1],
+      ['USDT', 1],
+      ['COMP', 55],
+      ['MATIC', 0.7],
+      ['SOL', 35],
+      ['BNB', 250],
+      ['BUSD', 1],
+      ['CAKE', 5],
+      ['AVAX', 25]
+    ]);
+
+    // Sort transactions by date to process in chronological order
+    const sortedTransactions = [...allTransactions].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+
+    for (const tx of sortedTransactions) {
+      if (tx.type === 'income') {
+        // Add to cost basis
+        const { asset, quantity } = parseAssetFromAmount(tx.amount);
+        if (asset !== 'UNKNOWN' && quantity > 0) {
+          calculator.addToCostBasis({
+            id: tx.id,
+            asset,
+            quantity,
+            costBasis: Math.abs(tx.usdValue),
+            purchaseDate: tx.date,
+            purchasePrice: Math.abs(tx.usdValue) / quantity
+          });
+        }
+      } else if (tx.type === 'swap') {
+        // Handle swap transactions
+        const { sold, bought } = parseSwapTransaction(tx.amount);
+        
+        if (sold.asset !== 'UNKNOWN' && sold.quantity > 0) {
+          // Calculate gains for sold asset
+          const salePrice = currentPrices.get(sold.asset) || 0;
+          const gains = calculator.calculateGains(
+            sold.asset,
+            sold.quantity,
+            salePrice,
+            tx.date,
+            tx.id
+          );
+          realizedGains.push(...gains);
+        }
+        
+        if (bought.asset !== 'UNKNOWN' && bought.quantity > 0) {
+          // Add bought asset to cost basis
+          const purchasePrice = currentPrices.get(bought.asset) || 0;
+          calculator.addToCostBasis({
+            id: `${tx.id}_buy`,
+            asset: bought.asset,
+            quantity: bought.quantity,
+            costBasis: purchasePrice * bought.quantity,
+            purchaseDate: tx.date,
+            purchasePrice
+          });
+        }
+      }
+    }
+
+    const unrealizedGains = calculator.getUnrealizedGains(currentPrices);
+
+    return {
+      realized: realizedGains,
+      unrealized: unrealizedGains,
+      totalRealizedGains: realizedGains.reduce((sum, gain) => sum + gain.gain, 0),
+      totalUnrealizedGains: unrealizedGains.reduce((sum, gain) => sum + gain.gain, 0),
+      shortTermGains: realizedGains.filter(g => !g.isLongTerm).reduce((sum, gain) => sum + gain.gain, 0),
+      longTermGains: realizedGains.filter(g => g.isLongTerm).reduce((sum, gain) => sum + gain.gain, 0)
+    };
+  }, [accountingMethod, allTransactions]);
 
   const transactionTypes = ["income", "swap", "expense"];
   const networks = ["ethereum", "polygon", "solana", "bsc", "avalanche"];
@@ -273,11 +360,16 @@ const Dashboard = () => {
     return matchesSearch && matchesType && matchesNetwork && matchesWallet && matchesAmount && matchesDate;
   });
 
+  // Updated summary with capital gains
   const summary = {
     totalIncome: "$24,665.10",
     totalExpenses: "$158.64",
     totalSwaps: 8,
-    netWorth: "$24,506.46"
+    netWorth: "$24,506.46",
+    realizedGains: capitalGainsData.totalRealizedGains,
+    unrealizedGains: capitalGainsData.totalUnrealizedGains,
+    shortTermGains: capitalGainsData.shortTermGains,
+    longTermGains: capitalGainsData.longTermGains
   };
 
   const handleTypeChange = (type: string, checked: boolean) => {
@@ -379,9 +471,151 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-slate-800 mb-2">Accounting Dashboard</h1>
-                <p className="text-slate-600">Overview of your connected wallets and transactions</p>
+                <p className="text-slate-600">Comprehensive crypto accounting with tax reporting and capital gains tracking</p>
               </div>
               <div className="flex items-center gap-2">
+                <Dialog open={isTaxReportDialogOpen} onOpenChange={setIsTaxReportDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Tax Report
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Tax Report & Capital Gains</DialogTitle>
+                      <DialogDescription>
+                        Comprehensive tax reporting with capital gains analysis
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Tabs defaultValue="summary" className="w-full">
+                      <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="summary">Summary</TabsTrigger>
+                        <TabsTrigger value="realized">Realized Gains</TabsTrigger>
+                        <TabsTrigger value="unrealized">Unrealized Gains</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="summary" className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <Card className="p-4">
+                            <h3 className="font-semibold text-green-600 mb-2">Total Realized Gains</h3>
+                            <p className="text-2xl font-bold">
+                              ${capitalGainsData.totalRealizedGains.toFixed(2)}
+                            </p>
+                          </Card>
+                          <Card className="p-4">
+                            <h3 className="font-semibold text-blue-600 mb-2">Total Unrealized Gains</h3>
+                            <p className="text-2xl font-bold">
+                              ${capitalGainsData.totalUnrealizedGains.toFixed(2)}
+                            </p>
+                          </Card>
+                          <Card className="p-4">
+                            <h3 className="font-semibold text-orange-600 mb-2">Short-term Gains</h3>
+                            <p className="text-2xl font-bold">
+                              ${summary.shortTermGains.toFixed(2)}
+                            </p>
+                          </Card>
+                          <Card className="p-4">
+                            <h3 className="font-semibold text-purple-600 mb-2">Long-term Gains</h3>
+                            <p className="text-2xl font-bold">
+                              ${summary.longTermGains.toFixed(2)}
+                            </p>
+                          </Card>
+                        </div>
+                        <div className="mt-4">
+                          <Label htmlFor="accounting-method">Accounting Method</Label>
+                          <Select value={accountingMethod} onValueChange={(value: AccountingMethod) => setAccountingMethod(value)}>
+                            <SelectTrigger className="w-full mt-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="FIFO">FIFO (First In, First Out)</SelectItem>
+                              <SelectItem value="LIFO">LIFO (Last In, First Out)</SelectItem>
+                              <SelectItem value="SPECIFIC_ID">Specific Identification</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="realized" className="space-y-4">
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Asset</TableHead>
+                                <TableHead>Quantity</TableHead>
+                                <TableHead>Sale Price</TableHead>
+                                <TableHead>Cost Basis</TableHead>
+                                <TableHead>Gain/Loss</TableHead>
+                                <TableHead>Gain %</TableHead>
+                                <TableHead>Holding Period</TableHead>
+                                <TableHead>Tax Treatment</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {capitalGainsData.realized.map((gain) => (
+                                <TableRow key={gain.id}>
+                                  <TableCell className="font-medium">{gain.asset}</TableCell>
+                                  <TableCell>{gain.quantity}</TableCell>
+                                  <TableCell>${gain.salePrice.toFixed(2)}</TableCell>
+                                  <TableCell>${gain.costBasis.toFixed(2)}</TableCell>
+                                  <TableCell className={gain.gain >= 0 ? "text-green-600" : "text-red-600"}>
+                                    ${gain.gain.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className={gain.gainPercent >= 0 ? "text-green-600" : "text-red-600"}>
+                                    {gain.gainPercent.toFixed(2)}%
+                                  </TableCell>
+                                  <TableCell>{gain.holdingPeriod} days</TableCell>
+                                  <TableCell>
+                                    <Badge variant={gain.isLongTerm ? "default" : "secondary"}>
+                                      {gain.isLongTerm ? "Long-term" : "Short-term"}
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="unrealized" className="space-y-4">
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Asset</TableHead>
+                                <TableHead>Quantity</TableHead>
+                                <TableHead>Current Price</TableHead>
+                                <TableHead>Cost Basis</TableHead>
+                                <TableHead>Unrealized Gain/Loss</TableHead>
+                                <TableHead>Gain %</TableHead>
+                                <TableHead>Holding Period</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {capitalGainsData.unrealized.map((gain) => (
+                                <TableRow key={gain.id}>
+                                  <TableCell className="font-medium">{gain.asset}</TableCell>
+                                  <TableCell>{gain.quantity}</TableCell>
+                                  <TableCell>${gain.salePrice.toFixed(2)}</TableCell>
+                                  <TableCell>${gain.costBasis.toFixed(2)}</TableCell>
+                                  <TableCell className={gain.gain >= 0 ? "text-green-600" : "text-red-600"}>
+                                    ${gain.gain.toFixed(2)}
+                                  </TableCell>
+                                  <TableCell className={gain.gainPercent >= 0 ? "text-green-600" : "text-red-600"}>
+                                    {gain.gainPercent.toFixed(2)}%
+                                  </TableCell>
+                                  <TableCell>{gain.holdingPeriod} days</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </DialogContent>
+                </Dialog>
+                
                 <Dialog open={isManageWalletsDialogOpen} onOpenChange={setIsManageWalletsDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" className="flex items-center gap-2">
@@ -446,6 +680,7 @@ const Dashboard = () => {
                     </div>
                   </DialogContent>
                 </Dialog>
+                
                 <Dialog open={isWalletDialogOpen} onOpenChange={setIsWalletDialogOpen}>
                   <DialogTrigger asChild>
                     <Button className="flex items-center gap-2">
@@ -485,9 +720,8 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Summary Cards */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            
+          {/* Enhanced Summary Cards with Capital Gains */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
             <Card className="p-6 bg-white shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
@@ -505,6 +739,30 @@ const Dashboard = () => {
                   <p className="text-2xl font-bold text-red-600">{summary.totalExpenses}</p>
                 </div>
                 <TrendingDown className="w-8 h-8 text-red-500" />
+              </div>
+            </Card>
+
+            <Card className="p-6 bg-white shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-600 text-sm font-medium">Realized Gains</p>
+                  <p className={`text-2xl font-bold ${summary.realizedGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    ${summary.realizedGains.toFixed(2)}
+                  </p>
+                </div>
+                <Calculator className="w-8 h-8 text-green-500" />
+              </div>
+            </Card>
+
+            <Card className="p-6 bg-white shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-slate-600 text-sm font-medium">Unrealized Gains</p>
+                  <p className={`text-2xl font-bold ${summary.unrealizedGains >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                    ${summary.unrealizedGains.toFixed(2)}
+                  </p>
+                </div>
+                <PieChart className="w-8 h-8 text-blue-500" />
               </div>
             </Card>
 
