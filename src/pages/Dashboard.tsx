@@ -26,6 +26,28 @@ const Dashboard = () => {
     { id: "3", address: "0xabcd...efgh", name: "DeFi Wallet", network: "polygon" }
   ]);
 
+  // Add wallet function
+  const addWallet = () => {
+    if (newWalletAddress.trim()) {
+      const newWallet = {
+        id: (connectedWallets.length + 1).toString(),
+        address: newWalletAddress,
+        name: `Wallet ${connectedWallets.length + 1}`,
+        network: "ethereum" // Default network
+      };
+      setConnectedWallets([...connectedWallets, newWallet]);
+      setNewWalletAddress("");
+      setIsWalletDialogOpen(false);
+    }
+  };
+
+  // Get wallet name function
+  const getWalletName = (walletId: string) => {
+    const wallet = connectedWallets.find(w => w.id === walletId);
+    return wallet ? wallet.name : 'Unknown Wallet';
+  };
+
+  // All transactions
   const allTransactions = [
     {
       id: "1",
