@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Calculator, PieChart, Filter, Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -9,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { type CapitalGainEntry, type AccountingMethod } from "@/utils/capitalGains";
 
 interface CapitalGainsTabProps {
@@ -44,9 +44,13 @@ const CapitalGainsTab = ({ capitalGainsData, accountingMethod, setAccountingMeth
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-600 text-sm font-medium">Total Realized Gains</p>
-              <p className={`text-3xl font-bold ${capitalGainsData.totalRealizedGains >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                ${capitalGainsData.totalRealizedGains.toFixed(2)}
-              </p>
+              <CurrencyDisplay 
+                amount={capitalGainsData.totalRealizedGains} 
+                currency="USD"
+                variant="large"
+                showSign={false}
+                className={capitalGainsData.totalRealizedGains >= 0 ? 'text-green-600' : 'text-red-600'}
+              />
             </div>
             <Calculator className="w-12 h-12 text-green-500" />
           </div>
@@ -56,9 +60,13 @@ const CapitalGainsTab = ({ capitalGainsData, accountingMethod, setAccountingMeth
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-600 text-sm font-medium">Total Unrealized Gains</p>
-              <p className={`text-3xl font-bold ${capitalGainsData.totalUnrealizedGains >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                ${capitalGainsData.totalUnrealizedGains.toFixed(2)}
-              </p>
+              <CurrencyDisplay 
+                amount={capitalGainsData.totalUnrealizedGains} 
+                currency="USD"
+                variant="large"
+                showSign={false}
+                className={capitalGainsData.totalUnrealizedGains >= 0 ? 'text-blue-600' : 'text-red-600'}
+              />
             </div>
             <PieChart className="w-12 h-12 text-blue-500" />
           </div>
@@ -68,9 +76,13 @@ const CapitalGainsTab = ({ capitalGainsData, accountingMethod, setAccountingMeth
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-600 text-sm font-medium">Short-term Gains</p>
-              <p className={`text-2xl font-bold ${capitalGainsData.shortTermGains >= 0 ? 'text-orange-600' : 'text-red-600'}`}>
-                ${capitalGainsData.shortTermGains.toFixed(2)}
-              </p>
+              <CurrencyDisplay 
+                amount={capitalGainsData.shortTermGains} 
+                currency="USD"
+                variant="default"
+                showSign={false}
+                className={capitalGainsData.shortTermGains >= 0 ? 'text-orange-600' : 'text-red-600'}
+              />
               <p className="text-xs text-slate-500">Taxed as ordinary income</p>
             </div>
           </div>
@@ -80,9 +92,13 @@ const CapitalGainsTab = ({ capitalGainsData, accountingMethod, setAccountingMeth
           <div className="flex items-center justify-between">
             <div>
               <p className="text-slate-600 text-sm font-medium">Long-term Gains</p>
-              <p className={`text-2xl font-bold ${capitalGainsData.longTermGains >= 0 ? 'text-purple-600' : 'text-red-600'}`}>
-                ${capitalGainsData.longTermGains.toFixed(2)}
-              </p>
+              <CurrencyDisplay 
+                amount={capitalGainsData.longTermGains} 
+                currency="USD"
+                variant="default"
+                showSign={false}
+                className={capitalGainsData.longTermGains >= 0 ? 'text-purple-600' : 'text-red-600'}
+              />
               <p className="text-xs text-slate-500">Preferential tax rates</p>
             </div>
           </div>
@@ -162,11 +178,31 @@ const CapitalGainsTab = ({ capitalGainsData, accountingMethod, setAccountingMeth
                     <TableRow key={gain.id}>
                       {visibleColumns.asset && <TableCell className="font-medium">{gain.asset}</TableCell>}
                       {visibleColumns.quantity && <TableCell>{gain.quantity}</TableCell>}
-                      {visibleColumns.price && <TableCell>${gain.salePrice.toFixed(2)}</TableCell>}
-                      {visibleColumns.costBasis && <TableCell>${gain.costBasis.toFixed(2)}</TableCell>}
+                      {visibleColumns.price && (
+                        <TableCell>
+                          <CurrencyDisplay 
+                            amount={gain.salePrice} 
+                            currency="USD"
+                            showSign={false}
+                          />
+                        </TableCell>
+                      )}
+                      {visibleColumns.costBasis && (
+                        <TableCell>
+                          <CurrencyDisplay 
+                            amount={gain.costBasis} 
+                            currency="USD"
+                            showSign={false}
+                          />
+                        </TableCell>
+                      )}
                       {visibleColumns.gain && (
-                        <TableCell className={gain.gain >= 0 ? "text-green-600" : "text-red-600"}>
-                          ${gain.gain.toFixed(2)}
+                        <TableCell>
+                          <CurrencyDisplay 
+                            amount={gain.gain} 
+                            currency="USD"
+                            className={gain.gain >= 0 ? "text-green-600" : "text-red-600"}
+                          />
                         </TableCell>
                       )}
                       {visibleColumns.gainPercent && (
@@ -215,11 +251,31 @@ const CapitalGainsTab = ({ capitalGainsData, accountingMethod, setAccountingMeth
                     <TableRow key={gain.id}>
                       {visibleColumns.asset && <TableCell className="font-medium">{gain.asset}</TableCell>}
                       {visibleColumns.quantity && <TableCell>{gain.quantity}</TableCell>}
-                      {visibleColumns.price && <TableCell>${gain.salePrice.toFixed(2)}</TableCell>}
-                      {visibleColumns.costBasis && <TableCell>${gain.costBasis.toFixed(2)}</TableCell>}
+                      {visibleColumns.price && (
+                        <TableCell>
+                          <CurrencyDisplay 
+                            amount={gain.salePrice} 
+                            currency="USD"
+                            showSign={false}
+                          />
+                        </TableCell>
+                      )}
+                      {visibleColumns.costBasis && (
+                        <TableCell>
+                          <CurrencyDisplay 
+                            amount={gain.costBasis} 
+                            currency="USD"
+                            showSign={false}
+                          />
+                        </TableCell>
+                      )}
                       {visibleColumns.gain && (
-                        <TableCell className={gain.gain >= 0 ? "text-green-600" : "text-red-600"}>
-                          ${gain.gain.toFixed(2)}
+                        <TableCell>
+                          <CurrencyDisplay 
+                            amount={gain.gain} 
+                            currency="USD"
+                            className={gain.gain >= 0 ? "text-green-600" : "text-red-600"}
+                          />
                         </TableCell>
                       )}
                       {visibleColumns.gainPercent && (

@@ -10,6 +10,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuChe
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
+import { getCryptoColor } from "@/utils/currencyFormatter";
 import { format } from "date-fns";
 
 interface Transaction {
@@ -99,7 +101,13 @@ const IncomeTab = ({ transactions, connectedWallets, getWalletName }: IncomeTabP
         <div className="flex items-center justify-between">
           <div>
             <p className="text-slate-600 text-sm font-medium">Total Income</p>
-            <p className="text-3xl font-bold text-green-600">${totalIncome.toFixed(2)}</p>
+            <CurrencyDisplay 
+              amount={totalIncome} 
+              currency="USD"
+              variant="large"
+              showSign={false}
+              className="text-green-600"
+            />
             <p className="text-sm text-slate-500 mt-1">{filteredTransactions.length} transactions</p>
           </div>
           <TrendingUp className="w-12 h-12 text-green-500" />
@@ -304,13 +312,22 @@ const IncomeTab = ({ transactions, connectedWallets, getWalletName }: IncomeTabP
                     </TableCell>
                   )}
                   {visibleColumns.amount && (
-                    <TableCell className="font-mono text-green-600">
-                      {tx.amount}
+                    <TableCell>
+                      <CurrencyDisplay 
+                        amount={parseFloat(tx.amount.split(' ')[0])} 
+                        currency={tx.amount.split(' ')[1]}
+                        network={tx.network}
+                        showSign={false}
+                      />
                     </TableCell>
                   )}
                   {visibleColumns.usdValue && (
-                    <TableCell className="font-mono text-green-600">
-                      +${tx.usdValue.toFixed(2)}
+                    <TableCell>
+                      <CurrencyDisplay 
+                        amount={tx.usdValue} 
+                        currency="USD"
+                        className="text-green-600"
+                      />
                     </TableCell>
                   )}
                   {visibleColumns.transaction && (

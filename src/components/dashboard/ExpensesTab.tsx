@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuChe
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { CurrencyDisplay } from "@/components/ui/currency-display";
 import { format } from "date-fns";
 
 interface Transaction {
@@ -99,7 +100,13 @@ const ExpensesTab = ({ transactions, connectedWallets, getWalletName }: Expenses
         <div className="flex items-center justify-between">
           <div>
             <p className="text-slate-600 text-sm font-medium">Total Expenses</p>
-            <p className="text-3xl font-bold text-red-600">${totalExpenses.toFixed(2)}</p>
+            <CurrencyDisplay 
+              amount={totalExpenses} 
+              currency="USD"
+              variant="large"
+              showSign={false}
+              className="text-red-600"
+            />
             <p className="text-sm text-slate-500 mt-1">{filteredTransactions.length} transactions</p>
           </div>
           <TrendingDown className="w-12 h-12 text-red-500" />
@@ -304,13 +311,22 @@ const ExpensesTab = ({ transactions, connectedWallets, getWalletName }: Expenses
                     </TableCell>
                   )}
                   {visibleColumns.amount && (
-                    <TableCell className="font-mono text-red-600">
-                      {tx.amount}
+                    <TableCell>
+                      <CurrencyDisplay 
+                        amount={parseFloat(tx.amount.split(' ')[0])} 
+                        currency={tx.amount.split(' ')[1]}
+                        network={tx.network}
+                        showSign={false}
+                      />
                     </TableCell>
                   )}
                   {visibleColumns.usdValue && (
-                    <TableCell className="font-mono text-red-600">
-                      -${Math.abs(tx.usdValue).toFixed(2)}
+                    <TableCell>
+                      <CurrencyDisplay 
+                        amount={-Math.abs(tx.usdValue)} 
+                        currency="USD"
+                        className="text-red-600"
+                      />
                     </TableCell>
                   )}
                   {visibleColumns.transaction && (
