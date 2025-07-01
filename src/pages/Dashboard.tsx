@@ -10,7 +10,7 @@ import IncomeTab from "@/components/dashboard/IncomeTab";
 import ExpensesTab from "@/components/dashboard/ExpensesTab";
 import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
 import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
-import { calculateCapitalGains, type AccountingMethod } from "@/utils/capitalGains";
+import { type CapitalGainEntry, type AccountingMethod } from "@/utils/capitalGains";
 
 interface Transaction {
   id: string;
@@ -22,18 +22,6 @@ interface Transaction {
   type: "income" | "expense" | "swap";
   network: string;
   walletId: string;
-}
-
-interface CapitalGainEntry {
-  id: string;
-  asset: string;
-  quantity: number;
-  costBasis: number;
-  salePrice: number;
-  gain: number;
-  gainPercent: number;
-  holdingPeriod: number;
-  isLongTerm: boolean;
 }
 
 const mockTransactions: Transaction[] = [
@@ -176,6 +164,9 @@ const mockCapitalGainsData = (transactions: Transaction[]): {
       gainPercent: 50,
       holdingPeriod: 365 + i,
       isLongTerm: true,
+      saleDate: "2023-06-01",
+      purchaseDate: "2022-06-01",
+      transactionId: `tx-${i}`,
     };
     realized.push(gain);
     totalRealizedGains += gain.gain;
@@ -194,6 +185,9 @@ const mockCapitalGainsData = (transactions: Transaction[]): {
       gainPercent: 50,
       holdingPeriod: 180 - i,
       isLongTerm: false,
+      saleDate: "2023-06-01",
+      purchaseDate: "2023-01-01",
+      transactionId: `tx-unrealized-${i}`,
     };
     unrealized.push(gain);
     totalUnrealizedGains += gain.gain;
