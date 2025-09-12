@@ -66,15 +66,24 @@ docker run --name backend -p 8080:8080 `
 
 ---
 
-### Compose (orchestration)
+## Docker Compose (orchestration) — Quickstart
 
-> **Placeholder** — will add once both services are green:
+### Dev (hot reload)
 
-- `frontend` (prod or dev profile)
-- `backend` (prod or dev profile)
-- `db` (Postgres)
-- Shared network; frontend proxies `/api` to `backend:8080`.
-
+```powershell
+docker compose --profile dev up --build
+# Open http://localhost:3000
 ```
 
+### Prod (built, Nginx)
+
+```powershell
+docker compose --profile prod up --build -d
+# Open http://localhost:3000
 ```
+
+### Notes
+
+- Frontend dev maps **localhost:3000 → Vite:5173** (HMR on save).
+- Frontend prod proxies `/api/*` to `http://backend:8080` inside the compose network.
+- Backend health: `GET http://localhost:8080/api/health`.
