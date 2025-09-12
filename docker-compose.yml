@@ -77,3 +77,30 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+
+  # ---------- POSTGRES (shared by dev & prod) ----------
+  db:
+    image: postgres:16-alpine
+    container_name: ledgerlift-db
+    environment:
+      POSTGRES_DB: ledgerlift
+      POSTGRES_USER: ledgerlift
+      POSTGRES_PASSWORD: ledgerlift
+    ports:
+      - "5432:5432" # optional, handy if you want to connect from host tools
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d # auto-run *.sql on first boot
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pg_data:
