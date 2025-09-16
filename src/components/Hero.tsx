@@ -1,6 +1,7 @@
-import { ArrowRight, TrendingUp, DollarSign, PieChart, BarChart3 } from "lucide-react";
+import { ArrowRight, TrendingUp, DollarSign, PieChart, BarChart3, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   ChartContainer,
   ChartTooltip,
@@ -10,14 +11,42 @@ import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar,
 import { useState, useEffect } from "react";
 import { useWallet } from "@/contexts/WalletContext";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
 
 const Hero = () => {
-  const { connectWallet } = useWallet();
+  const { connectWallet, isMetaMaskInstalled } = useWallet();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isConnecting, setIsConnecting] = useState(false);
 
-  const handleConnectWallet = () => {
-    connectWallet();
-    navigate("/dashboard");
+  const handleConnectWallet = async () => {
+    if (!isMetaMaskInstalled) {
+      toast({
+        title: "MetaMask Not Found",
+        description: "Please install MetaMask to connect your wallet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsConnecting(true);
+    try {
+      await connectWallet();
+      toast({
+        title: "Wallet Connected",
+        description: "Successfully connected to MetaMask!",
+      });
+      navigate("/dashboard");
+    } catch (error: any) {
+      console.error('Connection error:', error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to connect wallet. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
   // Sample data for area chart showing portfolio growth
@@ -160,14 +189,34 @@ const Hero = () => {
             </div>
 
             {/* CTA Button */}
-            <Button 
-              size="lg" 
-              onClick={handleConnectWallet}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              Connect Wallet
-              <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
+            <div className="space-y-4">
+              <Button 
+                size="lg" 
+                onClick={handleConnectWallet}
+                disabled={isConnecting}
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
+              >
+                {isConnecting ? "Connecting..." : "Connect Wallet"}
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+              
+              {!isMetaMaskInstalled && (
+                <Alert className="max-w-md mx-auto">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    MetaMask is required to connect your wallet. 
+                    <a 
+                      href="https://metamask.io/download/" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline ml-1"
+                    >
+                      Install MetaMask
+                    </a>
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
           </div>
 
           {/* Right Column - Accounting Visuals */}
