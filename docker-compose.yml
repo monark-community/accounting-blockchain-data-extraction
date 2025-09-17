@@ -13,6 +13,10 @@ services:
     environment:
       NODE_ENV: development
       PORT: 8080
+      DATABASE_URL: postgres://ledgerlift:ledgerlift@db:5432/ledgerlift
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - ./backend:/app
       - /app/node_modules
@@ -53,6 +57,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8080
+      DATABASE_URL: postgres://ledgerlift:ledgerlift@db:5432/ledgerlift
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8080:8080"
     healthcheck:
