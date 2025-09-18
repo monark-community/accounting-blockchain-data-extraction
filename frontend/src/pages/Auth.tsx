@@ -1,5 +1,6 @@
 import { useMemo, useState, FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { toast } from "@/components/ui/sonner";
 import {
   Card,
   CardContent,
@@ -49,6 +50,9 @@ export default function Auth() {
   // Sign-in form state
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirm, setShowRegConfirm] = useState(false);
 
   const checks = useMemo(
     () => ({
@@ -77,17 +81,65 @@ export default function Auth() {
   const emailInvalid =
     regEmailTouched && regEmail !== "" && !emailRegex.test(regEmail);
 
-  function onSubmitRegister(e: FormEvent) {
+  async function onSubmitRegister(e: FormEvent) {
     e.preventDefault();
-    // TODO: wire to POST /api/auth/register
-    // For now, just log to console:
-    // console.log({ name, email: regEmail, password: regPassword });
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name,
+          email: regEmail,
+          password: regPassword,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg =
+          (data?.error === "ValidationError" && "Please check your inputs.") ||
+          data?.error ||
+          "Registration failed";
+        throw new Error(msg);
+      }
+
+      // success
+      toast?.success?.("Account created! You can now sign in.");
+      // Option A: auto-switch to Sign in tab
+      setMode("signin");
+      // Option B: auto-login later, once you want that behavior
+    } catch (err: any) {
+      toast?.error?.(err.message || "Registration failed");
+    }
   }
 
-  function onSubmitLogin(e: FormEvent) {
+  async function onSubmitLogin(e: FormEvent) {
     e.preventDefault();
-    // TODO: wire to POST /api/auth/login
-    // console.log({ email: loginEmail, password: loginPassword });
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: loginEmail,
+          password: loginPassword,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = data?.error || "Invalid email or password";
+        throw new Error(msg);
+      }
+
+      toast?.success?.("Signed in!");
+      // TODO: set your AuthProvider state if you want to cache the user
+      // Then navigate to your next page:
+      // navigate("/dashboard")  (or "/welcome")
+    } catch (err: any) {
+      toast?.error?.(err.message || "Sign in failed");
+    }
   }
 
   return (
@@ -174,26 +226,52 @@ export default function Auth() {
 
               <div className="grid gap-2">
                 <Label htmlFor="reg-password">Password</Label>
-                <Input
-                  id="reg-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <Input
+                    id="reg-password"
+                    type={showRegPassword ? "text" : "password"} // CHANGED
+                    placeholder="••••••••"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="pr-10" // NEW: space for the button
+                  />
+                  <button
+                    type="button"
+                    aria-label={
+                      showRegPassword ? "Hide password" : "Show password"
+                    }
+                    className="absolute inset-y-0 right-2 my-auto text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowRegPassword((v) => !v)}
+                  >
+                    {showRegPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="reg-confirm">Confirm password</Label>
-                <Input
-                  id="reg-confirm"
-                  type="password"
-                  placeholder="••••••••"
-                  value={regConfirm}
-                  onChange={(e) => setRegConfirm(e.target.value)}
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <Input
+                    id="reg-confirm"
+                    type={showRegConfirm ? "text" : "password"} // CHANGED
+                    placeholder="••••••••"
+                    value={regConfirm}
+                    onChange={(e) => setRegConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    className="pr-10" // NEW
+                  />
+                  <button
+                    type="button"
+                    aria-label={
+                      showRegConfirm ? "Hide password" : "Show password"
+                    }
+                    className="absolute inset-y-0 right-2 my-auto text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowRegConfirm((v) => !v)}
+                  >
+                    {showRegConfirm ? "🙈" : "👁️"}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 rounded-md border p-3 bg-muted/30">
@@ -246,14 +324,28 @@ export default function Auth() {
 
               <div className="grid gap-2">
                 <Label htmlFor="login-password">Password</Label>
-                <Input
-                  id="login-password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  autoComplete="current-password"
-                />
+                <div className="relative">
+                  <Input
+                    id="login-password"
+                    type={showLoginPassword ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    aria-label={
+                      showLoginPassword ? "Hide password" : "Show password"
+                    }
+                    className="absolute inset-y-0 right-2 my-auto text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowLoginPassword((v) => !v)}
+                  >
+                    {showLoginPassword ? "🙈" : "👁️"}
+                    {/* swap for lucide-react Eye/EyeOff if you prefer */}
+                  </button>
+                </div>
               </div>
 
               <div className="flex items-center justify-between">
