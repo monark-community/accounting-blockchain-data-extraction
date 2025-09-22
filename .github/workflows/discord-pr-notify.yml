@@ -1,22 +1,72 @@
-name: Notify Discord on PR
+name: Discord PR bot with reactions
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, closed]
+
+permissions:
+  contents: read
+  issues: write   # needed to write a PR comment to store message_id
+
 jobs:
-  notify:
+  discord:
     runs-on: ubuntu-latest
+    env:
+      BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
     steps:
-      - name: Build message and POST to Discord
-        env:
-          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK }}
-          TITLE: ${{ github.event.pull_request.title }}
-          URL: ${{ github.event.pull_request.html_url }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          REPO: ${{ github.repository }}
-          ACTION: ${{ github.event.action }}
-          MERGED: ${{ github.event.pull_request.merged }}
+      - name: Require secrets
         run: |
-          if [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then ACT="merged"; else ACT="$ACTION"; fi
-    MSG=$(printf ':bell: **Pull Request Notification**\n\nAuthor: **%s**\nTitle: %s\nAction: **%s**\nLink: %s' "$REPO" "$AUTHOR" "$TITLE" "$ACT" "$URL")
-    JSON=$(printf '{"content":"%s"}' "$MSG")
-    curl -sS -H "Content-Type: application/json" -d "$JSON" "$WEBHOOK_URL"
+          test -n "$BOT_TOKEN" && test -n "$CHANNEL_ID" || { echo "Missing secrets"; exit 1; }
+
+      - name: Post Discord message on open-like events and store message_id
+        if: ${{ github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'ready_for_review' }}
+        env:
+          REPO: ${{ github.repository }}
+          PRNUM: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CONTENT=$(printf ':bell: **Pull Request Notification**\n\nRepository: **%s**\nAuthor: **%s**\nTitle: %s\nLink: %s' "$REPO" "$AUTHOR" "$TITLE" "$URL")
+          RESP=$(curl -sS -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" \
+                 -d "$(printf '{"content":"%s"}' "$CONTENT")" \
+                 https://discord.com/api/v10/channels/$CHANNEL_ID/messages)
+          MSG_ID=$(echo "$RESP" | jq -r '.id')
+          test "$MSG_ID" != "null" && test -n "$MSG_ID" || { echo "Discord post failed: $RESP"; exit 1; }
+          # Store message_id on the PR as a hidden marker comment
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${REPO}/issues/${PRNUM}/comments \
+            -d "$(printf '{"body":"<!-- discord_msg_id:%s -->"}' "$MSG_ID")" >/dev/null
+          echo "Stored Discord message_id=$MSG_ID"
+
+      - name: On close, add reaction to the original Discord message
+        if: ${{ github.event.action == 'closed' }}
+        env:
+          REPO: ${{ github.repository }}
+          PRNUM: ${{ github.event.pull_request.number }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the stored message_id from PR comments
+          PAGE=1; MSG_ID=""
+          while :; do
+            RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPO}/issues/${PRNUM}/comments?per_page=100&page=${PAGE}")
+            IDS=$(echo "$RESP" | jq -r '.[].body | select(.!=null) | capture("discord_msg_id:(?<id>[0-9]+)")?.id')
+            if [ -n "$IDS" ]; then MSG_ID=$(echo "$IDS" | tail -n1); break; fi
+            NXT=$(echo "$RESP" | jq 'length')
+            [ "$NXT" -lt 100 ] && break || PAGE=$((PAGE+1))
+          done
+          if [ -z "$MSG_ID" ]; then
+            echo "No stored Discord message_id found. Nothing to react to."
+            exit 0
+          fi
+          # Choose emoji: merged => ✅, closed-unmerged => ❌
+          if [ "$MERGED" = "true" ]; then EMOJI="%E2%9C%85"; else EMOJI="%E2%9D%8C"; fi
+          # Add reaction
+          curl -sS -X PUT -H "Authorization: Bot $BOT_TOKEN" \
+            "https://discord.com/api/v10/channels/${CHANNEL_ID}/messages/${MSG_ID}/reactions/${EMOJI}/@me" -o /dev/null -w "%{http_code}\n"
