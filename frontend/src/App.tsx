@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Preferences from "./pages/Preferences";
 import ManageWallets from "./pages/ManageWallets";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import MonarkBannerWrapper from "./components/MonarkDemoWrapper";
 
@@ -26,6 +27,7 @@ const App = () => (
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/preferences" element={<Preferences />} />
               <Route path="/manage-wallets" element={<ManageWallets />} />
+              <Route path="/auth" element={<Auth />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
