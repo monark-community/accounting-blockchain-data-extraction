@@ -17,6 +17,6 @@ jobs:
           MERGED: ${{ github.event.pull_request.merged }}
         run: |
           if [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then ACT="merged"; else ACT="$ACTION"; fi
-          MSG=$(printf ':bell: PR **%s** by **%s** %s in **%s** <%s>' "$TITLE" "$AUTHOR" "$ACT" "$REPO" "$URL")
-          JSON=$(printf '{"content":"%s"}' "$MSG")
-          curl -sS -H "Content-Type: application/json" -d "$JSON" "$WEBHOOK_URL"
+    MSG=$(printf ':bell: **Pull Request Notification**\n\nAuthor: **%s**\nTitle: %s\nAction: **%s**\nLink: %s' "$REPO" "$AUTHOR" "$TITLE" "$ACT" "$URL")
+    JSON=$(printf '{"content":"%s"}' "$MSG")
+    curl -sS -H "Content-Type: application/json" -d "$JSON" "$WEBHOOK_URL"
