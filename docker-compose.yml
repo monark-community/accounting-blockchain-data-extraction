@@ -1,0 +1,106 @@
+version: "3.9"
+
+# ---------- DEV STACK (hot reload) ----------
+services:
+  backend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./backend
+      target: dev
+    container_name: backend-dev
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./frontend
+      target: dev
+    container_name: frontend-dev
+    # Expose Vite:5173 on localhost:3000 (your preference)
+    ports:
+      - "3000:5173"
+    environment:
+      HOST: 0.0.0.0
+      CHOKIDAR_USEPOLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend-dev:
+        condition: service_started
+    restart: unless-stopped
+
+  # ---------- PROD STACK (Nginx build + Node runtime) ----------
+  backend:
+    profiles: ["prod"]
+    build:
+      context: ./backend
+      target: prod
+    container_name: backend
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  frontend:
+    profiles: ["prod"]
+    build:
+      context: ./frontend
+      target: prod
+    container_name: frontend
+    environment:
+      # Frontend Nginx proxies /api to backend service on the compose network
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------- POSTGRES (shared by dev & prod) ----------
+  db:
+    image: postgres:16-alpine
+    container_name: ledgerlift-db
+    environment:
+      POSTGRES_DB: ledgerlift
+      POSTGRES_USER: ledgerlift
+      POSTGRES_PASSWORD: ledgerlift
+    ports:
+      - "5432:5432" # optional, handy if you want to connect from host tools
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d # auto-run *.sql on first boot
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pg_data:
