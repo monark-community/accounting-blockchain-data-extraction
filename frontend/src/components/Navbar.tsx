@@ -1,4 +1,3 @@
-
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { BarChart3, CircleUser, Settings, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,9 +30,10 @@ const Navbar = () => {
   };
 
   // Show connected state only on dashboard pages
-  const showConnectedState = location.pathname.includes('/dashboard') || 
-                            location.pathname.includes('/manage-wallets') || 
-                            location.pathname.includes('/preferences');
+  const showConnectedState =
+    location.pathname.includes("/dashboard") ||
+    location.pathname.includes("/manage-wallets") ||
+    location.pathname.includes("/preferences");
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-900/95 backdrop-blur-sm border-b border-slate-800">
@@ -52,7 +52,7 @@ const Navbar = () => {
         <div className="flex items-center">
           {!isConnected || !showConnectedState ? (
             <Button
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/auth")}
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-2 rounded-lg font-semibold transition-all duration-300"
             >
               Get Started
@@ -60,7 +60,10 @@ const Navbar = () => {
           ) : (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center space-x-3 p-2 hover:bg-slate-800/50 rounded-lg">
+                <Button
+                  variant="ghost"
+                  className="flex items-center space-x-3 p-2 hover:bg-slate-800/50 rounded-lg"
+                >
                   <Avatar className="w-8 h-8">
                     <AvatarFallback className="bg-gradient-to-r from-blue-400 to-purple-500 text-white text-sm">
                       <CircleUser className="w-4 h-4" />
@@ -76,16 +79,25 @@ const Navbar = () => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleManageWallets} className="cursor-pointer">
+                <DropdownMenuItem
+                  onClick={handleManageWallets}
+                  className="cursor-pointer"
+                >
                   <Wallet className="w-4 h-4 mr-2" />
                   Manage Wallets
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handlePreferences} className="cursor-pointer">
+                <DropdownMenuItem
+                  onClick={handlePreferences}
+                  className="cursor-pointer"
+                >
                   <Settings className="w-4 h-4 mr-2" />
                   Preferences
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="cursor-pointer text-red-600"
+                >
                   Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>
