@@ -1,12 +1,16 @@
 # ---------- Base deps layer (cache-friendly) ----------
 FROM node:20-alpine AS deps
 WORKDIR /app
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci
 
 # ---------- Dev stage: Vite HMR (final image: dev) ----------
 FROM node:20-alpine AS dev
 WORKDIR /app
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
 # copy only lockfiles; app code will be bind-mounted at runtime
 COPY package*.json ./
 # re-use the deps install (faster when Docker cache is warm)
