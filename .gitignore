@@ -1,0 +1,44 @@
+# Node & TypeScript
+**/node_modules/
+*.tsbuildinfo
+
+# Build outputs
+**/dist/
+**/build/
+
+# Vite / caches
+**/.vite/
+**/.cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Test coverage
+**/coverage/
+.nyc_output/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Environment (keep example files)
+.env
+.env.*
+!.env.example
+
+# Docker
+docker-compose.override.yml
+pg_data/
+
+# Linters
+.eslintcache
+.stylelintcache
