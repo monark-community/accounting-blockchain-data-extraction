@@ -32,18 +32,23 @@ import {
 import { useSearchParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 
-type Holding = {
+type PricedHolding = {
   contract: string | null;
   symbol: string;
   decimals: number;
   qty: string;
+  priceUsd: number;
+  valueUsd: number;
 };
-type HoldingsResponse = {
+
+type OverviewResponse = {
   address: string;
-  chain: string;
-  currency: string;
   asOf: string;
-  holdings: Holding[];
+  currency: "USD";
+  kpis: { totalValueUsd: number; delta24hUsd: number; delta24hPct: number };
+  holdings: PricedHolding[];
+  allocation: { symbol: string; valueUsd: number; weightPct: number }[];
+  topHoldings: { symbol: string; valueUsd: number; weightPct: number }[];
 };
 
 interface Transaction {
@@ -240,6 +245,13 @@ const mockCapitalGainsData = (
   };
 };
 
+const fmtUSD = (n: number) =>
+  n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  });
+
 const Dashboard = () => {
   const { connectedWallets, getWalletName, userPreferences } = useWallet();
   const [accountingMethod, setAccountingMethod] =
@@ -267,19 +279,20 @@ const Dashboard = () => {
   const [params] = useSearchParams();
   const address = params.get("address") || "";
 
-  const [data, setData] = useState<HoldingsResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // --- Overview state ---
+  const [ov, setOv] = useState<OverviewResponse | null>(null);
+  const [loadingOv, setLoadingOv] = useState(false);
+  const [errorOv, setErrorOv] = useState<string | null>(null);
 
   useEffect(() => {
     if (!address) return;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/portfolio/holdings/${encodeURIComponent(address)}`)
+    setLoadingOv(true);
+    setErrorOv(null);
+    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}`)
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
-      .then(setData)
-      .catch((e) => setError(e?.error?.message || "Failed to load holdings"))
-      .finally(() => setLoading(false));
+      .then(setOv)
+      .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
+      .finally(() => setLoadingOv(false));
   }, [address]);
 
   return (
@@ -294,44 +307,6 @@ const Dashboard = () => {
           <p className="text-slate-600">
             Track your crypto assets and tax obligations
           </p>
-        </div>
-
-        <div className="mb-6">
-          {!address && (
-            <div className="text-sm text-red-400">No address in URL.</div>
-          )}
-          {address && (
-            <div className="text-sm text-blue-200">Address: {address}</div>
-          )}
-          {loading && <div className="text-sm">Loading holdings…</div>}
-          {error && <div className="text-sm text-red-400">{error}</div>}
-          {data && (
-            <div className="mt-2 text-sm">
-              <div className="font-semibold">
-                Holdings ({data.holdings.length}):
-              </div>
-              <ul className="list-disc pl-5 mt-1 space-y-1">
-                {data.holdings.slice(0, 10).map((h) => (
-                  <li key={`${h.contract ?? "eth"}-${h.symbol}`}>
-                    <span className="font-medium">
-                      {h.symbol || "(unknown)"}
-                    </span>
-                    {" — "}
-                    <span>{h.qty}</span>
-                    {h.contract && (
-                      <span className="text-gray-400">
-                        {" "}
-                        ({h.contract.slice(0, 6)}…{h.contract.slice(-4)})
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <div className="text-gray-400 mt-1">
-                * showing first 10 for now
-              </div>
-            </div>
-          )}
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
@@ -353,7 +328,7 @@ const Dashboard = () => {
                       Total Portfolio Value
                     </p>
                     <CurrencyDisplay
-                      amount={67000}
+                      amount={ov?.kpis.totalValueUsd ?? 0}
                       currency={userPreferences.currency}
                       variant="large"
                       showSign={false}
@@ -454,32 +429,47 @@ const Dashboard = () => {
                 Top Holdings
               </h3>
               <div className="space-y-4">
-                {assetAllocation.map((asset) => (
-                  <div
-                    key={asset.name}
-                    className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                        {asset.name}
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-800">
-                          {asset.name}
-                        </p>
-                        <p className="text-sm text-slate-500">
-                          {asset.value}% of portfolio
-                        </p>
-                      </div>
-                    </div>
-                    <CurrencyDisplay
-                      amount={asset.amount}
-                      currency={asset.name}
-                      network={asset.network}
-                      showSign={false}
-                    />
+                {loadingOv && (
+                  <div className="text-sm text-slate-500">
+                    Loading overview…
                   </div>
-                ))}
+                )}
+                {errorOv && (
+                  <div className="text-sm text-red-500">{errorOv}</div>
+                )}
+
+                {ov &&
+                  ov.allocation.slice(0, 5).map((h) => (
+                    <div
+                      key={h.symbol}
+                      className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                          {h.symbol.slice(0, 3).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-800">
+                            {h.symbol}
+                          </p>
+                          <p className="text-sm text-slate-500">
+                            {h.weightPct.toFixed(1)}% of portfolio
+                          </p>
+                        </div>
+                      </div>
+                      <CurrencyDisplay
+                        amount={h.valueUsd}
+                        currency="USD"
+                        showSign={false}
+                      />
+                    </div>
+                  ))}
+
+                {!loadingOv && !errorOv && ov && ov.allocation.length === 0 && (
+                  <div className="text-sm text-slate-500">
+                    No holdings with USD value.
+                  </div>
+                )}
               </div>
             </Card>
           </TabsContent>
