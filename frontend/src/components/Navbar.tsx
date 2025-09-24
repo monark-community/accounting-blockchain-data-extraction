@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useWallet } from "@/contexts/WalletContext";
 
 const Navbar = () => {
-  const { isConnected, userWallet, userAlias, disconnectWallet } = useWallet();
+  const { isConnected, userWallet, userAlias, disconnectWallet, currentNetwork, connectedWallets } = useWallet();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -70,12 +70,11 @@ const Navbar = () => {
                     </AvatarFallback>
                   </Avatar>
                   <div className="text-left">
-                    <div className="text-white font-medium text-sm">
-                      {userAlias}
-                    </div>
-                    <div className="text-gray-400 text-xs">
-                      {userWallet.slice(0, 6)}...
-                    </div>
+                    <div className="text-white font-medium text-sm">{userAlias}</div>
+                    <div className="text-gray-400 text-xs">{userWallet.slice(0, 6)}...{userWallet.slice(-4)}</div>
+                    {currentNetwork && (
+                      <div className="text-blue-400 text-xs">{currentNetwork}</div>
+                    )}
                   </div>
                 </Button>
               </DropdownMenuTrigger>

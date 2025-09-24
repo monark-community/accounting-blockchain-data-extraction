@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { ArrowLeft, Plus, Trash2, Edit2, Wallet } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit2, Wallet, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,25 +11,61 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/contexts/WalletContext";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
+import { mainnet, polygon, bsc, avalanche, arbitrum, optimism } from 'wagmi/chains';
 
 const ManageWallets = () => {
-  const { connectedWallets, addWallet, removeWallet } = useWallet();
+  const { connectedWallets, addWallet, removeWallet, switchNetwork, currentNetwork, getWalletBalance } = useWallet();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState("");
   const [newWalletName, setNewWalletName] = useState("");
   const [newWalletNetwork, setNewWalletNetwork] = useState("ethereum");
+  const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
 
   const networks = [
-    { value: 'ethereum', label: 'Ethereum' },
-    { value: 'polygon', label: 'Polygon' },
-    { value: 'bsc', label: 'Binance Smart Chain' },
-    { value: 'avalanche', label: 'Avalanche' },
-    { value: 'solana', label: 'Solana' },
-    { value: 'arbitrum', label: 'Arbitrum' },
-    { value: 'optimism', label: 'Optimism' }
+    { value: 'ethereum', label: 'Ethereum', chainId: mainnet.id },
+    { value: 'polygon', label: 'Polygon', chainId: polygon.id },
+    { value: 'bsc', label: 'Binance Smart Chain', chainId: bsc.id },
+    { value: 'avalanche', label: 'Avalanche', chainId: avalanche.id },
+    { value: 'arbitrum', label: 'Arbitrum', chainId: arbitrum.id },
+    { value: 'optimism', label: 'Optimism', chainId: optimism.id }
   ];
+
+  const handleSwitchNetwork = async (chainId: number) => {
+    setIsSwitchingNetwork(true);
+    try {
+      switchNetwork(chainId);
+      toast({
+        title: "Network Switched",
+        description: "Successfully switched network!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Network Switch Failed",
+        description: error.message || "Failed to switch network. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSwitchingNetwork(false);
+    }
+  };
+
+  const handleRefreshBalance = async (address: string) => {
+    try {
+      const balance = await getWalletBalance(address);
+      toast({
+        title: "Balance Refreshed",
+        description: `Balance: ${balance} ETH`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to Refresh Balance",
+        description: error.message || "Failed to get wallet balance.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleAddWallet = () => {
     if (!newWalletAddress.trim() || !newWalletName.trim()) {
@@ -155,6 +191,37 @@ const ManageWallets = () => {
             </Dialog>
           </div>
 
+          {/* Network Switching Section */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="w-5 h-5" />
+                Network Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Current Network</p>
+                  <p className="font-semibold">{currentNetwork || 'Not Connected'}</p>
+                </div>
+                <div className="flex gap-2">
+                  {networks.map((network) => (
+                    <Button
+                      key={network.value}
+                      variant={currentNetwork?.toLowerCase() === network.value ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleSwitchNetwork(network.chainId)}
+                      disabled={isSwitchingNetwork}
+                    >
+                      {isSwitchingNetwork ? "Switching..." : network.label}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid gap-4">
             {connectedWallets.map((wallet) => (
               <Card key={wallet.id} className="hover:shadow-md transition-shadow">
@@ -167,12 +234,27 @@ const ManageWallets = () => {
                       <div>
                         <h3 className="font-semibold text-lg">{wallet.name}</h3>
                         <p className="text-slate-600 font-mono text-sm">{wallet.address}</p>
-                        <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium mt-1 ${getNetworkBadgeColor(wallet.network)}`}>
-                          {wallet.network}
-                        </span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getNetworkBadgeColor(wallet.network)}`}>
+                            {wallet.network}
+                          </span>
+                          {wallet.balance && (
+                            <span className="text-green-600 text-xs font-medium">
+                              {parseFloat(wallet.balance).toFixed(4)} ETH
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleRefreshBalance(wallet.address)}
+                        title="Refresh Balance"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </Button>
                       <Button variant="ghost" size="sm">
                         <Edit2 className="w-4 h-4" />
                       </Button>
