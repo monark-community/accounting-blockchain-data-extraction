@@ -207,16 +207,6 @@ const Hero = () => {
                 <span className="text-blue-100 font-medium">Tax Ready</span>
               </div>
             </div>
-
-            {/* CTA Button */}
-            <Button
-              size="lg"
-              onClick={handleConnectWallet}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              Connect Wallet
-              <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
           </div>
 
           <form
@@ -257,7 +247,7 @@ const Hero = () => {
               type="submit"
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-3 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
             >
-              View Dashboard
+              Connect Wallet
               <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
           </form>

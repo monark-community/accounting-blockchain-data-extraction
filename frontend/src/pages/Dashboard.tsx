@@ -1,16 +1,50 @@
-import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
-import { TrendingUp, TrendingDown, Wallet, BarChart3, PieChart, DollarSign } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  BarChart3,
+  PieChart,
+  DollarSign,
+} from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from "recharts";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
 import ExpensesTab from "@/components/dashboard/ExpensesTab";
 import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
 import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
-import { type CapitalGainEntry, type AccountingMethod } from "@/utils/capitalGains";
+import {
+  type CapitalGainEntry,
+  type AccountingMethod,
+} from "@/utils/capitalGains";
+import { useSearchParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+type Holding = {
+  contract: string | null;
+  symbol: string;
+  decimals: number;
+  qty: string;
+};
+type HoldingsResponse = {
+  address: string;
+  chain: string;
+  currency: string;
+  asOf: string;
+  holdings: Holding[];
+};
 
 interface Transaction {
   id: string;
@@ -34,7 +68,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xabc123",
     type: "income",
     network: "ethereum",
-    walletId: "1"
+    walletId: "1",
   },
   {
     id: "2",
@@ -45,7 +79,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xdef456",
     type: "expense",
     network: "ethereum",
-    walletId: "1"
+    walletId: "1",
   },
   {
     id: "3",
@@ -56,7 +90,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xghi789",
     type: "swap",
     network: "ethereum",
-    walletId: "2"
+    walletId: "2",
   },
   {
     id: "4",
@@ -67,7 +101,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xjkl012",
     type: "income",
     network: "polygon",
-    walletId: "3"
+    walletId: "3",
   },
   {
     id: "5",
@@ -78,7 +112,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xmno345",
     type: "expense",
     network: "solana",
-    walletId: "2"
+    walletId: "2",
   },
   {
     id: "6",
@@ -89,7 +123,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xpqr678",
     type: "income",
     network: "ethereum",
-    walletId: "1"
+    walletId: "1",
   },
   {
     id: "7",
@@ -100,7 +134,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xstu901",
     type: "expense",
     network: "avalanche",
-    walletId: "3"
+    walletId: "3",
   },
   {
     id: "8",
@@ -111,7 +145,7 @@ const mockTransactions: Transaction[] = [
     hash: "0vwx234",
     type: "income",
     network: "ethereum",
-    walletId: "2"
+    walletId: "2",
   },
   {
     id: "9",
@@ -122,7 +156,7 @@ const mockTransactions: Transaction[] = [
     hash: "0xyz567",
     type: "expense",
     network: "bsc",
-    walletId: "1"
+    walletId: "1",
   },
   {
     id: "10",
@@ -133,11 +167,13 @@ const mockTransactions: Transaction[] = [
     hash: "0x123abc",
     type: "swap",
     network: "ethereum",
-    walletId: "3"
-  }
+    walletId: "3",
+  },
 ];
 
-const mockCapitalGainsData = (transactions: Transaction[]): {
+const mockCapitalGainsData = (
+  transactions: Transaction[]
+): {
   realized: CapitalGainEntry[];
   unrealized: CapitalGainEntry[];
   totalRealizedGains: number;
@@ -206,35 +242,96 @@ const mockCapitalGainsData = (transactions: Transaction[]): {
 
 const Dashboard = () => {
   const { connectedWallets, getWalletName, userPreferences } = useWallet();
-  const [accountingMethod, setAccountingMethod] = useState<AccountingMethod>('FIFO');
+  const [accountingMethod, setAccountingMethod] =
+    useState<AccountingMethod>("FIFO");
 
   const transactions = mockTransactions;
   const capitalGainsData = mockCapitalGainsData(transactions);
 
   const portfolioData = [
-    { month: 'Jan', value: 45000 },
-    { month: 'Feb', value: 52000 },
-    { month: 'Mar', value: 48000 },
-    { month: 'Apr', value: 61000 },
-    { month: 'May', value: 55000 },
-    { month: 'Jun', value: 67000 },
+    { month: "Jan", value: 45000 },
+    { month: "Feb", value: 52000 },
+    { month: "Mar", value: 48000 },
+    { month: "Apr", value: 61000 },
+    { month: "May", value: 55000 },
+    { month: "Jun", value: 67000 },
   ];
 
   const assetAllocation = [
-    { name: 'ETH', value: 45, amount: 30150, network: 'ethereum' },
-    { name: 'BTC', value: 30, amount: 20100, network: 'ethereum' },
-    { name: 'USDC', value: 15, amount: 10050, network: 'ethereum' },
-    { name: 'MATIC', value: 10, amount: 6700, network: 'polygon' },
+    { name: "ETH", value: 45, amount: 30150, network: "ethereum" },
+    { name: "BTC", value: 30, amount: 20100, network: "ethereum" },
+    { name: "USDC", value: 15, amount: 10050, network: "ethereum" },
+    { name: "MATIC", value: 10, amount: 6700, network: "polygon" },
   ];
+
+  const [params] = useSearchParams();
+  const address = params.get("address") || "";
+
+  const [data, setData] = useState<HoldingsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!address) return;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/portfolio/holdings/${encodeURIComponent(address)}`)
+      .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
+      .then(setData)
+      .catch((e) => setError(e?.error?.message || "Failed to load holdings"))
+      .finally(() => setLoading(false));
+  }, [address]);
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
-      
+
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">Portfolio Dashboard</h1>
-          <p className="text-slate-600">Track your crypto assets and tax obligations</p>
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">
+            Portfolio Dashboard
+          </h1>
+          <p className="text-slate-600">
+            Track your crypto assets and tax obligations
+          </p>
+        </div>
+
+        <div className="mb-6">
+          {!address && (
+            <div className="text-sm text-red-400">No address in URL.</div>
+          )}
+          {address && (
+            <div className="text-sm text-blue-200">Address: {address}</div>
+          )}
+          {loading && <div className="text-sm">Loading holdings…</div>}
+          {error && <div className="text-sm text-red-400">{error}</div>}
+          {data && (
+            <div className="mt-2 text-sm">
+              <div className="font-semibold">
+                Holdings ({data.holdings.length}):
+              </div>
+              <ul className="list-disc pl-5 mt-1 space-y-1">
+                {data.holdings.slice(0, 10).map((h) => (
+                  <li key={`${h.contract ?? "eth"}-${h.symbol}`}>
+                    <span className="font-medium">
+                      {h.symbol || "(unknown)"}
+                    </span>
+                    {" — "}
+                    <span>{h.qty}</span>
+                    {h.contract && (
+                      <span className="text-gray-400">
+                        {" "}
+                        ({h.contract.slice(0, 6)}…{h.contract.slice(-4)})
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <div className="text-gray-400 mt-1">
+                * showing first 10 for now
+              </div>
+            </div>
+          )}
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
@@ -252,9 +349,11 @@ const Dashboard = () => {
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-slate-600 text-sm font-medium">Total Portfolio Value</p>
-                    <CurrencyDisplay 
-                      amount={67000} 
+                    <p className="text-slate-600 text-sm font-medium">
+                      Total Portfolio Value
+                    </p>
+                    <CurrencyDisplay
+                      amount={67000}
                       currency={userPreferences.currency}
                       variant="large"
                       showSign={false}
@@ -267,9 +366,11 @@ const Dashboard = () => {
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-slate-600 text-sm font-medium">24h Change</p>
-                    <CurrencyDisplay 
-                      amount={2340} 
+                    <p className="text-slate-600 text-sm font-medium">
+                      24h Change
+                    </p>
+                    <CurrencyDisplay
+                      amount={2340}
                       currency={userPreferences.currency}
                       variant="large"
                     />
@@ -281,9 +382,11 @@ const Dashboard = () => {
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-slate-600 text-sm font-medium">Unrealized P&L</p>
-                    <CurrencyDisplay 
-                      amount={12500} 
+                    <p className="text-slate-600 text-sm font-medium">
+                      Unrealized P&L
+                    </p>
+                    <CurrencyDisplay
+                      amount={12500}
                       currency={userPreferences.currency}
                       variant="large"
                     />
@@ -295,9 +398,11 @@ const Dashboard = () => {
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-slate-600 text-sm font-medium">Tax Liability</p>
-                    <CurrencyDisplay 
-                      amount={3200} 
+                    <p className="text-slate-600 text-sm font-medium">
+                      Tax Liability
+                    </p>
+                    <CurrencyDisplay
+                      amount={3200}
                       currency={userPreferences.currency}
                       variant="large"
                     />
@@ -310,19 +415,28 @@ const Dashboard = () => {
             {/* Charts */}
             <div className="grid lg:grid-cols-2 gap-6">
               <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Portfolio Performance</h3>
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                  Portfolio Performance
+                </h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={portfolioData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis />
-                    <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">Asset Allocation</h3>
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                  Asset Allocation
+                </h3>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={assetAllocation}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -336,21 +450,30 @@ const Dashboard = () => {
 
             {/* Asset Breakdown */}
             <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">Top Holdings</h3>
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Top Holdings
+              </h3>
               <div className="space-y-4">
                 {assetAllocation.map((asset) => (
-                  <div key={asset.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                  <div
+                    key={asset.name}
+                    className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
                         {asset.name}
                       </div>
                       <div>
-                        <p className="font-medium text-slate-800">{asset.name}</p>
-                        <p className="text-sm text-slate-500">{asset.value}% of portfolio</p>
+                        <p className="font-medium text-slate-800">
+                          {asset.name}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          {asset.value}% of portfolio
+                        </p>
                       </div>
                     </div>
-                    <CurrencyDisplay 
-                      amount={asset.amount} 
+                    <CurrencyDisplay
+                      amount={asset.amount}
                       currency={asset.name}
                       network={asset.network}
                       showSign={false}
@@ -362,7 +485,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="income">
-            <IncomeTab 
+            <IncomeTab
               transactions={transactions}
               connectedWallets={connectedWallets}
               getWalletName={getWalletName}
@@ -370,7 +493,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="expenses">
-            <ExpensesTab 
+            <ExpensesTab
               transactions={transactions}
               connectedWallets={connectedWallets}
               getWalletName={getWalletName}
@@ -378,7 +501,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="capital-gains">
-            <CapitalGainsTab 
+            <CapitalGainsTab
               capitalGainsData={capitalGainsData}
               accountingMethod={accountingMethod}
               setAccountingMethod={setAccountingMethod}
@@ -386,7 +509,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="all-transactions">
-            <AllTransactionsTab 
+            <AllTransactionsTab
               transactions={transactions}
               connectedWallets={connectedWallets}
               getWalletName={getWalletName}

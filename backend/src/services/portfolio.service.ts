@@ -1,4 +1,5 @@
 import { alchemy } from "../utils/alchemy";
+import { getEthUsd, getErc20Usd } from "../utils/coingecko";
 
 function fromHexQty(hex: string, decimals = 18): string {
   const bi = BigInt(hex);
@@ -48,5 +49,55 @@ export async function getHoldings(address: string) {
       { contract: null as null, symbol: "ETH", decimals: 18, qty: ethQty },
       ...tokens,
     ],
+  };
+}
+
+export async function getOverview(address: string) {
+  const base = await getHoldings(address); // re-use your existing holdings
+  // ETH price
+  const ethUsd = await getEthUsd();
+
+  // Collect ERC-20 contracts with qty > 0
+  const erc20 = base.holdings.filter((h) => h.contract && Number(h.qty) > 0);
+  const contracts = erc20.map((h) => (h.contract as string).toLowerCase());
+  const priceMap = await getErc20Usd(contracts);
+
+  // Attach prices + values
+  const pricedHoldings = base.holdings.map((h) => {
+    const qty = Number(h.qty);
+    const priceUsd =
+      h.contract === null
+        ? ethUsd
+        : priceMap.get((h.contract || "").toLowerCase()) ?? 0;
+    const valueUsd = qty * priceUsd;
+    return { ...h, priceUsd, valueUsd };
+  });
+
+  // Totals + allocation
+  const totalValueUsd = pricedHoldings.reduce((s, h) => s + h.valueUsd, 0);
+  const allocation = pricedHoldings
+    .filter((h) => h.valueUsd > 0)
+    .map((h) => ({
+      symbol: h.symbol || "(unknown)",
+      valueUsd: h.valueUsd,
+      weightPct: totalValueUsd ? (h.valueUsd / totalValueUsd) * 100 : 0,
+    }))
+    .sort((a, b) => b.valueUsd - a.valueUsd);
+
+  // Top holdings (top 10 by value)
+  const topHoldings = allocation.slice(0, 10);
+
+  return {
+    address: base.address,
+    asOf: new Date().toISOString(),
+    currency: "USD",
+    kpis: {
+      totalValueUsd,
+      delta24hUsd: 0, // next step
+      delta24hPct: 0, // next step
+    },
+    holdings: pricedHoldings,
+    allocation,
+    topHoldings,
   };
 }
