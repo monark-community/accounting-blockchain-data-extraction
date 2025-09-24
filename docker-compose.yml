@@ -17,8 +17,6 @@ services:
       SESSION_SECRET: "prod-change-me-rotate-regularly"
       SESSION_NAME: "ll_session"
       SESSION_TTL_SECONDS: "604800"
-      ALCHEMY_API_KEY: ${ALCHEMY_API_KEY}
-      ALCHEMY_NETWORK: ${ALCHEMY_NETWORK:-eth-sepolia}
     depends_on:
       db:
         condition: service_healthy
@@ -68,8 +66,6 @@ services:
       SESSION_SECRET: "prod-change-me-rotate-regularly"
       SESSION_NAME: "ll_session"
       SESSION_TTL_SECONDS: "604800"
-      ALCHEMY_API_KEY: ${ALCHEMY_API_KEY}
-      ALCHEMY_NETWORK: ${ALCHEMY_NETWORK:-eth-sepolia}
     depends_on:
       db:
         condition: service_healthy

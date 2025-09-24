@@ -5,10 +5,15 @@ const NETWORK_MAP: Record<string, Network> = {
   "eth-sepolia": Network.ETH_SEPOLIA,
 };
 
-const apiKey = process.env.ALCHEMY_API_KEY!;
-const network =
-  NETWORK_MAP[process.env.ALCHEMY_NETWORK ?? "eth-sepolia"] ??
-  Network.ETH_SEPOLIA;
+const apiKey = process.env.ALCHEMY_API_KEY;
+const netStr = process.env.ALCHEMY_NETWORK;
 
-export const alchemy = new Alchemy({ apiKey, network });
-export const currentNetwork = network;
+if (!apiKey) throw new Error("Missing ALCHEMY_API_KEY");
+if (!netStr || !NETWORK_MAP[netStr]) {
+  throw new Error(
+    `Invalid ALCHEMY_NETWORK "${netStr}". Use "eth-mainnet" or "eth-sepolia".`
+  );
+}
+
+export const alchemy = new Alchemy({ apiKey, network: NETWORK_MAP[netStr] });
+export const currentNetwork = NETWORK_MAP[netStr];
