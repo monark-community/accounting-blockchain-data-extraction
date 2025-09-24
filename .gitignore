@@ -42,5 +42,3 @@ pg_data/
 # Linters
 .eslintcache
 .stylelintcache
-
-# test
