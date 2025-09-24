@@ -5,7 +5,7 @@ on:
 
 permissions:
   contents: read
-  issues: write   # needed to write a PR comment to store message_id
+  issues: write # needed to write a PR comment to store message_id
 
 jobs:
   discord:
@@ -29,17 +29,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           CONTENT=$(printf ':bell: **Pull Request Notification**\n\nRepository: **%s**\nAuthor: **%s**\nTitle: %s\nLink: %s' "$REPO" "$AUTHOR" "$TITLE" "$URL")
-          RESP=$(curl -sS -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" \
-                 -d "$(printf '{"content":"%s"}' "$CONTENT")" \
-                 https://discord.com/api/v10/channels/$CHANNEL_ID/messages)
-          MSG_ID=$(echo "$RESP" | jq -r '.id')
-          test "$MSG_ID" != "null" && test -n "$MSG_ID" || { echo "Discord post failed: $RESP"; exit 1; }
-          # Store message_id on the PR as a hidden marker comment
+
+          # Build valid JSON no matter what $CONTENT contains (quotes, newlines, etc.)
+          PAYLOAD=$(jq -n --arg content "$CONTENT" '{content: $content}')
+
+          # Send payload to Discord and capture response + HTTP code
+          RESP=$(curl -sS -w "\nHTTP_CODE:%{http_code}\n" \
+                -H "Authorization: Bot $BOT_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$PAYLOAD" \
+                "https://discord.com/api/v10/channels/$CHANNEL_ID/messages")
+
+          # Print first lines of response for debugging
+          echo "$RESP" | sed -n '1,200p'
+
+          # Extract HTTP code and message id
+          HTTP=$(echo "$RESP" | sed -n 's/^HTTP_CODE://p')
+          BODY=$(echo "$RESP" | sed '/^HTTP_CODE:/d')
+          MSG_ID=$(echo "$BODY" | jq -r '.id // empty')
+
+          # Fail if Discord did not return 200/201 or no message id
+          [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ] || { echo "Discord post failed (HTTP $HTTP): $BODY"; exit 1; }
+          [ -n "$MSG_ID" ] || { echo "No message id in response"; exit 1; }
+
+          # Store message_id as a hidden comment on the PR
+          COMM=$(jq -n --arg body "<!-- discord_msg_id:$MSG_ID -->" '{body:$body}')
           curl -sS -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${REPO}/issues/${PRNUM}/comments \
-            -d "$(printf '{"body":"<!-- discord_msg_id:%s -->"}' "$MSG_ID")" >/dev/null
+            -d "$COMM" \
+            "https://api.github.com/repos/${REPO}/issues/${PRNUM}/comments" >/dev/null
+
           echo "Stored Discord message_id=$MSG_ID"
 
       - name: On close, add reaction to the original Discord message

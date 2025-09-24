@@ -1,13 +1,13 @@
 name: Discord Push bot
 
 on:
-  # Notifie tous les push sur toutes les branches (modifie si tu veux filtrer)
+  # Notify on every push (adjust filters if needed)
   push:
-    # exemples pour ignorer certaines branches ou auteurs:
-    # branches-ignore:
-    #   - 'dependabot/**'
-  # Notifie la création de branches
+    branches: ["**"]
+  # Notify when a new branch is created
   create:
+  # Allow manual runs for testing
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -21,9 +21,10 @@ jobs:
     steps:
       - name: Require secrets
         run: |
-          test -n "$BOT_TOKEN" && test -n "$CHANNEL_ID" || { echo "Missing secrets"; exit 1; }
+          test -n "$BOT_TOKEN" && echo "BOT_TOKEN present" || { echo "Missing BOT_TOKEN"; exit 1; }
+          test -n "$CHANNEL_ID" && echo "CHANNEL_ID present" || { echo "Missing CHANNEL_ID"; exit 1; }
 
-      # --- Création de branche ---
+      # --- New branch notification ---
       - name: Notify on new branch
         if: ${{ github.event_name == 'create' && github.event.ref_type == 'branch' }}
         env:
@@ -33,20 +34,22 @@ jobs:
         run: |
           BRANCH_URL="https://github.com/${REPO}/tree/${BRANCH}"
           CONTENT=$(printf ':seedling: **New branch created**\n\nRepository: **%s**\nBranch: `%s`\nBy: **%s**\nLink: %s' "$REPO" "$BRANCH" "$ACTOR" "$BRANCH_URL")
+          PAYLOAD=$(jq -n --arg content "$CONTENT" '{content: $content}')
+          # Debug: print payload
+          echo "$PAYLOAD" | jq .
           curl -sS -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" \
-            -d "$(printf '{"content":"%s"}' "$CONTENT")" \
-            https://discord.com/api/v10/channels/$CHANNEL_ID/messages >/dev/null
+               -d "$PAYLOAD" "https://discord.com/api/v10/channels/$CHANNEL_ID/messages"
 
-      # --- Push de commits ---
+      # --- Push commits notification ---
       - name: Notify on push
         if: ${{ github.event_name == 'push' }}
         env:
           REPO: ${{ github.repository }}
-          BRANCH: ${{ github.ref_name }} # dispo nativement dans GitHub Actions
+          BRANCH: ${{ github.ref_name }} # available in GitHub Actions
           ACTOR: ${{ github.actor }}
           COMPARE_URL: ${{ github.event.compare }}
         run: |
-          # On limite l’aperçu aux 10 premiers commits pour éviter les pavés
+          # Limit preview to the first 10 commits to avoid long messages
           TOTAL=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
           PREVIEW_COUNT=$(jq 'if .commits | length > 10 then 10 else .commits | length end' "$GITHUB_EVENT_PATH")
           COMMITS=$(jq -r '.commits[:10][] | "- [`\(.id[0:7])`](" + .url + ") \(.message | split("\n")[0]) — \(.author.username // .author.name)"' "$GITHUB_EVENT_PATH")
@@ -59,6 +62,8 @@ jobs:
           CONTENT=$(printf ':arrow_up: **Push to `%s`**\n\nRepository: **%s**\nPusher: **%s**\nCommits: **%d**\nCompare: %s\n\n%s%s' \
             "$BRANCH" "$REPO" "$ACTOR" "$TOTAL" "$COMPARE_URL" "$COMMITS" "$MORE")
 
+          PAYLOAD=$(jq -n --arg content "$CONTENT" '{content: $content}')
+          # Debug: print payload
+          echo "$PAYLOAD" | jq .
           curl -sS -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" \
-            -d "$(printf '{"content":"%s"}' "$CONTENT")" \
-            https://discord.com/api/v10/channels/$CHANNEL_ID/messages >/dev/null
+               -d "$PAYLOAD" "https://discord.com/api/v10/channels/$CHANNEL_ID/messages"
