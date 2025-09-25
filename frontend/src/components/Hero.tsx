@@ -305,7 +305,7 @@ const Hero = () => {
             </div>
           </div>
 
-          {/* CTA Button */}
+          {/* Connexion Button */}
           <div className="space-y-4">
             <Button
               size="lg"
