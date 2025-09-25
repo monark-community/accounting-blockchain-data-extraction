@@ -33,12 +33,10 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: |
           BRANCH_URL="https://github.com/${REPO}/tree/${BRANCH}"
-          CONTENT=$(printf ':seedling: **New branch created**\n\nRepository: **%s**\nBranch: `%s`\nBy: **%s**\nLink: %s' "$REPO" "$BRANCH" "$ACTOR" "$BRANCH_URL")
+          CONTENT=$(printf ':seedling: **New branch created**\n\nRepository: **%s**\nBranch: `%s`\nBy: **%s**\nLink: <%s>' "$REPO" "$BRANCH" "$ACTOR" "$BRANCH_URL")
           PAYLOAD=$(jq -n --arg content "$CONTENT" '{content: $content}')
-          # Debug: print payload
-          echo "$PAYLOAD" | jq .
           curl -sS -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" \
-               -d "$PAYLOAD" "https://discord.com/api/v10/channels/$CHANNEL_ID/messages"
+              -d "$PAYLOAD" "https://discord.com/api/v10/channels/$CHANNEL_ID/messages"
 
       # --- Push commits notification ---
       - name: Notify on push
@@ -52,18 +50,17 @@ jobs:
           # Limit preview to the first 10 commits to avoid long messages
           TOTAL=$(jq '.commits | length' "$GITHUB_EVENT_PATH")
           PREVIEW_COUNT=$(jq 'if .commits | length > 10 then 10 else .commits | length end' "$GITHUB_EVENT_PATH")
-          COMMITS=$(jq -r '.commits[:10][] | "- [`\(.id[0:7])`](" + .url + ") \(.message | split("\n")[0]) — \(.author.username // .author.name)"' "$GITHUB_EVENT_PATH")
+
+          COMMITS=$(jq -r '.commits[:10][] | "- `\(.id[0:7])` <" + .url + "> \(.message | split("\n")[0]) — \(.author.username // .author.name)"' "$GITHUB_EVENT_PATH")
 
           MORE=""
           if [ "$TOTAL" -gt "$PREVIEW_COUNT" ]; then
             MORE=$(printf "\n…and %d more commits." $((TOTAL - PREVIEW_COUNT)))
           fi
 
-          CONTENT=$(printf ':arrow_up: **Push to `%s`**\n\nRepository: **%s**\nPusher: **%s**\nCommits: **%d**\nCompare: %s\n\n%s%s' \
+          CONTENT=$(printf ':arrow_up: **Push to `%s`**\n\nRepository: **%s**\nPusher: **%s**\nCommits: **%d**\nCompare: <%s>\n\n%s%s' \
             "$BRANCH" "$REPO" "$ACTOR" "$TOTAL" "$COMPARE_URL" "$COMMITS" "$MORE")
 
           PAYLOAD=$(jq -n --arg content "$CONTENT" '{content: $content}')
-          # Debug: print payload
-          echo "$PAYLOAD" | jq .
           curl -sS -H "Authorization: Bot $BOT_TOKEN" -H "Content-Type: application/json" \
-               -d "$PAYLOAD" "https://discord.com/api/v10/channels/$CHANNEL_ID/messages"
+              -d "$PAYLOAD" "https://discord.com/api/v10/channels/$CHANNEL_ID/messages"
