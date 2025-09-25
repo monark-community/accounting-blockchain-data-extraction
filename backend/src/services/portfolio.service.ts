@@ -1,5 +1,10 @@
 import { alchemy } from "../utils/alchemy";
-import { getEthUsd, getErc20Usd } from "../utils/coingecko";
+import {
+  getEthUsd,
+  getErc20Usd,
+  getErc20UsdViaDexScreener,
+  resolveContractsOnEthereum,
+} from "../utils/prices";
 
 function fromHexQty(hex: string, decimals = 18): string {
   const bi = BigInt(hex);
@@ -62,6 +67,13 @@ export async function getOverview(address: string) {
   const contracts = erc20.map((h) => (h.contract as string).toLowerCase());
   const priceMap = await getErc20Usd(contracts);
 
+  // Fallback for missing tokens via DexScreener (objective, liquidity-based)
+  const missing = contracts.filter((c) => !priceMap.has(c));
+  if (missing.length) {
+    const ds = await getErc20UsdViaDexScreener(missing.slice(0, 60)); // cap to stay gentle
+    for (const [k, v] of ds) priceMap.set(k, v);
+  }
+
   // Attach prices + values
   const pricedHoldings = base.holdings.map((h) => {
     const qty = Number(h.qty);
@@ -100,4 +112,70 @@ export async function getOverview(address: string) {
     allocation,
     topHoldings,
   };
+}
+
+export async function getTokenForAddress(params: {
+  address: string;
+  contract?: string;
+  symbol?: string;
+}) {
+  const address = params.address.trim();
+  let contracts: string[] = [];
+
+  if (params.contract) {
+    const c = params.contract.trim().toLowerCase();
+    if (!c.startsWith("0x") || c.length !== 42)
+      throw Object.assign(new Error("Bad contract"), { code: "BadRequest" });
+    contracts = [c];
+  } else if (params.symbol) {
+    contracts = await resolveContractsOnEthereum(params.symbol);
+    if (!contracts.length)
+      return {
+        matches: [],
+        note: "No ethereum tokens matched that symbol/name.",
+      };
+  } else {
+    throw Object.assign(new Error("contract or symbol required"), {
+      code: "BadRequest",
+    });
+  }
+
+  // Ask Alchemy for just these contracts (fast)
+  const res: any = await alchemy.core.getTokenBalances(address, contracts);
+  const balances = (res?.tokenBalances ?? []).map((t: any) => ({
+    contract: String(t.contractAddress).toLowerCase(),
+    balHex: t.tokenBalance as string | null,
+  }));
+
+  // Enrich metadata + qty only for matches with a non-null balance (zero hex still possible)
+  const enriched = await Promise.all(
+    balances.map(async (b) => {
+      const md = await alchemy.core
+        .getTokenMetadata(b.contract)
+        .catch(() => null);
+      const decimals = md?.decimals ?? 18;
+      const symbol = md?.symbol ?? "";
+      const name = md?.name ?? "";
+      const qty = b.balHex ? fromHexQty(b.balHex, decimals) : "0";
+      return { contract: b.contract, symbol, name, decimals, qty };
+    })
+  );
+
+  // Price (DefiLlama first, DexScreener fallback)
+  const addrs = enriched.map((e) => e.contract);
+  const priceMap = await getErc20Usd(addrs);
+  const missing = addrs.filter((a) => !priceMap.has(a));
+  if (missing.length) {
+    const ds = await getErc20UsdViaDexScreener(missing.slice(0, 60));
+    for (const [k, v] of ds) priceMap.set(k, v);
+  }
+
+  const items = enriched.map((e) => {
+    const priceUsd = priceMap.get(e.contract) ?? 0;
+    const valueUsd = Number(e.qty) * priceUsd;
+    return { ...e, priceUsd, valueUsd };
+  });
+
+  // If user searched by symbol, return all matches; if by contract, return single
+  return params.symbol ? { matches: items } : items[0];
 }
