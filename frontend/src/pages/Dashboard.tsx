@@ -270,13 +270,6 @@ const Dashboard = () => {
     { month: "Jun", value: 67000 },
   ];
 
-  const assetAllocation = [
-    { name: "ETH", value: 45, amount: 30150, network: "ethereum" },
-    { name: "BTC", value: 30, amount: 20100, network: "ethereum" },
-    { name: "USDC", value: 15, amount: 10050, network: "ethereum" },
-    { name: "MATIC", value: 10, amount: 6700, network: "polygon" },
-  ];
-
   const fmtUSD = (n: number) =>
     n.toLocaleString(undefined, {
       style: "currency",
