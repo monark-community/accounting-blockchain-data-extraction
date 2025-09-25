@@ -30,7 +30,8 @@ import {
   type AccountingMethod,
 } from "@/utils/capitalGains";
 import { useSearchParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { Tooltip } from "recharts";
 
 type PricedHolding = {
   contract: string | null;
@@ -276,6 +277,14 @@ const Dashboard = () => {
     { name: "MATIC", value: 10, amount: 6700, network: "polygon" },
   ];
 
+  const fmtUSD = (n: number) =>
+    n.toLocaleString(undefined, {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2,
+    });
+  const fmtPct = (n: number) => `${n.toFixed(1)}%`;
+
   const [params] = useSearchParams();
   const address = params.get("address") || "";
 
@@ -284,11 +293,39 @@ const Dashboard = () => {
   const [loadingOv, setLoadingOv] = useState(false);
   const [errorOv, setErrorOv] = useState<string | null>(null);
 
+  const allocationData = useMemo(() => {
+    if (!ov) return [];
+    // keep only priced tokens (value > 0)
+    const items = ov.allocation
+      .filter((a) => (a.valueUsd ?? 0) > 0)
+      .sort((a, b) => b.valueUsd - a.valueUsd);
+
+    // top N, group the rest as "Other"
+    const TOP_N = 8;
+    const top = items.slice(0, TOP_N);
+    const otherVal = items.slice(TOP_N).reduce((s, x) => s + x.valueUsd, 0);
+    const total = top.reduce((s, x) => s + x.valueUsd, 0) + otherVal || 1;
+
+    const rows = top.map((a) => ({
+      name: a.symbol || "(unknown)",
+      pct: (a.valueUsd / total) * 100,
+      usd: a.valueUsd,
+    }));
+    if (otherVal > 0) {
+      rows.push({
+        name: "Other",
+        pct: (otherVal / total) * 100,
+        usd: otherVal,
+      });
+    }
+    return rows;
+  }, [ov]);
+
   useEffect(() => {
     if (!address) return;
     setLoadingOv(true);
     setErrorOv(null);
-    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}`)
+    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}?minUsd=1`)
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then(setOv)
       .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
@@ -412,14 +449,44 @@ const Dashboard = () => {
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   Asset Allocation
                 </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={assetAllocation}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Bar dataKey="value" fill="#8884d8" />
-                  </BarChart>
-                </ResponsiveContainer>
+
+                {!ov && (
+                  <div className="text-sm text-slate-500">
+                    Load an address to see allocation.
+                  </div>
+                )}
+                {ov && allocationData.length === 0 && (
+                  <div className="text-sm text-slate-500">
+                    No priced tokens to display.
+                  </div>
+                )}
+
+                {ov && allocationData.length > 0 && (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={allocationData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                      <Tooltip
+                        formatter={(value: any, _name, entry: any) => {
+                          if (entry?.payload) {
+                            const row = entry.payload as {
+                              pct: number;
+                              usd: number;
+                            };
+                            return [
+                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
+                              "Allocation",
+                            ];
+                          }
+                          return [value, "Allocation"];
+                        }}
+                        labelFormatter={(label) => String(label)}
+                      />
+                      <Bar dataKey="pct" fill="#3b82f6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </Card>
             </div>
 
