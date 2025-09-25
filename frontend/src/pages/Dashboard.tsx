@@ -375,12 +375,16 @@ const Dashboard = () => {
                       24h Change
                     </p>
                     <CurrencyDisplay
-                      amount={2340}
+                      amount={ov?.kpis.delta24hUsd ?? 0}
                       currency={userPreferences.currency}
                       variant="large"
                     />
                   </div>
-                  <TrendingUp className="w-12 h-12 text-green-500" />
+                  {ov?.kpis.delta24hUsd >= 0 ? (
+                    <TrendingUp className="w-12 h-12 text-green-500" />
+                  ) : (
+                    <TrendingDown className="w-12 h-12 text-red-500" />
+                  )}
                 </div>
               </Card>
 
