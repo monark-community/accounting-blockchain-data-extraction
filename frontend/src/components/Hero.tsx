@@ -280,12 +280,10 @@ const Hero = () => {
               </span>
               Accounting
             </h1>
-
             <p className="text-xl text-blue-100 mb-8 leading-relaxed max-w-2xl">
               Connect all your wallets. Automatically classify transactions
               across any blockchain. Get audit-ready reports in minutes.
             </p>
-
             {/* Value Props */}
             <div className="flex flex-wrap gap-4 mb-8 justify-center lg:justify-start">
               <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
@@ -303,79 +301,91 @@ const Hero = () => {
                 <span className="text-blue-100 font-medium">Tax Ready</span>
               </div>
             </div>
-          </div>
 
-          {/* Connexion Button */}
-          <div className="space-y-4">
-            <Button
-              size="lg"
-              onClick={handleConnectWallet}
-              disabled={isConnecting}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
-            >
-              {isConnecting ? "Connecting..." : "Connect Wallet"}
-              <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
+            {/* Connexion Button */}
 
-            {!isMetaMaskInstalled && (
-              <Alert className="max-w-md mx-auto">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  MetaMask is required to connect your wallet.
-                  <a
-                    href="https://metamask.io/download/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline ml-1"
-                  >
-                    Install MetaMask
-                  </a>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <form
-              onSubmit={handleSubmit}
-              className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start"
-            >
-              <div className="relative flex-1 min-w-[260px]">
-                <input
-                  type="text"
-                  placeholder="Enter an Ethereum address (0x...)"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  onFocus={() => setOpenSuggest(true)}
-                  onBlur={() => setTimeout(() => setOpenSuggest(false), 120)} // allow click
-                  className="w-full px-4 py-3 rounded-xl border border-white/20 bg-white/10 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-
-                {openSuggest && (
-                  <ul className="absolute left-0 right-0 mt-2 rounded-xl border border-white/20 bg-white/95 text-gray-900 shadow-lg z-50 overflow-hidden">
-                    {SUGGESTIONS.map((s) => (
-                      <li key={s.address}>
-                        <button
-                          type="button"
-                          onMouseDown={() => handlePick(s.address)}
-                          className="w-full text-left px-4 py-2 hover:bg-black/5"
-                        >
-                          {short(s.address)}{" "}
-                          <span className="text-gray-500">({s.label})</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
+            {/* Connexion Button — Option 2: primary + secondary */}
+            <div className="max-w-xl w-full space-y-4">
+              {/* Primary action */}
               <Button
                 size="lg"
-                type="submit"
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-3 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+                onClick={handleConnectWallet}
+                disabled={isConnecting}
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
               >
-                View Wallet
+                {isConnecting ? "Connecting..." : "Connect Wallet"}
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
-            </form>
+
+              {/* MetaMask hint (unchanged) */}
+              {!isMetaMaskInstalled && (
+                <Alert className="max-w-md">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    MetaMask is required to connect your wallet.
+                    <a
+                      href="https://metamask.io/download/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:underline ml-1"
+                    >
+                      Install MetaMask
+                    </a>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Divider with "or" */}
+              <div className="flex items-center gap-3 text-blue-200/80">
+                <span className="h-px flex-1 bg-white/20" />
+                <span className="text-xs uppercase tracking-wider">or</span>
+                <span className="h-px flex-1 bg-white/20" />
+              </div>
+
+              {/* Secondary flow: manual address */}
+              <form
+                onSubmit={handleSubmit}
+                className="flex flex-col sm:flex-row gap-3"
+              >
+                <div className="relative flex-1 min-w-[260px]">
+                  <input
+                    type="text"
+                    placeholder="Enter an Ethereum address (0x...)"
+                    value={address ?? ""}
+                    onChange={(e) => setAddress(e.target.value)}
+                    onFocus={() => setOpenSuggest(true)}
+                    onBlur={() => setTimeout(() => setOpenSuggest(false), 120)}
+                    className="w-full px-4 py-3 rounded-xl border border-white/20 bg-white/10 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  {openSuggest && (
+                    <ul className="absolute left-0 right-0 mt-2 rounded-xl border border-white/20 bg-white/95 text-gray-900 shadow-lg z-50 overflow-hidden">
+                      {SUGGESTIONS.map((s) => (
+                        <li key={s.address}>
+                          <button
+                            type="button"
+                            onMouseDown={() => handlePick(s.address)}
+                            className="w-full text-left px-4 py-2 hover:bg-black/5"
+                          >
+                            {short(s.address)}{" "}
+                            <span className="text-gray-500">({s.label})</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <Button
+                  size="lg"
+                  type="submit"
+                  className="sm:w-auto w-full bg-white/10 hover:bg-white/15 text-white px-6 py-3 text-lg font-semibold rounded-xl border border-white/20 shadow-sm transition-all"
+                >
+                  View Wallet
+                  <ArrowRight className="ml-2 w-5 h-5" />
+                </Button>
+              </form>
+            </div>
           </div>
 
           {/* Right Column - Accounting Visuals */}
