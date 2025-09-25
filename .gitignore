@@ -1,10 +1,16 @@
 # Node & TypeScript
 **/node_modules/
+node_modules/
+*/node_modules/
 *.tsbuildinfo
 
 # Build outputs
 **/dist/
 **/build/
+dist/
+build/
+*/dist/
+*/build/
 
 # Vite / caches
 **/.vite/
@@ -25,14 +31,25 @@ pnpm-debug.log*
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 
 # OS junk
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # Environment (keep example files)
 .env
 .env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 !.env.example
 
 # Docker
@@ -42,3 +59,7 @@ pg_data/
 # Linters
 .eslintcache
 .stylelintcache
+
+# Temporary files
+*.tmp
+*.temp

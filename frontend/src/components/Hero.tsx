@@ -4,9 +4,11 @@ import {
   DollarSign,
   PieChart,
   BarChart3,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   ChartContainer,
   ChartTooltip,
@@ -27,14 +29,104 @@ import {
 import { useState, useEffect } from "react";
 import { useWallet } from "@/contexts/WalletContext";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "@/hooks/use-toast";
 
 const Hero = () => {
-  const { connectWallet } = useWallet();
+  const {
+    connectWallet,
+    isMetaMaskInstalled,
+    isConnected,
+    connectError,
+    isPending,
+  } = useWallet();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [hasTimedOut, setHasTimedOut] = useState(false);
 
-  const handleConnectWallet = () => {
-    connectWallet();
-    navigate("/dashboard");
+  // Watch for connection changes
+  useEffect(() => {
+    if (isConnected && isConnecting && !hasTimedOut) {
+      toast({
+        title: "Wallet Connected",
+        description: "Successfully connected to MetaMask!",
+      });
+      navigate("/dashboard");
+      setIsConnecting(false);
+      setHasTimedOut(false);
+    } else if (isConnected && hasTimedOut) {
+      // Connection succeeded after timeout - ignore it
+      setIsConnecting(false);
+      setHasTimedOut(false);
+    }
+  }, [isConnected, isConnecting, hasTimedOut, navigate, toast]);
+
+  // Watch for connection errors
+  useEffect(() => {
+    if (connectError && isConnecting && !hasTimedOut) {
+      // Add a small delay to ensure this is a real user rejection, not a stale error
+      const timeout = setTimeout(() => {
+        toast({
+          title: "Connection Failed",
+          description:
+            connectError.message ||
+            "Failed to connect wallet. Please try again.",
+          variant: "destructive",
+        });
+        setIsConnecting(false);
+        setHasTimedOut(false);
+      }, 100); // Small delay to prevent stale error messages
+
+      return () => clearTimeout(timeout);
+    }
+  }, [connectError, isConnecting, hasTimedOut, toast]);
+
+  // Safety timeout to prevent button from getting stuck
+  useEffect(() => {
+    if (isConnecting && !hasTimedOut) {
+      const timeout = setTimeout(() => {
+        setHasTimedOut(true);
+        setIsConnecting(false);
+        toast({
+          title: "Connection Timeout",
+          description: "Connection took too long. Please try again.",
+          variant: "destructive",
+        });
+      }, 30000); // 30 second timeout
+
+      return () => clearTimeout(timeout);
+    }
+  }, [isConnecting, hasTimedOut, toast]);
+
+  const handleConnectWallet = async () => {
+    if (!isMetaMaskInstalled) {
+      toast({
+        title: "MetaMask Not Found",
+        description: "Please install MetaMask to connect your wallet.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Reset timeout state for new connection attempt
+    setHasTimedOut(false);
+    setIsConnecting(true);
+    try {
+      await connectWallet();
+      // Don't show success toast here - let the useEffect handle it
+      // when isConnected becomes true
+    } catch (error: any) {
+      console.error("Connection error:", error);
+      toast({
+        title: "Connection Failed",
+        description:
+          error.message || "Failed to connect wallet. Please try again.",
+        variant: "destructive",
+      });
+      setIsConnecting(false); // Reset connecting state on error
+      setHasTimedOut(false);
+    }
+    // Note: Don't reset isConnecting here - let useEffect handle it on success
   };
 
   // Sample data for area chart showing portfolio growth
@@ -213,48 +305,78 @@ const Hero = () => {
             </div>
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start"
-          >
-            <div className="relative flex-1 min-w-[260px]">
-              <input
-                type="text"
-                placeholder="Enter an Ethereum address (0x...)"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                onFocus={() => setOpenSuggest(true)}
-                onBlur={() => setTimeout(() => setOpenSuggest(false), 120)} // allow click
-                className="w-full px-4 py-3 rounded-xl border border-white/20 bg-white/10 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-
-              {openSuggest && (
-                <ul className="absolute left-0 right-0 mt-2 rounded-xl border border-white/20 bg-white/95 text-gray-900 shadow-lg z-50 overflow-hidden">
-                  {SUGGESTIONS.map((s) => (
-                    <li key={s.address}>
-                      <button
-                        type="button"
-                        onMouseDown={() => handlePick(s.address)}
-                        className="w-full text-left px-4 py-2 hover:bg-black/5"
-                      >
-                        {short(s.address)}{" "}
-                        <span className="text-gray-500">({s.label})</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
+          {/* CTA Button */}
+          <div className="space-y-4">
             <Button
               size="lg"
-              type="submit"
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-3 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              onClick={handleConnectWallet}
+              disabled={isConnecting}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
             >
-              View Wallet
+              {isConnecting ? "Connecting..." : "Connect Wallet"}
               <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
-          </form>
+
+            {!isMetaMaskInstalled && (
+              <Alert className="max-w-md mx-auto">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  MetaMask is required to connect your wallet.
+                  <a
+                    href="https://metamask.io/download/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-500 hover:underline ml-1"
+                  >
+                    Install MetaMask
+                  </a>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <form
+              onSubmit={handleSubmit}
+              className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start"
+            >
+              <div className="relative flex-1 min-w-[260px]">
+                <input
+                  type="text"
+                  placeholder="Enter an Ethereum address (0x...)"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  onFocus={() => setOpenSuggest(true)}
+                  onBlur={() => setTimeout(() => setOpenSuggest(false), 120)} // allow click
+                  className="w-full px-4 py-3 rounded-xl border border-white/20 bg-white/10 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+
+                {openSuggest && (
+                  <ul className="absolute left-0 right-0 mt-2 rounded-xl border border-white/20 bg-white/95 text-gray-900 shadow-lg z-50 overflow-hidden">
+                    {SUGGESTIONS.map((s) => (
+                      <li key={s.address}>
+                        <button
+                          type="button"
+                          onMouseDown={() => handlePick(s.address)}
+                          className="w-full text-left px-4 py-2 hover:bg-black/5"
+                        >
+                          {short(s.address)}{" "}
+                          <span className="text-gray-500">({s.label})</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <Button
+                size="lg"
+                type="submit"
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-3 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
+              >
+                View Wallet
+                <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+            </form>
+          </div>
 
           {/* Right Column - Accounting Visuals */}
           <div className="space-y-6">
