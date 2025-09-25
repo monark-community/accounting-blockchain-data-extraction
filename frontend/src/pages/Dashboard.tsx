@@ -286,6 +286,16 @@ const Dashboard = () => {
   const [loadingOv, setLoadingOv] = useState(false);
   const [errorOv, setErrorOv] = useState<string | null>(null);
 
+  const [showChange, setShowChange] = useState(false);
+
+  const topHoldingsLive = useMemo(() => {
+    if (!ov) return [];
+    return (ov.holdings || [])
+      .filter((h) => (h.valueUsd ?? 0) > 0)
+      .sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0))
+      .slice(0, 5);
+  }, [ov]);
+
   const allocationData = useMemo(() => {
     if (!ov) return [];
     // keep only priced tokens (value > 0)
@@ -489,9 +499,18 @@ const Dashboard = () => {
 
             {/* Asset Breakdown */}
             <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Top Holdings
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Top Holdings
+                </h3>
+                <button
+                  onClick={() => setShowChange((v) => !v)}
+                  className="text-sm px-3 py-1 rounded-md border border-slate-200 hover:bg-slate-100"
+                >
+                  {showChange ? "Show Value" : "Show 24h Change"}
+                </button>
+              </div>
+
               <div className="space-y-4">
                 {loadingOv && (
                   <div className="text-sm text-slate-500">
@@ -503,37 +522,75 @@ const Dashboard = () => {
                 )}
 
                 {ov &&
-                  ov.allocation.slice(0, 5).map((h) => (
-                    <div
-                      key={h.symbol}
-                      className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                          {h.symbol.slice(0, 3).toUpperCase()}
+                  topHoldingsLive.map((h) => {
+                    const delta = h.delta24hUsd ?? null;
+                    const pct = h.delta24hPct ?? null;
+                    const color =
+                      delta == null
+                        ? "text-slate-600"
+                        : delta >= 0
+                        ? "text-green-600"
+                        : "text-red-600";
+                    return (
+                      <div
+                        key={(h.contract ?? h.symbol) || Math.random()}
+                        className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
+                            {(h.symbol || "TOK").slice(0, 3).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-800">
+                              {h.symbol || "(unknown)"}
+                            </p>
+                            <p className="text-sm text-slate-500">
+                              {/* weight from allocation isn’t 1:1; show share via value proportion */}
+                              {ov.kpis?.totalValueUsd
+                                ? `${(
+                                    (h.valueUsd / ov.kpis.totalValueUsd) *
+                                    100
+                                  ).toFixed(1)}% of portfolio`
+                                : "—"}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-slate-800">
-                            {h.symbol}
-                          </p>
-                          <p className="text-sm text-slate-500">
-                            {h.weightPct.toFixed(1)}% of portfolio
-                          </p>
-                        </div>
-                      </div>
-                      <CurrencyDisplay
-                        amount={h.valueUsd}
-                        currency="USD"
-                        showSign={false}
-                      />
-                    </div>
-                  ))}
 
-                {!loadingOv && !errorOv && ov && ov.allocation.length === 0 && (
-                  <div className="text-sm text-slate-500">
-                    No holdings with USD value.
-                  </div>
-                )}
+                        {/* Right-side value */}
+                        {!showChange ? (
+                          <CurrencyDisplay
+                            amount={h.valueUsd ?? 0}
+                            currency="USD"
+                            showSign={false}
+                          />
+                        ) : (
+                          <div className="text-right">
+                            <div className={`font-semibold ${color}`}>
+                              <CurrencyDisplay
+                                amount={delta ?? 0}
+                                currency="USD"
+                                showSign
+                              />
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {pct == null
+                                ? "—"
+                                : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {!loadingOv &&
+                  !errorOv &&
+                  ov &&
+                  topHoldingsLive.length === 0 && (
+                    <div className="text-sm text-slate-500">
+                      No holdings with USD value.
+                    </div>
+                  )}
               </div>
             </Card>
           </TabsContent>
