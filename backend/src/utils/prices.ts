@@ -6,6 +6,7 @@ type LlamaResp = {
 };
 
 const LLAMA = "https://coins.llama.fi/prices/current";
+const LLAMA_HIST = "https://coins.llama.fi/prices/historical";
 
 // ETH (native)
 export async function getEthUsd(): Promise<number> {
@@ -42,13 +43,13 @@ export async function getErc20Usd(
   return map;
 }
 
-export async function getErc20UsdViaDexScreener(
+// Returns Map<addr, { price:number, h24:number|null }> using highest-liquidity pair (>= minLiquidityUsd)
+export async function getErc20NowAndH24ViaDexScreener(
   contracts: string[],
   minLiquidityUsd = 50_000
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
+): Promise<Map<string, { price: number; h24: number | null }>> {
+  const out = new Map<string, { price: number; h24: number | null }>();
   const uniq = Array.from(new Set(contracts.map((a) => a.toLowerCase())));
-  // Batch up to 30 addresses per call (per DexScreener docs)
   for (let i = 0; i < uniq.length; i += 30) {
     const batch = uniq.slice(i, i + 30);
     const url = `https://api.dexscreener.com/tokens/v1/ethereum/${batch.join(
@@ -57,27 +58,24 @@ export async function getErc20UsdViaDexScreener(
     const r = await fetch(url);
     if (!r.ok) continue;
     const j = (await r.json()) as any;
-    // The response has a "pairs" array with priceUsd and liquidity.usd
     const pairs: any[] = j?.pairs ?? j?.[0]?.pairs ?? [];
     for (const p of pairs) {
-      const base = p?.baseToken?.address?.toLowerCase?.();
+      const addr = p?.baseToken?.address?.toLowerCase?.();
       const price = Number(p?.priceUsd ?? 0);
       const liq = Number(p?.liquidity?.usd ?? 0);
-      if (!base || !isFinite(price) || !isFinite(liq)) continue;
-      if (liq < minLiquidityUsd || price <= 0) continue;
-      // Keep the price from the highest-liquidity pair per token
-      const prev = out.get(base);
-      const prevLiq = (out as any)._liq?.[base] ?? 0;
-      if (!prev || liq > prevLiq) {
-        out.set(base, price);
-        // store liq alongside to compare later (not exposed)
-        (out as any)._liq = (out as any)._liq || {};
-        (out as any)._liq[base] = liq;
-      }
+      const h24 =
+        p?.priceChange?.h24 != null ? Number(p.priceChange.h24) : null; // % change
+      if (!addr || !(price > 0) || !(liq >= minLiquidityUsd)) continue;
+      const prev = out.get(addr) as any;
+      const prevLiq = prev?.__liq ?? 0;
+      if (!prev || liq > prevLiq)
+        out.set(addr, { price, h24, __liq: liq } as any);
     }
   }
-  // cleanup private field
-  if ((out as any)._liq) delete (out as any)._liq;
+  // strip internal field
+  for (const [k, v] of out) {
+    delete (v as any).__liq;
+  }
   return out;
 }
 
@@ -110,4 +108,33 @@ export async function resolveContractsOnEthereum(
     if (addrs.size >= 10) break; // cap
   }
   return Array.from(addrs);
+}
+
+// ETH @ timestamp (unix seconds)
+export async function getEthUsdAt(ts: number): Promise<number> {
+  const r = await fetch(`${LLAMA_HIST}/${ts}/coingecko:ethereum`);
+  const j = await r.json();
+  return Number(j?.coins?.["coingecko:ethereum"]?.price ?? 0);
+}
+
+// ERC-20s (ethereum) @ timestamp
+export async function getErc20UsdAt(
+  addrs: string[],
+  ts: number
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const uniq = Array.from(new Set(addrs.map((a) => a.toLowerCase())));
+  for (let i = 0; i < uniq.length; i += 100) {
+    const batch = uniq
+      .slice(i, i + 100)
+      .map((a) => `ethereum:${a}`)
+      .join(",");
+    const r = await fetch(`${LLAMA_HIST}/${ts}/${encodeURIComponent(batch)}`);
+    const j = await r.json();
+    for (const [k, v] of Object.entries<any>(j?.coins ?? {})) {
+      const addr = k.split(":")[1]?.toLowerCase();
+      if (addr && v?.price != null) out.set(addr, Number(v.price));
+    }
+  }
+  return out;
 }
