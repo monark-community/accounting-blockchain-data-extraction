@@ -6,6 +6,8 @@ services:
       context: ./backend
       target: dev
     container_name: backend-dev
+    env_file:
+      - ./backend/.env
     ports:
       - "8080:8080"
     environment:
@@ -15,12 +17,15 @@ services:
       SESSION_SECRET: "prod-change-me-rotate-regularly"
       SESSION_NAME: "ll_session"
       SESSION_TTL_SECONDS: "604800"
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend:/app
       - /app/node_modules
+    command: npm run dev
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
       interval: 5s
@@ -55,6 +60,8 @@ services:
       context: ./backend
       target: prod
     container_name: backend
+    env_file:
+      - ./backend/.env
     environment:
       NODE_ENV: production
       PORT: 8080

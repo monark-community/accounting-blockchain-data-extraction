@@ -1,4 +1,11 @@
-import { ArrowRight, TrendingUp, DollarSign, PieChart, BarChart3, AlertCircle } from "lucide-react";
+import {
+  ArrowRight,
+  TrendingUp,
+  DollarSign,
+  PieChart,
+  BarChart3,
+  AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -7,14 +14,31 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Pie, AreaChart, Area } from "recharts";
+import {
+  PieChart as RechartsPieChart,
+  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Pie,
+  AreaChart,
+  Area,
+} from "recharts";
 import { useState, useEffect } from "react";
 import { useWallet } from "@/contexts/WalletContext";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
 const Hero = () => {
-  const { connectWallet, isMetaMaskInstalled, isConnected, connectError, isPending } = useWallet();
+  const {
+    connectWallet,
+    isMetaMaskInstalled,
+    isConnected,
+    connectError,
+    isPending,
+  } = useWallet();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
@@ -44,7 +68,9 @@ const Hero = () => {
       const timeout = setTimeout(() => {
         toast({
           title: "Connection Failed",
-          description: connectError.message || "Failed to connect wallet. Please try again.",
+          description:
+            connectError.message ||
+            "Failed to connect wallet. Please try again.",
           variant: "destructive",
         });
         setIsConnecting(false);
@@ -90,10 +116,11 @@ const Hero = () => {
       // Don't show success toast here - let the useEffect handle it
       // when isConnected becomes true
     } catch (error: any) {
-      console.error('Connection error:', error);
+      console.error("Connection error:", error);
       toast({
         title: "Connection Failed",
-        description: error.message || "Failed to connect wallet. Please try again.",
+        description:
+          error.message || "Failed to connect wallet. Please try again.",
         variant: "destructive",
       });
       setIsConnecting(false); // Reset connecting state on error
@@ -104,52 +131,81 @@ const Hero = () => {
 
   // Sample data for area chart showing portfolio growth
   const areaData = [
-    { month: 'Jan', value: 85000 },
-    { month: 'Feb', value: 92000 },
-    { month: 'Mar', value: 105000 },
-    { month: 'Apr', value: 118000 },
-    { month: 'May', value: 127450 },
+    { month: "Jan", value: 85000 },
+    { month: "Feb", value: 92000 },
+    { month: "Mar", value: 105000 },
+    { month: "Apr", value: 118000 },
+    { month: "May", value: 127450 },
   ];
 
   const barData = [
-    { month: 'Jan', income: 12500, expenses: 3200 },
-    { month: 'Feb', income: 18700, expenses: 4100 },
-    { month: 'Mar', income: 22300, expenses: 3800 },
-    { month: 'Apr', income: 16900, expenses: 2950 },
+    { month: "Jan", income: 12500, expenses: 3200 },
+    { month: "Feb", income: 18700, expenses: 4100 },
+    { month: "Mar", income: 22300, expenses: 3800 },
+    { month: "Apr", income: 16900, expenses: 2950 },
   ];
 
   // Transaction pool for animation
   const transactionPool = [
-    { type: 'Swap', amount: '$2,450', token: 'ETH → USDC', status: 'Income' },
-    { type: 'Stake', amount: '$1,200', token: 'MATIC', status: 'Income' },
-    { type: 'DeFi', amount: '$890', token: 'Compound', status: 'Income' },
-    { type: 'Gas', amount: '$45', token: 'ETH', status: 'Expense' },
-    { type: 'Swap', amount: '$3,200', token: 'BTC → USDT', status: 'Income' },
-    { type: 'Liquidity', amount: '$750', token: 'Uniswap', status: 'Income' },
-    { type: 'Bridge', amount: '$120', token: 'Polygon', status: 'Expense' },
-    { type: 'Yield', amount: '$340', token: 'Aave', status: 'Income' },
-    { type: 'NFT', amount: '$2,100', token: 'OpenSea', status: 'Income' },
-    { type: 'Gas', amount: '$23', token: 'BSC', status: 'Expense' },
+    { type: "Swap", amount: "$2,450", token: "ETH → USDC", status: "Income" },
+    { type: "Stake", amount: "$1,200", token: "MATIC", status: "Income" },
+    { type: "DeFi", amount: "$890", token: "Compound", status: "Income" },
+    { type: "Gas", amount: "$45", token: "ETH", status: "Expense" },
+    { type: "Swap", amount: "$3,200", token: "BTC → USDT", status: "Income" },
+    { type: "Liquidity", amount: "$750", token: "Uniswap", status: "Income" },
+    { type: "Bridge", amount: "$120", token: "Polygon", status: "Expense" },
+    { type: "Yield", amount: "$340", token: "Aave", status: "Income" },
+    { type: "NFT", amount: "$2,100", token: "OpenSea", status: "Income" },
+    { type: "Gas", amount: "$23", token: "BSC", status: "Expense" },
   ];
 
-  const [visibleTransactions, setVisibleTransactions] = useState(transactionPool.slice(0, 4));
+  const [visibleTransactions, setVisibleTransactions] = useState(
+    transactionPool.slice(0, 4)
+  );
   const [isAnimating, setIsAnimating] = useState(false);
+  const [address, setAddress] = useState<string | null>(null);
+  const [openSuggest, setOpenSuggest] = useState(false);
+
+  const SUGGESTIONS = [
+    {
+      label: "vitalik.eth",
+      address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    },
+    {
+      label: "binance.eth",
+      address: "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+    },
+  ];
+
+  const short = (a: string) =>
+    a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!address) return;
+    navigate(`/dashboard?address=${encodeURIComponent(address)}`);
+  };
+
+  const handlePick = (addr: string) => {
+    setAddress(addr);
+    setOpenSuggest(false);
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
       // Get a random transaction from the pool
-      const randomTransaction = transactionPool[Math.floor(Math.random() * transactionPool.length)];
-      
+      const randomTransaction =
+        transactionPool[Math.floor(Math.random() * transactionPool.length)];
+
       setIsAnimating(true);
-      
+
       setTimeout(() => {
-        setVisibleTransactions(prev => {
+        setVisibleTransactions((prev) => {
           const newTransactions = [randomTransaction, ...prev.slice(0, 3)];
           return newTransactions;
         });
         setIsAnimating(false);
       }, 300);
-      
     }, 3000);
 
     return () => clearInterval(interval);
@@ -171,8 +227,9 @@ const Hero = () => {
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden pt-20">
       {/* Custom CSS for animations */}
-      <style dangerouslySetInnerHTML={{
-        __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
           @keyframes fadeInDown {
             0% {
               opacity: 0;
@@ -202,34 +259,38 @@ const Hero = () => {
           .animate-fade-out-down {
             animation: fadeOutDown 0.3s ease-out forwards;
           }
-        `
-      }} />
-      
+        `,
+        }}
+      />
+
       {/* Background Effects */}
       <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:50px_50px]" />
       <div className="absolute top-0 left-1/4 w-72 h-72 bg-blue-500/20 rounded-full blur-3xl animate-pulse" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse delay-1000" />
-      
+
       <div className="relative z-10 container mx-auto px-4 py-4">
         <div className="grid lg:grid-cols-2 gap-12 items-start">
           {/* Left Column - Main Content - Moved down further */}
           <div className="text-center lg:text-left mt-[80px]">
             <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
               Multi-Chain
-              <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"> Crypto </span>
+              <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                {" "}
+                Crypto{" "}
+              </span>
               Accounting
             </h1>
-            
             <p className="text-xl text-blue-100 mb-8 leading-relaxed max-w-2xl">
-              Connect all your wallets. Automatically classify transactions across any blockchain. 
-              Get audit-ready reports in minutes.
+              Connect all your wallets. Automatically classify transactions
+              across any blockchain. Get audit-ready reports in minutes.
             </p>
-
             {/* Value Props */}
             <div className="flex flex-wrap gap-4 mb-8 justify-center lg:justify-start">
               <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
                 <BarChart3 className="w-5 h-5 text-blue-400" />
-                <span className="text-blue-100 font-medium">Auto Classification</span>
+                <span className="text-blue-100 font-medium">
+                  Auto Classification
+                </span>
               </div>
               <div className="flex items-center space-x-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/20">
                 <PieChart className="w-5 h-5 text-purple-400" />
@@ -241,34 +302,89 @@ const Hero = () => {
               </div>
             </div>
 
-            {/* CTA Button */}
-            <div className="space-y-4">
-              <Button 
-                size="lg" 
+            {/* Connexion Button */}
+
+            {/* Connexion Button — Option 2: primary + secondary */}
+            <div className="max-w-xl w-full space-y-4">
+              {/* Primary action */}
+              <Button
+                size="lg"
                 onClick={handleConnectWallet}
                 disabled={isConnecting}
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-4 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
               >
                 {isConnecting ? "Connecting..." : "Connect Wallet"}
                 <ArrowRight className="ml-2 w-5 h-5" />
               </Button>
-              
+
+              {/* MetaMask hint (unchanged) */}
               {!isMetaMaskInstalled && (
-                <Alert className="max-w-md mx-auto">
+                <Alert className="max-w-md">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    MetaMask is required to connect your wallet. 
-                    <a 
-                      href="https://metamask.io/download/" 
-                      target="_blank" 
+                    MetaMask is required to connect your wallet.
+                    <a
+                      href="https://metamask.io/download/"
+                      target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline ml-1"
+                      className="text-blue-400 hover:underline ml-1"
                     >
                       Install MetaMask
                     </a>
                   </AlertDescription>
                 </Alert>
               )}
+
+              {/* Divider with "or" */}
+              <div className="flex items-center gap-3 text-blue-200/80">
+                <span className="h-px flex-1 bg-white/20" />
+                <span className="text-xs uppercase tracking-wider">or</span>
+                <span className="h-px flex-1 bg-white/20" />
+              </div>
+
+              {/* Secondary flow: manual address */}
+              <form
+                onSubmit={handleSubmit}
+                className="flex flex-col sm:flex-row gap-3"
+              >
+                <div className="relative flex-1 min-w-[260px]">
+                  <input
+                    type="text"
+                    placeholder="Enter an Ethereum address (0x...)"
+                    value={address ?? ""}
+                    onChange={(e) => setAddress(e.target.value)}
+                    onFocus={() => setOpenSuggest(true)}
+                    onBlur={() => setTimeout(() => setOpenSuggest(false), 120)}
+                    className="w-full px-4 py-3 rounded-xl border border-white/20 bg-white/10 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  {openSuggest && (
+                    <ul className="absolute left-0 right-0 mt-2 rounded-xl border border-white/20 bg-white/95 text-gray-900 shadow-lg z-50 overflow-hidden">
+                      {SUGGESTIONS.map((s) => (
+                        <li key={s.address}>
+                          <button
+                            type="button"
+                            onMouseDown={() => handlePick(s.address)}
+                            className="w-full text-left px-4 py-2 hover:bg-black/5"
+                          >
+                            {short(s.address)}{" "}
+                            <span className="text-gray-500">({s.label})</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <Button
+                  size="lg"
+                  type="submit"
+                  className="sm:w-auto w-full bg-white/10 hover:bg-white/15 text-white px-6 py-3 text-lg font-semibold rounded-xl border border-white/20 shadow-sm transition-all"
+                >
+                  View Wallet
+                  <ArrowRight className="ml-2 w-5 h-5" />
+                </Button>
+              </form>
             </div>
           </div>
 
@@ -290,35 +406,54 @@ const Hero = () => {
                   </div>
                   <div>
                     <p className="text-blue-200 text-sm">This Month</p>
-                    <p className="text-2xl font-bold text-green-400">+$18,200</p>
+                    <p className="text-2xl font-bold text-green-400">
+                      +$18,200
+                    </p>
                   </div>
                 </div>
-                
+
                 {/* Area Chart showing portfolio growth */}
                 <div className="h-40">
-                  <ChartContainer config={chartConfig} className="h-full w-full">
+                  <ChartContainer
+                    config={chartConfig}
+                    className="h-full w-full"
+                  >
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={areaData}>
                         <defs>
-                          <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          <linearGradient
+                            id="colorValue"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#10b981"
+                              stopOpacity={0.3}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#10b981"
+                              stopOpacity={0}
+                            />
                           </linearGradient>
                         </defs>
-                        <XAxis 
-                          dataKey="month" 
-                          axisLine={false} 
-                          tickLine={false} 
-                          tick={{ fill: '#94a3b8', fontSize: 12 }} 
+                        <XAxis
+                          dataKey="month"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: "#94a3b8", fontSize: 12 }}
                         />
                         <YAxis hide />
-                        <Area 
-                          type="monotone" 
-                          dataKey="value" 
-                          stroke="#10b981" 
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#10b981"
                           strokeWidth={2}
-                          fillOpacity={1} 
-                          fill="url(#colorValue)" 
+                          fillOpacity={1}
+                          fill="url(#colorValue)"
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -335,16 +470,16 @@ const Hero = () => {
               <CardContent>
                 <div className="space-y-3 overflow-hidden">
                   {visibleTransactions.map((tx, index) => (
-                    <div 
+                    <div
                       key={`${tx.type}-${tx.amount}-${index}-${Date.now()}`}
                       className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${
-                        isAnimating 
-                          ? index === 0 
-                            ? 'opacity-0 -translate-y-2 animate-fade-in-down'
+                        isAnimating
+                          ? index === 0
+                            ? "opacity-0 -translate-y-2 animate-fade-in-down"
                             : index === 3
-                            ? 'opacity-100 translate-y-2 animate-fade-out-down'
-                            : 'translate-y-6 transition-transform duration-500 ease-out'
-                          : 'opacity-100 translate-y-0'
+                            ? "opacity-100 translate-y-2 animate-fade-out-down"
+                            : "translate-y-6 transition-transform duration-500 ease-out"
+                          : "opacity-100 translate-y-0"
                       }`}
                     >
                       <div>
@@ -352,8 +487,15 @@ const Hero = () => {
                         <p className="text-blue-200 text-sm">{tx.token}</p>
                       </div>
                       <div className="text-right">
-                        <p className={`font-bold ${tx.status === 'Income' ? 'text-green-400' : 'text-orange-400'}`}>
-                          {tx.status === 'Income' ? '+' : '-'}{tx.amount}
+                        <p
+                          className={`font-bold ${
+                            tx.status === "Income"
+                              ? "text-green-400"
+                              : "text-orange-400"
+                          }`}
+                        >
+                          {tx.status === "Income" ? "+" : "-"}
+                          {tx.amount}
                         </p>
                         <p className="text-blue-200 text-sm">{tx.status}</p>
                       </div>
@@ -370,13 +512,29 @@ const Hero = () => {
               </CardHeader>
               <CardContent>
                 <div className="h-32">
-                  <ChartContainer config={chartConfig} className="h-full w-full">
+                  <ChartContainer
+                    config={chartConfig}
+                    className="h-full w-full"
+                  >
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={barData}>
-                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                        <XAxis
+                          dataKey="month"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fill: "#94a3b8", fontSize: 12 }}
+                        />
                         <YAxis hide />
-                        <Bar dataKey="income" fill="#3b82f6" radius={[2, 2, 0, 0]} />
-                        <Bar dataKey="expenses" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                        <Bar
+                          dataKey="income"
+                          fill="#3b82f6"
+                          radius={[2, 2, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="expenses"
+                          fill="#f59e0b"
+                          radius={[2, 2, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </ChartContainer>
