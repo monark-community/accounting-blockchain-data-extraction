@@ -251,7 +251,7 @@ const Hero = () => {
               type="submit"
               className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-3 text-lg font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300"
             >
-              Connect Wallet
+              View Wallet
               <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
           </form>
