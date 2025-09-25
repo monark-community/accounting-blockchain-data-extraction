@@ -79,6 +79,10 @@ const Hero = () => {
       label: "vitalik.eth",
       address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
     },
+    {
+      label: "binance.eth",
+      address: "0xF977814e90dA44bFA03b6295A0616a897441aceC",
+    },
   ];
 
   const short = (a: string) =>
