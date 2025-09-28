@@ -398,6 +398,10 @@ const Dashboard = () => {
                 </div>
               </Card>
 
+              {/* 
+              
+              TO DO : Metrics below require real data, so hiding for now, do after the MVP (demo) is done
+
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
@@ -428,12 +432,12 @@ const Dashboard = () => {
                   </div>
                   <DollarSign className="w-12 h-12 text-orange-500" />
                 </div>
-              </Card>
+              </Card> */}
             </div>
 
             {/* Charts */}
             <div className="grid lg:grid-cols-2 gap-6">
-              <Card className="p-6 bg-white shadow-sm">
+              {/* <Card className="p-6 bg-white shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   Portfolio Performance
                 </h3>
@@ -450,7 +454,7 @@ const Dashboard = () => {
                     />
                   </LineChart>
                 </ResponsiveContainer>
-              </Card>
+              </Card> */}
 
               <Card className="p-6 bg-white shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
