@@ -1,5 +1,4 @@
 // --- File: src/components/dashboard/AllTransactionsTab.tsx
-// Replaces the placeholder version. Fetches real data from backend and supports a single filter: transaction type.
 // Assumes backend route: GET /api/portfolio/txs/:address?kind=all&limit=20&cursor=...
 // Reads the wallet address from the URL (e.g., /dashboard?address=vitalik.eth)
 
@@ -110,6 +109,9 @@ const typeIcon = (t: TxType) => {
 export default function AllTransactionsTab() {
   const [params] = useSearchParams();
   const address = params.get("address") || "";
+  const PAGE_SIZE = 20; // keep in sync with ?limit
+  const [totalCount, setTotalCount] = useState<number | null>(null); // optional; backend may return null
+  const [viewPage, setViewPage] = useState(1); // 1-based page window for the visible slice
 
   // server data
   const [items, setItems] = useState<TxRow[]>([]);
@@ -144,7 +146,7 @@ export default function AllTransactionsTab() {
     try {
       const qs = new URLSearchParams();
       qs.set("kind", "all");
-      qs.set("limit", "20");
+      qs.set("limit", String(PAGE_SIZE));
       if (append && nextCursor) qs.set("cursor", nextCursor);
 
       const res = await fetch(
@@ -162,6 +164,9 @@ export default function AllTransactionsTab() {
       const pageItems = data?.items || [];
       setItems((prev) => (append ? [...prev, ...pageItems] : pageItems));
       setNextCursor(data?.page?.nextCursor || null);
+      if ((data as any)?.page?.total != null) {
+        setTotalCount((data as any).page.total);
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to load transactions");
     } finally {
@@ -173,6 +178,7 @@ export default function AllTransactionsTab() {
   useEffect(() => {
     setItems([]);
     setNextCursor(null);
+    setViewPage(1);
     if (address) loadPage(false);
   }, [address, refreshKey]);
 
@@ -182,6 +188,26 @@ export default function AllTransactionsTab() {
     if ((types as any)[0] === "all") return items;
     return items.filter((r) => (types as TxType[]).includes(r.type));
   }, [items, selectedTypes]);
+
+  const windowStartIdx = (viewPage - 1) * PAGE_SIZE; // 0-based index
+  const windowEndIdx = Math.min(windowStartIdx + PAGE_SIZE, filtered.length);
+  const windowRows = filtered.slice(windowStartIdx, windowEndIdx);
+
+  const labelStart = filtered.length ? windowStartIdx + 1 : 0; // 1-based for display
+  const labelEnd = windowEndIdx; // inclusive 1-based
+
+  const canPrev = viewPage > 1;
+  const canNext = windowEndIdx < filtered.length || !!nextCursor;
+
+  const goPrev = () => setViewPage((p) => Math.max(1, p - 1));
+
+  const goNext = async () => {
+    // If we’re at the end of loaded rows but backend has more, load then advance
+    if (windowEndIdx >= filtered.length && nextCursor) {
+      await loadPage(true);
+    }
+    setViewPage((p) => p + 1);
+  };
 
   const toggleType = (t: TxType | "all", checked: boolean) => {
     if (t === "all") {
@@ -235,6 +261,32 @@ export default function AllTransactionsTab() {
               All Transactions {address ? "" : "(load an address)"}
             </h3>
             <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
+                <span className="font-medium">
+                  Latest {labelStart}–{labelEnd}
+                </span>
+                {totalCount != null && (
+                  <span className="ml-1">of {totalCount}</span>
+                )}
+              </div>
+              <div className="hidden sm:flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goPrev}
+                  disabled={!canPrev}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goNext}
+                  disabled={!canNext}
+                >
+                  Next
+                </Button>
+              </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
@@ -347,7 +399,7 @@ export default function AllTransactionsTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((tx, idx) => (
+                {windowRows.map((tx, idx) => (
                   <TableRow key={`${tx.hash}-${idx}`}>
                     {visibleColumns.type && (
                       <TableCell>

@@ -6,19 +6,39 @@ type TxRow = {
   hash: string;
   network: "eth-mainnet";
   wallet: string;
+  blockNumber: number; // NEW
   direction: "in" | "out";
   type: "income" | "expense" | "swap" | "gas";
   asset: {
-    symbol: string | null;
+    symbol: string; // normalized to non-null string (e.g., "ETH")
     contract: string | null;
-    decimals: number | null;
+    decimals: number; // normalized to a number (18 default)
   };
-  qty: string; // raw decimal string from Alchemy
-  usdAtTs: number | null; // fill later
-  priceUsdAtTs: number | null; // fill later
-  counterparty: { address: string | null; label: string | null };
-  fee: { eth: string | null; usd: number | null } | null; // fill later
-  isApprox: boolean; // for pricing later
+  qty: string;
+  priceUsdAtTs: number | null;
+  usdAtTs: number | null;
+  counterparty: { address: string; label: string | null }; // normalized address string ("" if unknown)
+  fee: null | {
+    asset: "ETH";
+    qty: string;
+    priceUsdAtTs: number | null;
+    usdAtTs: number | null;
+  };
+  isApprox: boolean;
+};
+
+// What the frontend expects as the response wrapper:
+type TxFeed = {
+  network: "eth-mainnet";
+  wallet: { input: string; address: string; ens: string | null };
+  window: { from: string | null; to: string | null };
+  page: {
+    limit: number;
+    cursor: string | null;
+    nextCursor: string | null;
+    total: number | null;
+  };
+  items: TxRow[];
 };
 
 function normAddr(a?: string | null) {
@@ -131,13 +151,12 @@ async function addGasRows(
   items: TxRow[],
   walletLower: string
 ): Promise<TxRow[]> {
-  // only for outbound txs we returned
+  // for outbound hashes we returned
   const byHash = new Map<string, TxRow>();
   for (const r of items) if (r.direction === "out") byHash.set(r.hash, r);
 
   if (!byHash.size) return items;
 
-  // fetch receipts in parallel (light cap)
   const hashes = Array.from(byHash.keys());
   const batches = [];
   const cap = 5;
@@ -149,7 +168,7 @@ async function addGasRows(
           try {
             const rcpt = await alchemy.core.getTransactionReceipt(h);
             if (!rcpt) return null;
-            // prefer effectiveGasPrice; fall back to tx.gasPrice if needed
+
             let gasPrice = rcpt.effectiveGasPrice
               ? BigInt(rcpt.effectiveGasPrice)
               : undefined;
@@ -172,33 +191,36 @@ async function addGasRows(
   for (const batch of await Promise.all(batches)) {
     for (const entry of batch) {
       if (!entry) continue;
-      const baseRow = byHash.get(entry.h)!; // exists by construction
+      const baseRow = byHash.get(entry.h);
       if (!baseRow) continue;
+
       const qtyEth = weiToEthString(entry.wei);
-      // build synthetic gas row at the same timestamp
       gasRows.push({
         ts: baseRow.ts,
         hash: entry.h,
         network: baseRow.network,
         wallet: walletLower,
+        blockNumber: baseRow.blockNumber,
         direction: "out",
         type: "gas",
         asset: { symbol: "ETH", contract: null, decimals: 18 },
         qty: qtyEth,
-        usdAtTs: null,
         priceUsdAtTs: null,
+        usdAtTs: null,
         counterparty: baseRow.counterparty,
-        fee: null,
+        fee: null, // we surface gas as its own row; fee object can stay null
         isApprox: false,
       });
     }
   }
 
   const merged = [...items, ...gasRows];
-  // newest first
-  merged.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
-  // keep exactly 20 (gas rows count toward the page size)
-  return merged.slice(0, 20);
+  // newest first by blockNumber (then timestamp fallback)
+  merged.sort((a, b) => {
+    if (a.blockNumber !== b.blockNumber) return b.blockNumber - a.blockNumber;
+    return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0;
+  });
+  return merged;
 }
 
 export async function getLast20Transfers(
@@ -209,8 +231,8 @@ export async function getLast20Transfers(
   const acct = address.toLowerCase();
   const categories = kindToCategories(kind);
 
-  // Pull *both* directions with paging; over-fetch to ensure we can slice 20 after merging
-  const NEED = 80; // fetch enough to classify swaps then slice to 20
+  // Pull both directions, over-fetch to classify swaps, then trim
+  const NEED = 80;
   const [outRaw, inRaw] = await Promise.all([
     pullTransfers("out", acct, categories, NEED),
     pullTransfers("in", acct, categories, NEED),
@@ -219,30 +241,44 @@ export async function getLast20Transfers(
   const rows: TxRow[] = [];
   const pushRows = (items: any[], direction: "in" | "out") => {
     for (const t of items ?? []) {
-      const isEthExternal =
-        t.category === "external" || t.category === "internal";
-      const sym = isEthExternal ? "ETH" : t.asset ?? null;
-      const contract = isEthExternal ? null : normAddr(t.rawContract?.address);
+      const cat = t.category as string | undefined;
+      const isEth = cat === "external" || cat === "internal";
+
+      const blockNumber =
+        typeof t.blockNum === "string"
+          ? parseInt(t.blockNum, 16)
+          : t.metadata?.blockNumber
+          ? Number(t.metadata.blockNumber)
+          : 0;
+
+      const symbol = isEth ? "ETH" : t.asset ?? "TOKEN";
+      const decimals = isEth
+        ? 18
+        : typeof t.rawContract?.decimals === "number"
+        ? t.rawContract.decimals
+        : 18;
+      const contract = isEth ? null : normAddr(t.rawContract?.address);
+
       const qty = String(t.value ?? "0");
       const ts = new Date(
         t.metadata?.blockTimestamp ?? Date.now()
       ).toISOString();
       const hash = t.hash ?? t.uniqueId ?? "";
-      const counterparty =
-        direction === "in" ? normAddr(t.from) : normAddr(t.to);
+      const other = direction === "in" ? normAddr(t.from) : normAddr(t.to);
 
       rows.push({
         ts,
         hash,
         network: "eth-mainnet",
         wallet: acct,
+        blockNumber,
         direction,
-        type: direction === "in" ? "income" : "expense", // temp; swap-marking below
-        asset: { symbol: sym, contract, decimals: isEthExternal ? 18 : null },
+        type: direction === "in" ? "income" : "expense",
+        asset: { symbol, contract, decimals },
         qty,
-        usdAtTs: null,
         priceUsdAtTs: null,
-        counterparty: { address: counterparty, label: null },
+        usdAtTs: null,
+        counterparty: { address: other ?? "", label: null },
         fee: null,
         isApprox: false,
       });
@@ -252,7 +288,7 @@ export async function getLast20Transfers(
   pushRows(outRaw, "out");
   pushRows(inRaw, "in");
 
-  // Mark swaps: any hash with both in & out → set both legs to "swap"
+  // Swap marking: any hash with both in & out
   const byHash = new Map<string, { hasIn: boolean; hasOut: boolean }>();
   for (const r of rows) {
     const e = byHash.get(r.hash) ?? { hasIn: false, hasOut: false };
@@ -265,19 +301,41 @@ export async function getLast20Transfers(
     if (e && e.hasIn && e.hasOut) r.type = "swap";
   }
 
-  // Sort newest-first, then slice *exactly* 20 (after optional type filter)
-  rows.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
-  let items = rows;
+  // Add gas rows (no slicing yet)
+  let items = await addGasRows(rows, acct);
+
+  // Final sort (blockNumber desc, then timestamp desc)
+  items.sort((a, b) => {
+    if (a.blockNumber !== b.blockNumber) return b.blockNumber - a.blockNumber;
+    return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0;
+  });
+
+  // Optional filter by type (income/expense/swap/gas)
   if (type) items = items.filter((r) => r.type === type);
-  items = items.slice(0, 20);
 
-  items = await addGasRows(items, acct);
+  // Trim to 20 for the page
+  const pageItems = items.slice(0, 20);
 
+  // Price enrichment
   try {
-    await enrichUsdAtTs(items);
+    await enrichUsdAtTs(pageItems);
   } catch (e) {
     console.error("enrichUsdAtTs failed:", e);
   }
 
-  return { items, nextCursor: null, hasMore: items.length === 20 };
+  // Build the wrapper the frontend expects
+  const feed: TxFeed = {
+    network: "eth-mainnet",
+    wallet: { input: address, address: acct, ens: null },
+    window: { from: null, to: null },
+    page: {
+      limit: 20,
+      cursor: null, // Hook up when you implement real cursors
+      nextCursor: null, // Hook up when you implement real cursors
+      total: null, // Optional: keep null until you add counting
+    },
+    items: pageItems,
+  };
+
+  return feed;
 }
