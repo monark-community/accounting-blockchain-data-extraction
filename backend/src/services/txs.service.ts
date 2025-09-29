@@ -118,6 +118,89 @@ async function enrichUsdAtTs(rows: TxRow[]) {
   return rows;
 }
 
+// BigInt → ETH string (no precision loss)
+function weiToEthString(wei: bigint) {
+  const base = 10n ** 18n;
+  const i = wei / base;
+  const f = (wei % base).toString().padStart(18, "0").replace(/0+$/, "");
+  return f.length ? `${i.toString()}.${f}` : i.toString();
+}
+
+// Fetch receipts for outbound hashes and create synthetic gas rows
+async function addGasRows(
+  items: TxRow[],
+  walletLower: string
+): Promise<TxRow[]> {
+  // only for outbound txs we returned
+  const byHash = new Map<string, TxRow>();
+  for (const r of items) if (r.direction === "out") byHash.set(r.hash, r);
+
+  if (!byHash.size) return items;
+
+  // fetch receipts in parallel (light cap)
+  const hashes = Array.from(byHash.keys());
+  const batches = [];
+  const cap = 5;
+  for (let i = 0; i < hashes.length; i += cap) {
+    const slice = hashes.slice(i, i + cap);
+    batches.push(
+      Promise.all(
+        slice.map(async (h) => {
+          try {
+            const rcpt = await alchemy.core.getTransactionReceipt(h);
+            if (!rcpt) return null;
+            // prefer effectiveGasPrice; fall back to tx.gasPrice if needed
+            let gasPrice = rcpt.effectiveGasPrice
+              ? BigInt(rcpt.effectiveGasPrice)
+              : undefined;
+            if (!gasPrice) {
+              const tx = await alchemy.core.getTransaction(h);
+              gasPrice = tx?.gasPrice ? BigInt(tx.gasPrice) : 0n;
+            }
+            const gasUsed = rcpt.gasUsed ? BigInt(rcpt.gasUsed) : 0n;
+            const wei = gasPrice * gasUsed;
+            return { h, wei };
+          } catch {
+            return null;
+          }
+        })
+      )
+    );
+  }
+
+  const gasRows: TxRow[] = [];
+  for (const batch of await Promise.all(batches)) {
+    for (const entry of batch) {
+      if (!entry) continue;
+      const baseRow = byHash.get(entry.h)!; // exists by construction
+      if (!baseRow) continue;
+      const qtyEth = weiToEthString(entry.wei);
+      // build synthetic gas row at the same timestamp
+      gasRows.push({
+        ts: baseRow.ts,
+        hash: entry.h,
+        network: baseRow.network,
+        wallet: walletLower,
+        direction: "out",
+        type: "gas",
+        asset: { symbol: "ETH", contract: null, decimals: 18 },
+        qty: qtyEth,
+        usdAtTs: null,
+        priceUsdAtTs: null,
+        counterparty: baseRow.counterparty,
+        fee: null,
+        isApprox: false,
+      });
+    }
+  }
+
+  const merged = [...items, ...gasRows];
+  // newest first
+  merged.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+  // keep exactly 20 (gas rows count toward the page size)
+  return merged.slice(0, 20);
+}
+
 export async function getLast20Transfers(
   address: string,
   type?: "income" | "expense" | "swap",
@@ -188,7 +271,13 @@ export async function getLast20Transfers(
   if (type) items = items.filter((r) => r.type === type);
   items = items.slice(0, 20);
 
-  await enrichUsdAtTs(items);
+  items = await addGasRows(items, acct);
+
+  try {
+    await enrichUsdAtTs(items);
+  } catch (e) {
+    console.error("enrichUsdAtTs failed:", e);
+  }
 
   return { items, nextCursor: null, hasMore: items.length === 20 };
 }
