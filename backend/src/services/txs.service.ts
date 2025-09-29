@@ -7,7 +7,7 @@ type TxRow = {
   network: "eth-mainnet";
   wallet: string;
   direction: "in" | "out";
-  type: "income" | "expense" | "swap";
+  type: "income" | "expense" | "swap" | "gas";
   asset: {
     symbol: string | null;
     contract: string | null;
