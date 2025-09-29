@@ -1,6 +1,14 @@
-
 import { useState } from "react";
-import { TrendingUp, TrendingDown, Repeat, Coins, Filter, Search, Calendar, Eye } from "lucide-react";
+import {
+  TrendingUp,
+  TrendingDown,
+  Repeat,
+  Coins,
+  Filter,
+  Search,
+  Calendar,
+  Eye,
+} from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,10 +17,26 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+} from "@/components/ui/dropdown-menu";
 import { format } from "date-fns";
 
 interface Transaction {
@@ -29,11 +53,20 @@ interface Transaction {
 
 interface AllTransactionsTabProps {
   transactions: Transaction[];
-  connectedWallets: Array<{ id: string; name: string; address: string; network: string }>;
+  connectedWallets: Array<{
+    id: string;
+    name: string;
+    address: string;
+    network: string;
+  }>;
   getWalletName: (walletId: string) => string;
 }
 
-const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: AllTransactionsTabProps) => {
+const AllTransactionsTab = ({
+  transactions,
+  connectedWallets,
+  getWalletName,
+}: AllTransactionsTabProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedTypes, setSelectedTypes] = useState<string[]>(["all"]);
   const [selectedNetworks, setSelectedNetworks] = useState<string[]>(["all"]);
@@ -50,39 +83,52 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
     wallet: true,
     amount: true,
     usdValue: true,
-    transaction: true
+    transaction: true,
   });
 
   const transactionTypes = ["income", "swap", "expense"];
   const networks = ["ethereum", "polygon", "solana", "bsc", "avalanche"];
 
-  const filteredTransactions = transactions.filter(tx => {
-    const matchesSearch = tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         tx.amount.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         tx.hash.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesType = selectedTypes.includes("all") || selectedTypes.includes(tx.type);
-    const matchesNetwork = selectedNetworks.includes("all") || selectedNetworks.includes(tx.network);
-    const matchesWallet = selectedWallets.includes("all") || selectedWallets.includes(tx.walletId);
-    const matchesAmount = Math.abs(tx.usdValue) >= amountRange[0] && Math.abs(tx.usdValue) <= amountRange[1];
-    
+  const filteredTransactions = transactions.filter((tx) => {
+    const matchesSearch =
+      tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tx.amount.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tx.hash.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesType =
+      selectedTypes.includes("all") || selectedTypes.includes(tx.type);
+    const matchesNetwork =
+      selectedNetworks.includes("all") || selectedNetworks.includes(tx.network);
+    const matchesWallet =
+      selectedWallets.includes("all") || selectedWallets.includes(tx.walletId);
+    const matchesAmount =
+      Math.abs(tx.usdValue) >= amountRange[0] &&
+      Math.abs(tx.usdValue) <= amountRange[1];
+
     let matchesDate = true;
     if (dateFrom || dateTo) {
       const txDate = new Date(tx.date);
       if (dateFrom && txDate < dateFrom) matchesDate = false;
       if (dateTo && txDate > dateTo) matchesDate = false;
     }
-    
-    return matchesSearch && matchesType && matchesNetwork && matchesWallet && matchesAmount && matchesDate;
+
+    return (
+      matchesSearch &&
+      matchesType &&
+      matchesNetwork &&
+      matchesWallet &&
+      matchesAmount &&
+      matchesDate
+    );
   });
 
   const handleTypeChange = (type: string, checked: boolean) => {
     if (type === "all") {
       setSelectedTypes(checked ? ["all"] : []);
     } else {
-      const newTypes = checked 
-        ? [...selectedTypes.filter(t => t !== "all"), type]
-        : selectedTypes.filter(t => t !== type);
+      const newTypes = checked
+        ? [...selectedTypes.filter((t) => t !== "all"), type]
+        : selectedTypes.filter((t) => t !== type);
       setSelectedTypes(newTypes.length === 0 ? ["all"] : newTypes);
     }
   };
@@ -91,9 +137,9 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
     if (network === "all") {
       setSelectedNetworks(checked ? ["all"] : []);
     } else {
-      const newNetworks = checked 
-        ? [...selectedNetworks.filter(n => n !== "all"), network]
-        : selectedNetworks.filter(n => n !== network);
+      const newNetworks = checked
+        ? [...selectedNetworks.filter((n) => n !== "all"), network]
+        : selectedNetworks.filter((n) => n !== network);
       setSelectedNetworks(newNetworks.length === 0 ? ["all"] : newNetworks);
     }
   };
@@ -102,28 +148,36 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
     if (walletId === "all") {
       setSelectedWallets(checked ? ["all"] : []);
     } else {
-      const newWallets = checked 
-        ? [...selectedWallets.filter(w => w !== "all"), walletId]
-        : selectedWallets.filter(w => w !== walletId);
+      const newWallets = checked
+        ? [...selectedWallets.filter((w) => w !== "all"), walletId]
+        : selectedWallets.filter((w) => w !== walletId);
       setSelectedWallets(newWallets.length === 0 ? ["all"] : newWallets);
     }
   };
 
   const getTransactionColor = (type: string) => {
     switch (type) {
-      case "income": return "text-green-600";
-      case "expense": return "text-red-600";
-      case "swap": return "text-blue-600";
-      default: return "text-slate-600";
+      case "income":
+        return "text-green-600";
+      case "expense":
+        return "text-red-600";
+      case "swap":
+        return "text-blue-600";
+      default:
+        return "text-slate-600";
     }
   };
 
   const getTransactionIcon = (type: string) => {
     switch (type) {
-      case "income": return <TrendingUp className="w-4 h-4" />;
-      case "expense": return <TrendingDown className="w-4 h-4" />;
-      case "swap": return <Repeat className="w-4 h-4" />;
-      default: return <Coins className="w-4 h-4" />;
+      case "income":
+        return <TrendingUp className="w-4 h-4" />;
+      case "expense":
+        return <TrendingDown className="w-4 h-4" />;
+      case "swap":
+        return <Repeat className="w-4 h-4" />;
+      default:
+        return <Coins className="w-4 h-4" />;
     }
   };
 
@@ -149,7 +203,12 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
                     <DropdownMenuCheckboxItem
                       key={key}
                       checked={visible}
-                      onCheckedChange={(checked) => setVisibleColumns(prev => ({ ...prev, [key]: !!checked }))}
+                      onCheckedChange={(checked) =>
+                        setVisibleColumns((prev) => ({
+                          ...prev,
+                          [key]: !!checked,
+                        }))
+                      }
                     >
                       {key.charAt(0).toUpperCase() + key.slice(1)}
                     </DropdownMenuCheckboxItem>
@@ -183,10 +242,14 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
             >
               <Filter className="w-4 h-4" />
               Filters
-              {(selectedTypes.length > 1 || !selectedTypes.includes("all") || 
-                selectedNetworks.length > 1 || !selectedNetworks.includes("all") ||
-                selectedWallets.length > 1 || !selectedWallets.includes("all") ||
-                dateFrom || dateTo) && (
+              {(selectedTypes.length > 1 ||
+                !selectedTypes.includes("all") ||
+                selectedNetworks.length > 1 ||
+                !selectedNetworks.includes("all") ||
+                selectedWallets.length > 1 ||
+                !selectedWallets.includes("all") ||
+                dateFrom ||
+                dateTo) && (
                 <Badge variant="secondary" className="ml-1 text-xs">
                   Active
                 </Badge>
@@ -199,24 +262,35 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
               <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6 pt-4 border-t">
                 {/* Transaction Types */}
                 <div className="space-y-3">
-                  <Label className="text-sm font-medium">Transaction Types</Label>
+                  <Label className="text-sm font-medium">
+                    Transaction Types
+                  </Label>
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="type-all"
                         checked={selectedTypes.includes("all")}
-                        onCheckedChange={(checked) => handleTypeChange("all", !!checked)}
+                        onCheckedChange={(checked) =>
+                          handleTypeChange("all", !!checked)
+                        }
                       />
-                      <Label htmlFor="type-all" className="text-sm font-normal">All Types</Label>
+                      <Label htmlFor="type-all" className="text-sm font-normal">
+                        All Types
+                      </Label>
                     </div>
                     {transactionTypes.map((type) => (
                       <div key={type} className="flex items-center space-x-2">
                         <Checkbox
                           id={`type-${type}`}
                           checked={selectedTypes.includes(type)}
-                          onCheckedChange={(checked) => handleTypeChange(type, !!checked)}
+                          onCheckedChange={(checked) =>
+                            handleTypeChange(type, !!checked)
+                          }
                         />
-                        <Label htmlFor={`type-${type}`} className="text-sm font-normal capitalize flex items-center gap-1">
+                        <Label
+                          htmlFor={`type-${type}`}
+                          className="text-sm font-normal capitalize flex items-center gap-1"
+                        >
                           {getTransactionIcon(type)}
                           {type}
                         </Label>
@@ -233,18 +307,33 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
                       <Checkbox
                         id="network-all"
                         checked={selectedNetworks.includes("all")}
-                        onCheckedChange={(checked) => handleNetworkChange("all", !!checked)}
+                        onCheckedChange={(checked) =>
+                          handleNetworkChange("all", !!checked)
+                        }
                       />
-                      <Label htmlFor="network-all" className="text-sm font-normal">All Networks</Label>
+                      <Label
+                        htmlFor="network-all"
+                        className="text-sm font-normal"
+                      >
+                        All Networks
+                      </Label>
                     </div>
                     {networks.map((network) => (
-                      <div key={network} className="flex items-center space-x-2">
+                      <div
+                        key={network}
+                        className="flex items-center space-x-2"
+                      >
                         <Checkbox
                           id={`network-${network}`}
                           checked={selectedNetworks.includes(network)}
-                          onCheckedChange={(checked) => handleNetworkChange(network, !!checked)}
+                          onCheckedChange={(checked) =>
+                            handleNetworkChange(network, !!checked)
+                          }
                         />
-                        <Label htmlFor={`network-${network}`} className="text-sm font-normal capitalize">
+                        <Label
+                          htmlFor={`network-${network}`}
+                          className="text-sm font-normal capitalize"
+                        >
                           {network}
                         </Label>
                       </div>
@@ -260,18 +349,33 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
                       <Checkbox
                         id="wallet-all"
                         checked={selectedWallets.includes("all")}
-                        onCheckedChange={(checked) => handleWalletChange("all", !!checked)}
+                        onCheckedChange={(checked) =>
+                          handleWalletChange("all", !!checked)
+                        }
                       />
-                      <Label htmlFor="wallet-all" className="text-sm font-normal">All Wallets</Label>
+                      <Label
+                        htmlFor="wallet-all"
+                        className="text-sm font-normal"
+                      >
+                        All Wallets
+                      </Label>
                     </div>
                     {connectedWallets.map((wallet) => (
-                      <div key={wallet.id} className="flex items-center space-x-2">
+                      <div
+                        key={wallet.id}
+                        className="flex items-center space-x-2"
+                      >
                         <Checkbox
                           id={`wallet-${wallet.id}`}
                           checked={selectedWallets.includes(wallet.id)}
-                          onCheckedChange={(checked) => handleWalletChange(wallet.id, !!checked)}
+                          onCheckedChange={(checked) =>
+                            handleWalletChange(wallet.id, !!checked)
+                          }
                         />
-                        <Label htmlFor={`wallet-${wallet.id}`} className="text-sm font-normal">
+                        <Label
+                          htmlFor={`wallet-${wallet.id}`}
+                          className="text-sm font-normal"
+                        >
                           {wallet.name}
                         </Label>
                       </div>
@@ -281,7 +385,9 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
 
                 {/* Amount Range */}
                 <div className="space-y-3">
-                  <Label className="text-sm font-medium">Amount Range (USD)</Label>
+                  <Label className="text-sm font-medium">
+                    Amount Range (USD)
+                  </Label>
                   <div className="space-y-2">
                     <Slider
                       value={amountRange}
@@ -304,7 +410,11 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
                   <div className="flex gap-2">
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex-1 justify-start text-left font-normal">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 justify-start text-left font-normal"
+                        >
                           <Calendar className="mr-2 h-4 w-4" />
                           {dateFrom ? format(dateFrom, "MMM dd") : "From"}
                         </Button>
@@ -320,7 +430,11 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
                     </Popover>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex-1 justify-start text-left font-normal">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 justify-start text-left font-normal"
+                        >
                           <Calendar className="mr-2 h-4 w-4" />
                           {dateTo ? format(dateTo, "MMM dd") : "To"}
                         </Button>
@@ -347,12 +461,16 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
               <TableRow>
                 {visibleColumns.type && <TableHead>Type</TableHead>}
                 {visibleColumns.date && <TableHead>Date</TableHead>}
-                {visibleColumns.description && <TableHead>Description</TableHead>}
+                {visibleColumns.description && (
+                  <TableHead>Description</TableHead>
+                )}
                 {visibleColumns.network && <TableHead>Network</TableHead>}
                 {visibleColumns.wallet && <TableHead>Wallet</TableHead>}
                 {visibleColumns.amount && <TableHead>Amount</TableHead>}
                 {visibleColumns.usdValue && <TableHead>USD Value</TableHead>}
-                {visibleColumns.transaction && <TableHead>Transaction</TableHead>}
+                {visibleColumns.transaction && (
+                  <TableHead>Transaction</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -360,14 +478,24 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
                 <TableRow key={tx.id}>
                   {visibleColumns.type && (
                     <TableCell>
-                      <div className={`flex items-center gap-2 ${getTransactionColor(tx.type)}`}>
+                      <div
+                        className={`flex items-center gap-2 ${getTransactionColor(
+                          tx.type
+                        )}`}
+                      >
                         {getTransactionIcon(tx.type)}
-                        <span className="capitalize text-xs font-medium">{tx.type}</span>
+                        <span className="capitalize text-xs font-medium">
+                          {tx.type}
+                        </span>
                       </div>
                     </TableCell>
                   )}
-                  {visibleColumns.date && <TableCell className="font-medium">{tx.date}</TableCell>}
-                  {visibleColumns.description && <TableCell>{tx.description}</TableCell>}
+                  {visibleColumns.date && (
+                    <TableCell className="font-medium">{tx.date}</TableCell>
+                  )}
+                  {visibleColumns.description && (
+                    <TableCell>{tx.description}</TableCell>
+                  )}
                   {visibleColumns.network && (
                     <TableCell>
                       <Badge variant="outline" className="capitalize text-xs">
@@ -383,15 +511,21 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
                     </TableCell>
                   )}
                   {visibleColumns.amount && (
-                    <TableCell className={`font-mono ${getTransactionColor(tx.type)}`}>
+                    <TableCell
+                      className={`font-mono ${getTransactionColor(tx.type)}`}
+                    >
                       {tx.amount}
                     </TableCell>
                   )}
                   {visibleColumns.usdValue && (
-                    <TableCell className={`font-mono ${getTransactionColor(tx.type)}`}>
-                      {tx.usdValue === 0 ? "$0.00" : 
-                       tx.usdValue > 0 ? `+$${tx.usdValue.toFixed(2)}` : 
-                       `-$${Math.abs(tx.usdValue).toFixed(2)}`}
+                    <TableCell
+                      className={`font-mono ${getTransactionColor(tx.type)}`}
+                    >
+                      {tx.usdValue === 0
+                        ? "$0.00"
+                        : tx.usdValue > 0
+                        ? `+$${tx.usdValue.toFixed(2)}`
+                        : `-$${Math.abs(tx.usdValue).toFixed(2)}`}
                     </TableCell>
                   )}
                   {visibleColumns.transaction && (
@@ -405,7 +539,12 @@ const AllTransactionsTab = ({ transactions, connectedWallets, getWalletName }: A
               ))}
               {filteredTransactions.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={Object.values(visibleColumns).filter(Boolean).length} className="text-center py-8 text-slate-500">
+                  <TableCell
+                    colSpan={
+                      Object.values(visibleColumns).filter(Boolean).length
+                    }
+                    className="text-center py-8 text-slate-500"
+                  >
                     No transactions found matching your filters.
                   </TableCell>
                 </TableRow>

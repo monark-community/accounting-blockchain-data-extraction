@@ -3,7 +3,7 @@ import { getLast20Transfers } from "../services/txs.service";
 
 const router = Router();
 
-// GET /api/portfolio/txs/:address?type=income|expense|swap
+// GET /api/portfolio/txs/:address?type=income|expense|swap|gas
 router.get("/txs/:address", async (req, res) => {
   const address = String(req.params.address || "").trim();
   if (!address) {
