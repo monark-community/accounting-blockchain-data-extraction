@@ -1,4 +1,5 @@
 import { alchemy } from "../utils/alchemy";
+import { getEthUsdAt, getErc20UsdAt } from "../utils/prices";
 
 type TxRow = {
   ts: string;
@@ -62,6 +63,59 @@ async function pullTransfers(
     pageKey = res.pageKey;
   }
   return acc;
+}
+
+async function enrichUsdAtTs(rows: TxRow[]) {
+  // group rows by unix-second to batch price lookups
+  const groups = new Map<
+    number,
+    { eth: TxRow[]; erc20ByAddr: Map<string, TxRow[]> }
+  >();
+
+  for (const r of rows) {
+    const tsSec = Math.floor(new Date(r.ts).getTime() / 1000);
+    let g = groups.get(tsSec);
+    if (!g) {
+      g = { eth: [], erc20ByAddr: new Map() };
+      groups.set(tsSec, g);
+    }
+    const isEth = !r.asset.contract;
+    if (isEth) {
+      g.eth.push(r);
+    } else {
+      const addr = String(r.asset.contract).toLowerCase();
+      const arr = g.erc20ByAddr.get(addr) ?? [];
+      arr.push(r);
+      g.erc20ByAddr.set(addr, arr);
+    }
+  }
+
+  for (const [tsSec, g] of groups) {
+    // ETH rows
+    if (g.eth.length) {
+      const p = await getEthUsdAt(tsSec);
+      for (const r of g.eth) {
+        const qty = Number(r.qty) || 0;
+        r.priceUsdAtTs = p;
+        r.usdAtTs = p > 0 ? qty * p : null;
+      }
+    }
+    // ERC-20 rows (batch by timestamp)
+    if (g.erc20ByAddr.size) {
+      const addrs = Array.from(g.erc20ByAddr.keys());
+      const priceMap = await getErc20UsdAt(addrs, tsSec); // Map<addrLower, price>
+      for (const addr of addrs) {
+        const price = priceMap.get(addr) ?? 0;
+        for (const r of g.erc20ByAddr.get(addr)!) {
+          const qty = Number(r.qty) || 0;
+          r.priceUsdAtTs = price || null;
+          r.usdAtTs = price > 0 ? qty * price : null;
+        }
+      }
+    }
+  }
+
+  return rows;
 }
 
 export async function getLast20Transfers(
@@ -134,5 +188,7 @@ export async function getLast20Transfers(
   if (type) items = items.filter((r) => r.type === type);
   items = items.slice(0, 20);
 
-  return { items, nextCursor: null, hasMore: items.length === 20 }; // cursor comes later
+  await enrichUsdAtTs(items);
+
+  return { items, nextCursor: null, hasMore: items.length === 20 };
 }
