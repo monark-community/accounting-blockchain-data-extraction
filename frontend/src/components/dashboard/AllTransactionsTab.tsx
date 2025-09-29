@@ -147,6 +147,7 @@ export default function AllTransactionsTab() {
       const qs = new URLSearchParams();
       qs.set("kind", "all");
       qs.set("limit", String(PAGE_SIZE));
+      if (serverType) qs.set("type", serverType);
       if (append && nextCursor) qs.set("cursor", nextCursor);
 
       const res = await fetch(
@@ -174,6 +175,22 @@ export default function AllTransactionsTab() {
     }
   };
 
+  const filtered = useMemo(() => {
+    if (!items?.length) return [] as TxRow[];
+    const types = Array.isArray(selectedTypes) ? selectedTypes : ["all"];
+    if ((types as any)[0] === "all") return items;
+    return items.filter((r) => (types as TxType[]).includes(r.type));
+  }, [items, selectedTypes]);
+
+  const serverType = useMemo<null | TxType>(() => {
+    // If "all" or 0/many selected => null (no server-side type)
+    const types = Array.isArray(selectedTypes)
+      ? (selectedTypes as TxType[])
+      : [];
+    if (!types.length || (selectedTypes as any)[0] === "all") return null;
+    return types.length === 1 ? types[0] : null;
+  }, [selectedTypes]);
+
   // initial & when address changes or refresh
   useEffect(() => {
     setItems([]);
@@ -182,12 +199,14 @@ export default function AllTransactionsTab() {
     if (address) loadPage(false);
   }, [address, refreshKey]);
 
-  const filtered = useMemo(() => {
-    if (!items?.length) return [] as TxRow[];
-    const types = Array.isArray(selectedTypes) ? selectedTypes : ["all"];
-    if ((types as any)[0] === "all") return items;
-    return items.filter((r) => (types as TxType[]).includes(r.type));
-  }, [items, selectedTypes]);
+  // When serverType toggles (e.g., user clicks Expense/Swap/Gas), reload from page 1
+  useEffect(() => {
+    if (!address) return;
+    setItems([]);
+    setNextCursor(null);
+    setViewPage(1);
+    loadPage(false);
+  }, [serverType]);
 
   const windowStartIdx = (viewPage - 1) * PAGE_SIZE; // 0-based index
   const windowEndIdx = Math.min(windowStartIdx + PAGE_SIZE, filtered.length);
