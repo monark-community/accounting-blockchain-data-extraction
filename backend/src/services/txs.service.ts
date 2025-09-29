@@ -27,6 +27,13 @@ type TxRow = {
   isApprox: boolean;
 };
 
+type CursorState = {
+  out?: string | null; // Alchemy pageKey for outbound transfers
+  in?: string | null; // Alchemy pageKey for inbound transfers
+  kind: "all" | "transactions" | "tokens";
+  limit: number; // page size requested by client
+};
+
 // What the frontend expects as the response wrapper:
 type TxFeed = {
   network: "eth-mainnet";
@@ -60,12 +67,13 @@ async function pullTransfers(
   direction: "in" | "out",
   address: string,
   categories: readonly ("external" | "internal" | "erc20")[],
-  target: number
-) {
+  target: number,
+  startPageKey?: string | null
+): Promise<{ items: any[]; nextPageKey: string | null }> {
   const paramsBase =
     direction === "out" ? { fromAddress: address } : { toAddress: address };
 
-  let pageKey: string | undefined;
+  let pageKey: string | undefined = startPageKey ?? undefined;
   const acc: any[] = [];
   const MAX_PAGES = 6; // safety cap
 
@@ -79,10 +87,10 @@ async function pullTransfers(
       pageKey,
     });
     acc.push(...(res.transfers || []));
-    if (!res.pageKey || acc.length >= target) break;
     pageKey = res.pageKey;
+    if (!pageKey || acc.length >= target) break;
   }
-  return acc;
+  return { items: acc, nextPageKey: pageKey ?? null };
 }
 
 async function enrichUsdAtTs(rows: TxRow[]) {
@@ -151,10 +159,8 @@ async function addGasRows(
   items: TxRow[],
   walletLower: string
 ): Promise<TxRow[]> {
-  // for outbound hashes we returned
   const byHash = new Map<string, TxRow>();
   for (const r of items) if (r.direction === "out") byHash.set(r.hash, r);
-
   if (!byHash.size) return items;
 
   const hashes = Array.from(byHash.keys());
@@ -168,7 +174,6 @@ async function addGasRows(
           try {
             const rcpt = await alchemy.core.getTransactionReceipt(h);
             if (!rcpt) return null;
-
             let gasPrice = rcpt.effectiveGasPrice
               ? BigInt(rcpt.effectiveGasPrice)
               : undefined;
@@ -193,8 +198,6 @@ async function addGasRows(
       if (!entry) continue;
       const baseRow = byHash.get(entry.h);
       if (!baseRow) continue;
-
-      const qtyEth = weiToEthString(entry.wei);
       gasRows.push({
         ts: baseRow.ts,
         hash: entry.h,
@@ -204,18 +207,17 @@ async function addGasRows(
         direction: "out",
         type: "gas",
         asset: { symbol: "ETH", contract: null, decimals: 18 },
-        qty: qtyEth,
+        qty: weiToEthString(entry.wei),
         priceUsdAtTs: null,
         usdAtTs: null,
         counterparty: baseRow.counterparty,
-        fee: null, // we surface gas as its own row; fee object can stay null
+        fee: null,
         isApprox: false,
       });
     }
   }
 
   const merged = [...items, ...gasRows];
-  // newest first by blockNumber (then timestamp fallback)
   merged.sort((a, b) => {
     if (a.blockNumber !== b.blockNumber) return b.blockNumber - a.blockNumber;
     return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0;
@@ -225,32 +227,49 @@ async function addGasRows(
 
 export async function getLast20Transfers(
   address: string,
-  type?: "income" | "expense" | "swap",
-  kind?: "all" | "transactions" | "tokens"
+  type?: "income" | "expense" | "swap" | "gas",
+  kind: "all" | "transactions" | "tokens" = "all",
+  cursor?: string | null,
+  limit: number = 20
 ) {
   const acct = address.toLowerCase();
   const categories = kindToCategories(kind);
 
-  // Pull both directions, over-fetch to classify swaps, then trim
-  const NEED = 80;
-  const [outRaw, inRaw] = await Promise.all([
-    pullTransfers("out", acct, categories, NEED),
-    pullTransfers("in", acct, categories, NEED),
+  // decode cursor (opaque JSON string)
+  let state: CursorState = { out: null, in: null, kind, limit };
+  try {
+    if (cursor)
+      state = {
+        ...state,
+        ...(JSON.parse(
+          Buffer.from(cursor, "base64").toString("utf8")
+        ) as CursorState),
+      };
+  } catch {}
+
+  // Over-fetch to classify swaps before slicing
+  const NEED = Math.max(4 * limit, 80);
+
+  const [
+    { items: outRaw, nextPageKey: outNext },
+    { items: inRaw, nextPageKey: inNext },
+  ] = await Promise.all([
+    pullTransfers("out", acct, categories, NEED, state.out),
+    pullTransfers("in", acct, categories, NEED, state.in),
   ]);
 
+  // Normalize
   const rows: TxRow[] = [];
   const pushRows = (items: any[], direction: "in" | "out") => {
     for (const t of items ?? []) {
       const cat = t.category as string | undefined;
       const isEth = cat === "external" || cat === "internal";
-
       const blockNumber =
         typeof t.blockNum === "string"
           ? parseInt(t.blockNum, 16)
           : t.metadata?.blockNumber
           ? Number(t.metadata.blockNumber)
           : 0;
-
       const symbol = isEth ? "ETH" : t.asset ?? "TOKEN";
       const decimals = isEth
         ? 18
@@ -258,7 +277,6 @@ export async function getLast20Transfers(
         ? t.rawContract.decimals
         : 18;
       const contract = isEth ? null : normAddr(t.rawContract?.address);
-
       const qty = String(t.value ?? "0");
       const ts = new Date(
         t.metadata?.blockTimestamp ?? Date.now()
@@ -288,7 +306,7 @@ export async function getLast20Transfers(
   pushRows(outRaw, "out");
   pushRows(inRaw, "in");
 
-  // Swap marking: any hash with both in & out
+  // Swap marking
   const byHash = new Map<string, { hasIn: boolean; hasOut: boolean }>();
   for (const r of rows) {
     const e = byHash.get(r.hash) ?? { hasIn: false, hasOut: false };
@@ -301,39 +319,45 @@ export async function getLast20Transfers(
     if (e && e.hasIn && e.hasOut) r.type = "swap";
   }
 
-  // Add gas rows (no slicing yet)
+  // Add gas rows (do not slice yet)
   let items = await addGasRows(rows, acct);
 
-  // Final sort (blockNumber desc, then timestamp desc)
+  // Final sort and type filter
   items.sort((a, b) => {
     if (a.blockNumber !== b.blockNumber) return b.blockNumber - a.blockNumber;
     return a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0;
   });
-
-  // Optional filter by type (income/expense/swap/gas)
   if (type) items = items.filter((r) => r.type === type);
 
-  // Trim to 20 for the page
-  const pageItems = items.slice(0, 20);
+  // Page slice at the very end
+  const pageItems = items.slice(0, limit);
 
-  // Price enrichment
+  // Price enrichment on the page slice
   try {
     await enrichUsdAtTs(pageItems);
   } catch (e) {
     console.error("enrichUsdAtTs failed:", e);
   }
 
-  // Build the wrapper the frontend expects
-  const feed: TxFeed = {
-    network: "eth-mainnet",
+  // Build nextCursor from remaining pageKeys if any
+  const nextCursor =
+    outNext || inNext
+      ? Buffer.from(
+          JSON.stringify({
+            out: outNext ?? null,
+            in: inNext ?? null,
+            kind,
+            limit,
+          }),
+          "utf8"
+        ).toString("base64")
+      : null;
+
+  const feed = {
+    network: "eth-mainnet" as const,
     wallet: { input: address, address: acct, ens: null },
     window: { from: null, to: null },
-    page: {
-      limit: 20,
-      cursor: null, // Hook up when you implement real cursors
-      nextCursor: null, // Hook up when you implement real cursors
-      total: null, // Optional: keep null until you add counting
-    },
+    page: { limit, cursor: cursor ?? null, nextCursor, total: null },
     items: pageItems,
   };
 
