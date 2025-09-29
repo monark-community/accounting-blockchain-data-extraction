@@ -182,6 +182,19 @@ export default function AllTransactionsTab() {
     return items.filter((r) => (types as TxType[]).includes(r.type));
   }, [items, selectedTypes]);
 
+  // Rows currently visible in the table (matches what's rendered)
+  const visibleRows: TxRow[] = filtered;
+
+  // All rows the user has loaded so far, still respecting the type filter
+  const loadedRows: TxRow[] = useMemo(() => {
+    const types = Array.isArray(selectedTypes)
+      ? (selectedTypes as TxType[])
+      : [];
+    if (!items?.length) return [];
+    if (!types.length || (selectedTypes as any)[0] === "all") return items;
+    return items.filter((r) => types.includes(r.type));
+  }, [items, selectedTypes]);
+
   const serverType = useMemo<null | TxType>(() => {
     // If "all" or 0/many selected => null (no server-side type)
     const types = Array.isArray(selectedTypes)
@@ -271,6 +284,96 @@ export default function AllTransactionsTab() {
     }
   };
 
+  // --- Export helpers (CSV/JSON)
+  const nowStamp = () => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(
+      d.getHours()
+    )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  };
+
+  const shortForFile = (a: string) =>
+    a ? `${a.slice(0, 6)}_${a.slice(-4)}` : "wallet";
+
+  type Scope = "visible" | "loaded";
+
+  function mapTxForCsv(tx: TxRow) {
+    return {
+      date_iso: tx.ts,
+      type: tx.type,
+      direction: tx.direction,
+      asset: tx.asset?.symbol ?? "",
+      contract: tx.asset?.contract ?? "",
+      decimals: tx.asset?.decimals ?? "",
+      qty: tx.qty ?? "",
+      price_usd_at_ts: tx.priceUsdAtTs ?? "",
+      usd_at_ts: tx.usdAtTs ?? "",
+      network: tx.network ?? "",
+      tx_hash: tx.hash ?? "",
+      counterparty: tx.counterparty?.address ?? "",
+      counterparty_label: tx.counterparty?.label ?? "",
+    };
+  }
+
+  function toCsv(rows: ReturnType<typeof mapTxForCsv>[]) {
+    const headers = Object.keys(rows[0] ?? { date_iso: "", type: "" });
+    const escape = (v: any) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      headers.join(","),
+      ...rows.map((r) => headers.map((h) => escape((r as any)[h])).join(",")),
+    ].join("\n");
+    // Add BOM for Excel
+    return new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), lines], {
+      type: "text/csv;charset=utf-8",
+    });
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportCsv(
+    address: string,
+    rows: TxRow[],
+    scope: Scope,
+    typeLabel: string
+  ) {
+    if (!rows || rows.length === 0) return;
+    const mapped = rows.map(mapTxForCsv);
+    const blob = toCsv(mapped);
+    const filename = `ledgerlift_${shortForFile(
+      address
+    )}_${typeLabel}_${nowStamp()}_${scope}.csv`;
+    downloadBlob(blob, filename);
+  }
+
+  function exportJson(
+    address: string,
+    rows: TxRow[],
+    scope: Scope,
+    typeLabel: string
+  ) {
+    if (!rows || rows.length === 0) return;
+    const blob = new Blob([JSON.stringify(rows, null, 2)], {
+      type: "application/json",
+    });
+    const filename = `ledgerlift_${shortForFile(
+      address
+    )}_${typeLabel}_${nowStamp()}_${scope}.json`;
+    downloadBlob(blob, filename);
+  }
+
   return (
     <div className="space-y-6">
       <Card className="bg-white shadow-sm">
@@ -312,6 +415,79 @@ export default function AllTransactionsTab() {
                     <Eye className="w-4 h-4 mr-2" /> Columns
                   </Button>
                 </DropdownMenuTrigger>
+                {/* Export menu */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      Export
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <button
+                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                      onClick={() =>
+                        exportCsv(
+                          address,
+                          visibleRows,
+                          "visible",
+                          (selectedTypes as any)[0] === "all"
+                            ? "all"
+                            : (selectedTypes as TxType[]).join("-")
+                        )
+                      }
+                    >
+                      CSV (visible)
+                    </button>
+                    <button
+                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                      onClick={() =>
+                        exportCsv(
+                          address,
+                          loadedRows,
+                          "loaded",
+                          (selectedTypes as any)[0] === "all"
+                            ? "all"
+                            : (selectedTypes as TxType[]).join("-")
+                        )
+                      }
+                      disabled={!loadedRows.length}
+                    >
+                      CSV (loaded)
+                    </button>
+                    <div className="h-px bg-slate-200 my-1" />
+                    <button
+                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                      onClick={() =>
+                        exportJson(
+                          address,
+                          visibleRows,
+                          "visible",
+                          (selectedTypes as any)[0] === "all"
+                            ? "all"
+                            : (selectedTypes as TxType[]).join("-")
+                        )
+                      }
+                    >
+                      JSON (visible)
+                    </button>
+                    <button
+                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                      onClick={() =>
+                        exportJson(
+                          address,
+                          loadedRows,
+                          "loaded",
+                          (selectedTypes as any)[0] === "all"
+                            ? "all"
+                            : (selectedTypes as TxType[]).join("-")
+                        )
+                      }
+                      disabled={!loadedRows.length}
+                    >
+                      JSON (loaded)
+                    </button>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <DropdownMenuContent align="end" className="w-48">
                   {(
                     Object.keys(visibleColumns) as Array<
