@@ -487,19 +487,6 @@ export default function AllTransactionsTab() {
             </Table>
           </div>
         )}
-
-        {/* Pagination */}
-        {address && (nextCursor || loading) && (
-          <div className="p-4 flex justify-center">
-            <Button
-              onClick={() => loadPage(true)}
-              disabled={loading || !nextCursor}
-              variant="outline"
-            >
-              {loading ? "Loading…" : nextCursor ? "Load more" : "No more"}
-            </Button>
-          </div>
-        )}
       </Card>
     </div>
   );
