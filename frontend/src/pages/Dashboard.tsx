@@ -352,8 +352,8 @@ const Dashboard = () => {
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="income">Income</TabsTrigger>
-            <TabsTrigger value="expenses">Expenses</TabsTrigger>
+            {/* <TabsTrigger value="income">Income</TabsTrigger>
+            <TabsTrigger value="expenses">Expenses</TabsTrigger> */}
             {/* <TabsTrigger value="capital-gains">Capital Gains</TabsTrigger> */}
             <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
           </TabsList>
