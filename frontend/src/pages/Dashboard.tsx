@@ -624,11 +624,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="all-transactions">
-            <AllTransactionsTab
-              transactions={transactions}
-              connectedWallets={connectedWallets}
-              getWalletName={getWalletName}
-            />
+            <AllTransactionsTab />
           </TabsContent>
         </Tabs>
       </main>
