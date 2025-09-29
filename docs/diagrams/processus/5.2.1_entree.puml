@@ -1,0 +1,89 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+skinparam ParticipantPadding 10
+title 5.2.1 — Entrée dans l’application (Wallet / OAuth / View-only)
+
+actor User
+participant "Frontend (Next.js)" as Front
+participant "Wallet (Wagmi/Viem)" as Wallet
+participant "API (Express/TS)" as API
+database "DB (PostgreSQL)" as DB
+participant "OAuth Provider" as OAuth
+
+User -> Front: Ouvre l’app / Page d’accueil
+Front -> User: Propose 3 options (Wallet / OAuth / View-only)
+
+alt Se connecter avec Wallet
+  User -> Front: Clique "Connect Wallet"
+  Front -> Wallet: Demande de signature (nonce)
+  Wallet --> Front: Signature {addr, sig}
+  Front -> API: POST /api/auth/wallet {addr, sig}
+  activate API
+  API -> DB: upsert(user par adresse)
+  DB --> API: OK (userId)
+  API --> Front: JWT (session)
+  deactivate API
+  note over Front
+    Session authentifiée (JWT)
+    Accès fonctionnalités complètes
+  end note
+
+  loop Ajouter une adresse (0..N)
+    User -> Front: "Ajouter une adresse"
+    Front -> Wallet: Signature pour nouvelle adresse
+    Wallet --> Front: {addr2, sig2}
+    Front -> API: POST /api/profile/wallets {addr2, sig2}
+    activate API
+    API -> DB: upsert(link user <-> addr2)
+    DB --> API: OK
+    API --> Front: 200 OK
+    deactivate API
+  end
+
+else Se connecter via OAuth
+  User -> Front: Clique "Se connecter (Google/Facebook...)"
+  Front -> OAuth: Redirect (OIDC/OAuth2)
+  OAuth --> Front: Callback (code)
+  Front -> API: POST /api/auth/oauth {code}
+  activate API
+  API -> OAuth: Échange code -> token / profil
+  OAuth --> API: Profil (email, sub, etc.)
+  API -> DB: upsert(user par OAuth sub/email)
+  DB --> API: OK (userId)
+  API --> Front: JWT (session)
+  deactivate API
+  note over Front
+    Session authentifiée (JWT)
+    Multi-wallet possible en liant des adresses
+    (chaque lien requiert une signature côté Wallet)
+  end note
+
+  opt Lier une adresse EVM
+    User -> Front: "Lier mon wallet"
+    Front -> Wallet: Signature (nonce)
+    Wallet --> Front: {addr, sig}
+    Front -> API: POST /api/profile/wallets {addr, sig}
+    activate API
+    API -> DB: upsert(link user <-> addr)
+    DB --> API: OK
+    API --> Front: 200 OK
+    deactivate API
+  end
+
+else Consulter sans compte (View-only)
+  User -> Front: Saisit une adresse (0x...)
+  Front -> API: GET /api/public/wallets/{address}/summary
+  activate API
+  API -> DB: Query lecture seule (adresse)
+  DB --> API: Résumé (si présent) / sinon déclenche synchro
+  API --> Front: Données pour CETTE adresse uniquement
+  deactivate API
+  note over User,Front
+    Pas de compte créé
+    1 adresse à la fois, pas de préférences persistées
+  end note
+end
+@enduml
