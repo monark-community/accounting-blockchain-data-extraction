@@ -29,7 +29,7 @@ import {
   type CapitalGainEntry,
   type AccountingMethod,
 } from "@/utils/capitalGains";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useMemo } from "react";
 import { Tooltip } from "recharts";
 
@@ -257,6 +257,7 @@ const fmtUSD = (n: number) =>
 
 const Dashboard = () => {
   const { connectedWallets, getWalletName, userPreferences, chainId, userWallet, isConnected } = useWallet();
+  const navigate = useNavigate();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
 
@@ -285,6 +286,13 @@ const Dashboard = () => {
 
   // Use connected wallet address if available, otherwise use URL address
   const address = isConnected && userWallet ? userWallet : urlAddress;
+
+  // Redirect to home if no address available and not connected
+  useEffect(() => {
+    if (!address && !isConnected) {
+      navigate("/");
+    }
+  }, [address, isConnected, navigate]);
 
   // --- Overview state ---
   const [ov, setOv] = useState<OverviewResponse | null>(null);

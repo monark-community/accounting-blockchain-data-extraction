@@ -1,4 +1,4 @@
-import React, { createContext, useContext, ReactNode } from 'react';
+import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import {
   useAccount,
   useConnect,
@@ -36,6 +36,7 @@ interface WalletContextType {
   isMetaMaskInstalled: boolean;
   connectError: Error | null;
   isPending: boolean;
+  isLoggingOut: boolean;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   addWallet: (wallet: Omit<Wallet, 'id'>) => void;
@@ -66,6 +67,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Get balance and ENS name for connected wallet
   const { data: balance } = useBalance({
@@ -108,6 +110,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const disconnectWallet = () => {
+    setIsLoggingOut(true);
     disconnect();
   };
 
@@ -286,6 +289,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return "0";
   };
 
+  // Reset isLoggingOut when disconnect completes
+  useEffect(() => {
+    if (!isConnected && isLoggingOut) {
+      setIsLoggingOut(false);
+    }
+  }, [isConnected, isLoggingOut]);
+
   const userPreferences: UserPreferences = {
     currency: 'CAD',
     country: 'Canada',
@@ -304,6 +314,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       isMetaMaskInstalled,
       connectError,
       isPending,
+      isLoggingOut,
       connectWallet,
       disconnectWallet,
       addWallet,
