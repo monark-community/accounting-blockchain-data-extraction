@@ -38,6 +38,7 @@ const Hero = () => {
     isConnected,
     connectError,
     isPending,
+    userWallet,
   } = useWallet();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -51,7 +52,13 @@ const Hero = () => {
         title: "Wallet Connected",
         description: "Successfully connected to MetaMask!",
       });
-      navigate("/dashboard");
+      // Get the connected wallet address and add it to the URI
+      const connectedAddress = userWallet;
+      if (connectedAddress) {
+        navigate(`/dashboard?address=${encodeURIComponent(connectedAddress)}`);
+      } else {
+        navigate("/dashboard");
+      }
       setIsConnecting(false);
       setHasTimedOut(false);
     } else if (isConnected && hasTimedOut) {
@@ -59,7 +66,7 @@ const Hero = () => {
       setIsConnecting(false);
       setHasTimedOut(false);
     }
-  }, [isConnected, isConnecting, hasTimedOut, navigate, toast]);
+  }, [isConnected, isConnecting, hasTimedOut, navigate, toast, userWallet]);
 
   // Watch for connection errors
   useEffect(() => {
