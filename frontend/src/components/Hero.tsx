@@ -52,13 +52,8 @@ const Hero = () => {
         title: "Wallet Connected",
         description: "Successfully connected to MetaMask!",
       });
-      // Get the connected wallet address and add it to the URI
-      const connectedAddress = userWallet;
-      if (connectedAddress) {
-        navigate(`/dashboard?address=${encodeURIComponent(connectedAddress)}`);
-      } else {
-        navigate("/dashboard");
-      }
+      // Navigate to dashboard - it will automatically use the connected wallet
+      navigate("/dashboard");
       setIsConnecting(false);
       setHasTimedOut(false);
     } else if (isConnected && hasTimedOut) {
@@ -479,15 +474,14 @@ const Hero = () => {
                   {visibleTransactions.map((tx, index) => (
                     <div
                       key={`${tx.type}-${tx.amount}-${index}-${Date.now()}`}
-                      className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${
-                        isAnimating
+                      className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${isAnimating
                           ? index === 0
                             ? "opacity-0 -translate-y-2 animate-fade-in-down"
                             : index === 3
-                            ? "opacity-100 translate-y-2 animate-fade-out-down"
-                            : "translate-y-6 transition-transform duration-500 ease-out"
+                              ? "opacity-100 translate-y-2 animate-fade-out-down"
+                              : "translate-y-6 transition-transform duration-500 ease-out"
                           : "opacity-100 translate-y-0"
-                      }`}
+                        }`}
                     >
                       <div>
                         <p className="font-medium">{tx.type}</p>
@@ -495,11 +489,10 @@ const Hero = () => {
                       </div>
                       <div className="text-right">
                         <p
-                          className={`font-bold ${
-                            tx.status === "Income"
+                          className={`font-bold ${tx.status === "Income"
                               ? "text-green-400"
                               : "text-orange-400"
-                          }`}
+                            }`}
                         >
                           {tx.status === "Income" ? "+" : "-"}
                           {tx.amount}

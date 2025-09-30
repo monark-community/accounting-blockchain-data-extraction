@@ -40,6 +40,8 @@ type PricedHolding = {
   qty: string;
   priceUsd: number;
   valueUsd: number;
+  delta24hUsd?: number | null;
+  delta24hPct?: number | null;
 };
 
 type OverviewResponse = {
@@ -254,7 +256,7 @@ const fmtUSD = (n: number) =>
   });
 
 const Dashboard = () => {
-  const { connectedWallets, getWalletName, userPreferences, chainId } = useWallet();
+  const { connectedWallets, getWalletName, userPreferences, chainId, userWallet, isConnected } = useWallet();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
 
@@ -279,7 +281,10 @@ const Dashboard = () => {
   const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
   const [params] = useSearchParams();
-  const address = params.get("address") || "";
+  const urlAddress = params.get("address") || "";
+
+  // Use connected wallet address if available, otherwise use URL address
+  const address = isConnected && userWallet ? userWallet : urlAddress;
 
   // --- Overview state ---
   const [ov, setOv] = useState<OverviewResponse | null>(null);
@@ -333,7 +338,7 @@ const Dashboard = () => {
       .then(setOv)
       .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
       .finally(() => setLoadingOv(false));
-  }, [address, chainId]);
+  }, [address, chainId, userWallet, isConnected]);
 
   return (
     <div className="min-h-screen bg-slate-50">
