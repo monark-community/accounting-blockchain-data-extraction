@@ -21,7 +21,7 @@ const Index = () => {
       toast({
         title: "Wallet Connected",
         description: "Redirecting to your dashboard...",
-        duration: 3000,
+        duration: 2000,
       });
 
       // Small delay to show the notification before redirecting
