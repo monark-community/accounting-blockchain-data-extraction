@@ -254,7 +254,7 @@ const fmtUSD = (n: number) =>
   });
 
 const Dashboard = () => {
-  const { connectedWallets, getWalletName, userPreferences } = useWallet();
+  const { connectedWallets, getWalletName, userPreferences, chainId } = useWallet();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
 
@@ -328,12 +328,12 @@ const Dashboard = () => {
     if (!address) return;
     setLoadingOv(true);
     setErrorOv(null);
-    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}?minUsd=1`)
+    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}?minUsd=1&chainId=${chainId}`)
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then(setOv)
       .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
       .finally(() => setLoadingOv(false));
-  }, [address]);
+  }, [address, chainId]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -533,8 +533,8 @@ const Dashboard = () => {
                       delta == null
                         ? "text-slate-600"
                         : delta >= 0
-                        ? "text-green-600"
-                        : "text-red-600";
+                          ? "text-green-600"
+                          : "text-red-600";
                     return (
                       <div
                         key={(h.contract ?? h.symbol) || Math.random()}
@@ -552,9 +552,9 @@ const Dashboard = () => {
                               {/* weight from allocation isn’t 1:1; show share via value proportion */}
                               {ov.kpis?.totalValueUsd
                                 ? `${(
-                                    (h.valueUsd / ov.kpis.totalValueUsd) *
-                                    100
-                                  ).toFixed(1)}% of portfolio`
+                                  (h.valueUsd / ov.kpis.totalValueUsd) *
+                                  100
+                                ).toFixed(1)}% of portfolio`
                                 : "—"}
                             </p>
                           </div>
