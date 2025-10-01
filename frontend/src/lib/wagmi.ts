@@ -8,7 +8,7 @@ export const config = createConfig({
     injected(),
     metaMask(),
     walletConnect({
-      projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'your-project-id',
+      projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '1f9b0b8b8b8b8b8b8b8b8b8b8b8b8b8b',
     }),
   ],
   transports: {
