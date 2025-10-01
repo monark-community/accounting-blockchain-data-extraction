@@ -1,12 +1,16 @@
 # ---------- Dependencies layer ----------
 FROM node:20-alpine AS deps
 WORKDIR /app
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
 COPY package*.json ./
 RUN npm ci
 
 # ---------- Dev target: ts-node-dev ----------
 FROM node:20-alpine AS dev
 WORKDIR /app
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
 # Keep dev independent (fast for new contributors)
 COPY package*.json ./
 RUN npm ci
@@ -26,6 +30,8 @@ RUN npm run build
 # ---------- Prod target: node runtime ----------
 FROM node:20-alpine AS prod
 WORKDIR /app
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
 ENV NODE_ENV=production
 ENV PORT=8080
 # Install only production deps
