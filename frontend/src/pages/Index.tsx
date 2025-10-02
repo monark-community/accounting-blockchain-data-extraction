@@ -20,14 +20,21 @@ const Index = () => {
     if (isConnected && userWallet && !isLoggingOut) {
       toast({
         title: "Wallet Connected",
-        description: "Redirecting to your dashboard...",
-        duration: 2000,
+        description: (
+          <div>
+            <div>Redirecting to your dashboard...</div>
+            <div className="mt-1 text-xs opacity-75">
+              You can disconnect anytime from the navigation menu to continue browsing.
+            </div>
+          </div>
+        ),
+        duration: 4000,
       });
 
       // Small delay to show the notification before redirecting
       setTimeout(() => {
         navigate("/dashboard");
-      }, 1000);
+      }, 500);
     }
   }, [isConnected]);
 
