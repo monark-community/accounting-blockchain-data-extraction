@@ -115,6 +115,46 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     
     getWeb3AuthAccount();
   }, [web3AuthIsConnected, web3auth]);
+
+  // Listen for Web3Auth connection events
+  useEffect(() => {
+    if (web3auth?.web3Auth) {
+      const handleAccountChange = () => {
+        console.log('Web3Auth account changed, updating address');
+        // Trigger a re-fetch of the account
+        setTimeout(() => {
+          const getAccount = async () => {
+            try {
+              if (web3auth?.web3Auth?.provider) {
+                const provider = web3auth.web3Auth.provider;
+                const accounts = await provider.request({ method: "eth_accounts" });
+                if (accounts && accounts.length > 0) {
+                  setWeb3AuthAddress(accounts[0]);
+                }
+              }
+            } catch (error) {
+              console.error('Error updating Web3Auth account:', error);
+            }
+          };
+          getAccount();
+        }, 1000);
+      };
+
+      // Add event listeners for Web3Auth events
+      web3auth.web3Auth.on('connected', handleAccountChange);
+      web3auth.web3Auth.on('disconnected', () => {
+        setWeb3AuthAddress("");
+      });
+
+      return () => {
+        // Clean up event listeners
+        web3auth.web3Auth?.off('connected', handleAccountChange);
+        web3auth.web3Auth?.off('disconnected', () => {
+          setWeb3AuthAddress("");
+        });
+      };
+    }
+  }, [web3auth?.web3Auth]);
   
   // Debug log to see what Web3Auth provides
   useEffect(() => {

@@ -9,6 +9,10 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 5173,
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+      "Cross-Origin-Embedder-Policy": "unsafe-none",
+    },
     proxy: {
       "/api": {
         target: "http://backend-dev:8080", // compose service name & port

@@ -18,11 +18,37 @@ export default function Auth() {
   const web3auth = useWeb3Auth();
   const navigate = useNavigate();
 
-  // Redirect to dashboard if already connected
+
+  // Handle Web3Auth redirect callback
   useEffect(() => {
-    if (web3auth?.isConnected) {
-      navigate('/dashboard');
-    }
+    const handleCallback = async () => {
+      // Check if we're coming back from Web3Auth redirect (has hash parameters)
+      if (window.location.hash) {
+        console.log('Web3Auth callback detected:', window.location.hash);
+        
+        // Wait for Web3Auth to process the redirect callback
+        const checkConnection = async () => {
+          // Wait a bit for Web3Auth to initialize
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          if (web3auth?.isConnected) {
+            console.log('Web3Auth connected, redirecting to dashboard');
+            navigate('/dashboard');
+          } else {
+            console.log('Web3Auth not connected, staying on auth page');
+          }
+        };
+        
+        checkConnection();
+      }
+      
+      // Regular check for already connected users
+      if (web3auth?.isConnected && !window.location.hash) {
+        navigate('/dashboard');
+      }
+    };
+    
+    handleCallback();
   }, [web3auth?.isConnected, navigate]);
 
   async function handleSocialLogin(provider: string) {
@@ -31,8 +57,7 @@ export default function Auth() {
       // Check if already connected with Web3Auth
       if (web3auth?.isConnected) {
         toast?.success?.(`Already connected with ${provider}! Redirecting to dashboard...`);
-        // Redirect to dashboard immediately
-        window.location.href = '/dashboard';
+        // Let Web3Auth handle the redirect
         return;
       }
 
@@ -55,15 +80,12 @@ export default function Auth() {
         throw new Error('Web3Auth not initialized');
       }
       
-      // Use the correct Web3Auth v9 login method
+      // Use the correct Web3Auth v9 login method - this will redirect the user
       await web3AuthInstance.connectTo('openlogin', {
         loginProvider: loginProvider as any,
       });
       
-      toast?.success?.(`Successfully logged in with ${provider}!`);
-      
-      // Redirect to dashboard after successful login
-      window.location.href = '/dashboard';
+      // Note: User will be redirected by Web3Auth, so we don't need to navigate manually
       
     } catch (err: any) {
       console.error(`${provider} login error:`, err);

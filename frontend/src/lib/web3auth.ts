@@ -24,7 +24,8 @@ const openloginAdapter = new OpenloginAdapter({
   adapterSettings: {
     network: 'testnet',
     clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID || "BFe98cszmbLtc3IRlPEe43JCcz0nGfA-_lIIwxFamwleAtF_WyJRevv26XJ4qs2OKIVJp5iB_QtIpCO2yjNIiJc",
-    uxMode: 'redirect' as const, // ← Changed from 'popup' to 'redirect'
+    uxMode: 'redirect' as const,
+    redirectUrl: typeof window !== 'undefined' ? `${window.location.origin}/auth` : '/auth',
   },
   privateKeyProvider: privateKeyProvider,
 });
