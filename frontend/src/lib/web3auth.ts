@@ -1,6 +1,7 @@
-// Simplified configuration without adapters
-// Adapters are handled automatically by Web3Auth React integration
-// Chain configurations
+import { OpenloginAdapter } from '@web3auth/openlogin-adapter';
+import { EthereumPrivateKeyProvider } from '@web3auth/ethereum-provider';
+
+// Web3Auth configuration with Openlogin adapter
 const chainConfig = {
   chainNamespace: 'eip155' as const,
   chainId: '0x1', // Ethereum mainnet
@@ -11,26 +12,30 @@ const chainConfig = {
   tickerName: 'Ethereum',
 }
 
-// Simplified Web3Auth configuration for React
+// Initialize Ethereum PrivateKey Provider - REQUIRED FOR WALLET CREATION
+const privateKeyProvider = new EthereumPrivateKeyProvider({
+  config: { 
+    chainConfig: chainConfig 
+  },
+});
+
+// Initialize Openlogin adapter with PrivateKey Provider
+const openloginAdapter = new OpenloginAdapter({
+  adapterSettings: {
+    network: 'testnet',
+    clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID || "BFe98cszmbLtc3IRlPEe43JCcz0nGfA-_lIIwxFamwleAtF_WyJRevv26XJ4qs2OKIVJp5iB_QtIpCO2yjNIiJc",
+    uxMode: 'popup' as const,
+  },
+  privateKeyProvider: privateKeyProvider, // ← THIS WAS MISSING!
+});
+
+// Correct Web3Auth configuration with PrivateKey Provider
 export const web3authConfig = {
   web3AuthOptions: {
     clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID || "BFe98cszmbLtc3IRlPEe43JCcz0nGfA-_lIIwxFamwleAtF_WyJRevv26XJ4qs2OKIVJp5iB_QtIpCO2yjNIiJc",
     web3AuthNetwork: 'sapphire_devnet' as const,
     chainConfig: chainConfig,
-    uiConfig: {
-      theme: {
-        primary: '#0F1419',
-        secondary: '#1A1F25',
-        primaryText: '#ffffff',
-        secondaryText: '#ffffff',
-        gray: '#ffffff',
-      },
-      loginMethodsOrder: ['google', 'facebook', 'twitter', 'discord'] as const,
-      defaultLanguage: 'en' as const,
-      primaryButton: 'externalLogin' as const,
-      modalWidth: '500px',
-      modalZIndex: '99998',
-    },
+    privateKeyProvider: privateKeyProvider, // ← Also add to main config
   },
-  // No manual adapter configuration needed - handled by React integration
+  adapters: [openloginAdapter],
 }

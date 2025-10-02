@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
+import { useWeb3Auth } from '@web3auth/no-modal-react-hooks';
 import {
   Card,
   CardContent,
@@ -14,15 +15,43 @@ import { Wallet, ArrowRight } from "lucide-react";
 
 export default function Auth() {
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  const web3auth = useWeb3Auth();
 
   async function handleSocialLogin(provider: string) {
     setIsLoading(provider);
     try {
-      // TODO: Implement Web3Auth social login
-      toast?.info?.(`${provider} login coming soon!`);
-      console.log(`Login with ${provider}`);
+      // Map UI provider names to Web3Auth login types
+      const providerMap: { [key: string]: string } = {
+        Google: 'google',
+        Facebook: 'facebook', 
+        X: 'twitter',
+        Discord: 'discord'
+      };
+
+      const loginProvider = providerMap[provider];
+      if (!loginProvider) {
+        throw new Error(`Unsupported provider: ${provider}`);
+      }
+
+      // Call Web3Auth login - access the web3auth instance
+      const web3AuthInstance = web3auth.web3Auth;
+      if (!web3AuthInstance) {
+        throw new Error('Web3Auth not initialized');
+      }
+      
+      // Use the correct Web3Auth v9 login method
+      await web3AuthInstance.connectTo('openlogin', {
+        loginProvider: loginProvider as any,
+      });
+      
+      toast?.success?.(`Successfully logged in with ${provider}!`);
+      
+      // Redirect to dashboard after successful login
+      window.location.href = '/dashboard';
+      
     } catch (err: any) {
-      toast?.error?.(`${provider} login failed`);
+      console.error(`${provider} login error:`, err);
+      toast?.error?.(`${provider} login failed: ${err.message || 'Unknown error'}`);
     } finally {
       setIsLoading(null);
     }
