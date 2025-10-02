@@ -9,13 +9,15 @@ const router = Router();
 
 router.get("/holdings/:address", async (req, res) => {
   const address = String(req.params.address || "").trim();
+  const chainId = Number(req.query.chainId) || 1;
+  
   if (!address) {
     return res
       .status(400)
       .json({ error: { code: "BadRequest", message: "Address is required" } });
   }
   try {
-    const data = await getHoldings(address);
+    const data = await getHoldings(address, chainId);
     return res.json(data);
   } catch (e: any) {
     if (e?.code === "WalletNotFound") {
@@ -31,13 +33,15 @@ router.get("/holdings/:address", async (req, res) => {
 
 router.get("/overview/:address", async (req, res) => {
   const address = String(req.params.address || "").trim();
+  const chainId = Number(req.query.chainId) || 1;
+  
   if (!address)
     return res
       .status(400)
       .json({ error: { code: "BadRequest", message: "Address is required" } });
 
   try {
-    const data = await getOverview(address);
+    const data = await getOverview(address, chainId);
 
     const minUsd = Math.max(0, Number(req.query.minUsd ?? 0) || 0);
     const holdings = (data.holdings || []).filter(
@@ -83,6 +87,8 @@ router.get("/token/:address", async (req, res) => {
     typeof req.query.contract === "string" ? req.query.contract : undefined;
   const symbol =
     typeof req.query.symbol === "string" ? req.query.symbol : undefined;
+  const chainId = Number(req.query.chainId) || 1;
+  
   if (!address)
     return res
       .status(400)
@@ -96,7 +102,7 @@ router.get("/token/:address", async (req, res) => {
     });
 
   try {
-    const data = await getTokenForAddress({ address, contract, symbol });
+    const data = await getTokenForAddress({ address, contract, symbol, chainId });
     return res.json(data);
   } catch (e: any) {
     const msg = e?.message || "Something went wrong";

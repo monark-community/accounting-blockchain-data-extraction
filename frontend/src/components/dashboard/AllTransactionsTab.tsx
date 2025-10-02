@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -567,8 +568,72 @@ export default function AllTransactionsTab() {
           </div>
         )}
         {address && loading && items.length === 0 && (
-          <div className="p-6 text-sm text-slate-500">
-            Loading transactions…
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {visibleColumns.type && <TableHead>Type</TableHead>}
+                  {visibleColumns.date && <TableHead>Date</TableHead>}
+                  {visibleColumns.network && <TableHead>Network</TableHead>}
+                  {visibleColumns.asset && <TableHead>Asset</TableHead>}
+                  {visibleColumns.qty && <TableHead>Qty</TableHead>}
+                  {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
+                  {visibleColumns.counterparty && (
+                    <TableHead>Counterparty</TableHead>
+                  )}
+                  {visibleColumns.tx && <TableHead>Tx</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...Array(5)].map((_, idx) => (
+                  <TableRow key={`skeleton-${idx}`}>
+                    {visibleColumns.type && (
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="w-4 h-4" />
+                          <Skeleton className="h-4 w-16" />
+                        </div>
+                      </TableCell>
+                    )}
+                    {visibleColumns.date && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.network && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.asset && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.qty && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.usd && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.counterparty && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                    )}
+                    {visibleColumns.tx && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
         {address && error && (

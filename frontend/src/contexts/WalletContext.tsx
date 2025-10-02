@@ -1,8 +1,8 @@
-import React, { createContext, useContext, ReactNode } from 'react';
-import { 
-  useAccount, 
-  useConnect, 
-  useDisconnect, 
+import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
+import {
+  useAccount,
+  useConnect,
+  useDisconnect,
   useSwitchChain,
   useBalance,
   useEnsName,
@@ -32,9 +32,11 @@ interface WalletContextType {
   connectedWallets: Wallet[];
   userPreferences: UserPreferences;
   currentNetwork: string;
+  chainId: number;
   isMetaMaskInstalled: boolean;
   connectError: Error | null;
   isPending: boolean;
+  isLoggingOut: boolean;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   addWallet: (wallet: Omit<Wallet, 'id'>) => void;
@@ -65,18 +67,19 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
-  
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
   // Get balance and ENS name for connected wallet
   const { data: balance } = useBalance({
     address: address,
   });
-  
+
   const { data: ensName } = useEnsName({
     address: address,
   });
 
   // Check if MetaMask is installed
-  const isMetaMaskInstalled = typeof window !== 'undefined' && 
+  const isMetaMaskInstalled = typeof window !== 'undefined' &&
     connectors.some(connector => connector.name === 'MetaMask');
 
   // Get current network name
@@ -107,6 +110,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const disconnectWallet = () => {
+    setIsLoggingOut(true);
     disconnect();
   };
 
@@ -159,11 +163,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   const switchNetworkHandler = async (chainId: number) => {
     console.log('Attempting to switch to chain ID:', chainId);
-    
+
     if (!window.ethereum) {
       throw new Error('MetaMask is not installed');
     }
-    
+
     try {
       // First try to switch to the network using MetaMask API directly
       console.log('Calling wallet_switchEthereumChain with chainId:', `0x${chainId.toString(16)}`);
@@ -174,7 +178,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       console.log('Network switched successfully');
     } catch (error: any) {
       console.log('Switch failed with error:', error);
-      
+
       // If the network is not added to MetaMask (error code 4902), add it first
       if (error.code === 4902) {
         console.log('Network not found, attempting to add network');
@@ -285,6 +289,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return "0";
   };
 
+  // Reset isLoggingOut when disconnect completes
+  useEffect(() => {
+    if (!isConnected && isLoggingOut) {
+      setIsLoggingOut(false);
+    }
+  }, [isConnected, isLoggingOut]);
+
   const userPreferences: UserPreferences = {
     currency: 'CAD',
     country: 'Canada',
@@ -299,9 +310,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       connectedWallets,
       userPreferences,
       currentNetwork,
+      chainId,
       isMetaMaskInstalled,
       connectError,
       isPending,
+      isLoggingOut,
       connectWallet,
       disconnectWallet,
       addWallet,

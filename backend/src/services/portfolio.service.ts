@@ -1,5 +1,5 @@
 import { de } from "zod/v4/locales";
-import { alchemy } from "../utils/alchemy";
+import { getAlchemyForChainId, getNetworkName } from "../utils/alchemy";
 import {
   getEthUsd,
   getErc20Usd,
@@ -23,7 +23,9 @@ function fromHexQty(hex: string, decimals = 18): string {
   return s ? `${whole}.${s}` : whole.toString();
 }
 
-export async function getHoldings(address: string) {
+export async function getHoldings(address: string, chainId: number = 1) {
+  const alchemy = getAlchemyForChainId(chainId);
+  
   const ethBal = await alchemy.core.getBalance(address).catch(() => null);
   if (!ethBal) {
     const err = new Error("Wallet not found");
@@ -51,7 +53,8 @@ export async function getHoldings(address: string) {
 
   return {
     address,
-    chain: process.env.ALCHEMY_NETWORK ?? "eth-sepolia",
+    chain: getNetworkName(chainId),
+    chainId,
     currency: "USD",
     asOf: new Date().toISOString(),
     holdings: [
@@ -61,9 +64,9 @@ export async function getHoldings(address: string) {
   };
 }
 
-export async function getOverview(address: string) {
+export async function getOverview(address: string, chainId: number = 1) {
   // 1) Base holdings + current prices
-  const base = await getHoldings(address);
+  const base = await getHoldings(address, chainId);
   const ethUsd = await getEthUsd();
 
   const erc20 = base.holdings.filter((h) => h.contract && Number(h.qty) > 0);
@@ -170,8 +173,11 @@ export async function getTokenForAddress(params: {
   address: string;
   contract?: string;
   symbol?: string;
+  chainId?: number;
 }) {
   const address = params.address.trim();
+  const chainId = params.chainId || 1;
+  const alchemy = getAlchemyForChainId(chainId);
   let contracts: string[] = [];
 
   if (params.contract) {
