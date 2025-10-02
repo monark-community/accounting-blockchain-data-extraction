@@ -1,5 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   TrendingUp,
   TrendingDown,
@@ -376,16 +377,22 @@ const Dashboard = () => {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-slate-600 text-sm font-medium">
                       Total Portfolio Value
                     </p>
-                    <CurrencyDisplay
-                      amount={ov?.kpis.totalValueUsd ?? 0}
-                      currency={userPreferences.currency}
-                      variant="large"
-                      showSign={false}
-                    />
+                    {loadingOv ? (
+                      <div className="mt-2">
+                        <Skeleton className="h-8 w-32" />
+                      </div>
+                    ) : (
+                      <CurrencyDisplay
+                        amount={ov?.kpis.totalValueUsd ?? 0}
+                        currency={userPreferences.currency}
+                        variant="large"
+                        showSign={false}
+                      />
+                    )}
                   </div>
                   <Wallet className="w-12 h-12 text-blue-500" />
                 </div>
@@ -393,17 +400,25 @@ const Dashboard = () => {
 
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-slate-600 text-sm font-medium">
                       24h Change
                     </p>
-                    <CurrencyDisplay
-                      amount={ov?.kpis.delta24hUsd ?? 0}
-                      currency={userPreferences.currency}
-                      variant="large"
-                    />
+                    {loadingOv ? (
+                      <div className="mt-2">
+                        <Skeleton className="h-8 w-24" />
+                      </div>
+                    ) : (
+                      <CurrencyDisplay
+                        amount={ov?.kpis.delta24hUsd ?? 0}
+                        currency={userPreferences.currency}
+                        variant="large"
+                      />
+                    )}
                   </div>
-                  {ov?.kpis.delta24hUsd >= 0 ? (
+                  {loadingOv ? (
+                    <Skeleton className="w-12 h-12 rounded-full" />
+                  ) : ov?.kpis.delta24hUsd >= 0 ? (
                     <TrendingUp className="w-12 h-12 text-green-500" />
                   ) : (
                     <TrendingDown className="w-12 h-12 text-red-500" />
@@ -474,30 +489,29 @@ const Dashboard = () => {
                   Asset Allocation
                 </h3>
 
-                {!ov && (
+                {loadingOv ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-[300px] w-full" />
+                  </div>
+                ) : !ov ? (
                   <div className="text-sm text-slate-500">
                     Load an address to see allocation.
                   </div>
-                )}
-                {ov && allocationData.length === 0 && (
+                ) : ov && allocationData.length === 0 ? (
                   <div className="text-sm text-slate-500">
                     No priced tokens to display.
                   </div>
-                )}
-
-                {ov && allocationData.length > 0 && (
+                ) : (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={allocationData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                       <Tooltip
-                        formatter={(value: any, _name, entry: any) => {
+                        formatter={(value: unknown, _name: string, entry: { payload?: { pct: number; usd: number } }) => {
                           if (entry?.payload) {
-                            const row = entry.payload as {
-                              pct: number;
-                              usd: number;
-                            };
+                            const row = entry.payload;
                             return [
                               `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
                               "Allocation",
@@ -530,15 +544,33 @@ const Dashboard = () => {
 
               <div className="space-y-4">
                 {loadingOv && (
-                  <div className="text-sm text-slate-500">
-                    Loading overview…
-                  </div>
+                  <>
+                    {/* Loading skeletons for top holdings */}
+                    {[...Array(3)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="w-10 h-10 rounded-full" />
+                          <div>
+                            <Skeleton className="h-4 w-16 mb-2" />
+                            <Skeleton className="h-3 w-20" />
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Skeleton className="h-4 w-20 mb-1" />
+                          <Skeleton className="h-3 w-12" />
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )}
                 {errorOv && (
                   <div className="text-sm text-red-500">{errorOv}</div>
                 )}
 
-                {ov &&
+                {!loadingOv && ov &&
                   topHoldingsLive.map((h) => {
                     const delta = h.delta24hUsd ?? null;
                     const pct = h.delta24hPct ?? null;
