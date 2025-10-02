@@ -5,7 +5,7 @@ import { EthereumPrivateKeyProvider } from '@web3auth/ethereum-provider';
 const chainConfig = {
   chainNamespace: 'eip155' as const,
   chainId: '0x1', // Ethereum mainnet
-  rpcTarget: 'https://rpc.ankr.com/eth',
+  rpcTarget: `https://rpc.ankr.com/eth${import.meta.env.VITE_ANKR_API_KEY ? `/${import.meta.env.VITE_ANKR_API_KEY}` : ''}`,
   displayName: 'Ethereum Mainnet',
   blockExplorer: 'https://etherscan.io',
   ticker: 'ETH',
@@ -24,9 +24,9 @@ const openloginAdapter = new OpenloginAdapter({
   adapterSettings: {
     network: 'testnet',
     clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID || "BFe98cszmbLtc3IRlPEe43JCcz0nGfA-_lIIwxFamwleAtF_WyJRevv26XJ4qs2OKIVJp5iB_QtIpCO2yjNIiJc",
-    uxMode: 'popup' as const,
+    uxMode: 'redirect' as const, // ← Changed from 'popup' to 'redirect'
   },
-  privateKeyProvider: privateKeyProvider, // ← THIS WAS MISSING!
+  privateKeyProvider: privateKeyProvider,
 });
 
 // Correct Web3Auth configuration with PrivateKey Provider

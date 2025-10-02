@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 import { useWeb3Auth } from '@web3auth/no-modal-react-hooks';
 import {
@@ -16,10 +16,26 @@ import { Wallet, ArrowRight } from "lucide-react";
 export default function Auth() {
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const web3auth = useWeb3Auth();
+  const navigate = useNavigate();
+
+  // Redirect to dashboard if already connected
+  useEffect(() => {
+    if (web3auth?.isConnected) {
+      navigate('/dashboard');
+    }
+  }, [web3auth?.isConnected, navigate]);
 
   async function handleSocialLogin(provider: string) {
     setIsLoading(provider);
     try {
+      // Check if already connected with Web3Auth
+      if (web3auth?.isConnected) {
+        toast?.success?.(`Already connected with ${provider}! Redirecting to dashboard...`);
+        // Redirect to dashboard immediately
+        window.location.href = '/dashboard';
+        return;
+      }
+
       // Map UI provider names to Web3Auth login types
       const providerMap: { [key: string]: string } = {
         Google: 'google',

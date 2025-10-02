@@ -8,6 +8,7 @@ import {
   useEnsName,
   useChainId
 } from 'wagmi';
+import { useWeb3Auth } from '@web3auth/no-modal-react-hooks';
 import { mainnet, polygon, bsc, avalanche, arbitrum, optimism } from 'wagmi/chains';
 
 export interface Wallet {
@@ -38,7 +39,7 @@ interface WalletContextType {
   isPending: boolean;
   isLoggingOut: boolean;
   connectWallet: () => Promise<void>;
-  disconnectWallet: () => void;
+  disconnectWallet: () => Promise<void>;
   addWallet: (wallet: Omit<Wallet, 'id'>) => void;
   removeWallet: (id: string) => void;
   updatePreferences: (preferences: Partial<UserPreferences>) => void;
@@ -68,6 +69,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  
+  // Web3Auth integration
+  const web3auth = useWeb3Auth();
 
   // Get balance and ENS name for connected wallet
   const { data: balance } = useBalance({
@@ -85,18 +89,83 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   // Get current network name
   const currentNetwork = networks[chainId]?.name || 'Unknown Network';
 
-  // Create wallet data from connected account
-  const connectedWallets: Wallet[] = address ? [{
-    id: address,
-    address,
-    name: ensName || `Main Wallet`,
-    network: currentNetwork.toLowerCase(),
-    balance: balance ? balance.formatted : undefined,
-    ensName
-  }] : [];
+  // Check Web3Auth connection status
+  const web3AuthIsConnected = web3auth?.isConnected || false;
+  // Get Web3Auth wallet address using getAccount() method
+  const [web3AuthAddress, setWeb3AuthAddress] = useState<string>("");
+  const web3AuthUserInfo = web3auth?.userInfo;
+  
+  // Get Web3Auth account address when connected
+  useEffect(() => {
+    const getWeb3AuthAccount = async () => {
+      if (web3AuthIsConnected && web3auth?.web3Auth?.provider) {
+        try {
+          const provider = web3auth.web3Auth.provider;
+          const accounts = await provider.request({ method: "eth_accounts" });
+          if (accounts && accounts.length > 0) {
+            setWeb3AuthAddress(accounts[0]);
+          }
+        } catch (error) {
+          console.error('Error getting Web3Auth account:', error);
+        }
+      } else {
+        setWeb3AuthAddress("");
+      }
+    };
+    
+    getWeb3AuthAccount();
+  }, [web3AuthIsConnected, web3auth]);
+  
+  // Debug log to see what Web3Auth provides
+  useEffect(() => {
+    if (web3auth) {
+      console.log('Web3Auth debug info:', {
+        isConnected: web3auth.isConnected,
+        userInfo: web3auth.userInfo,
+        web3AuthAddress: web3AuthAddress,
+        allProperties: Object.keys(web3auth)
+      });
+    }
+  }, [web3auth, web3AuthAddress]);
 
-  const userWallet = address || "";
-  const userAlias = ensName || (address ? `Wallet ${address.slice(0, 6)}...${address.slice(-4)}` : "");
+  // Determine the primary wallet address (prioritize MetaMask over Web3Auth)
+  const primaryAddress = address || web3AuthAddress;
+  const primaryIsConnected = isConnected || web3AuthIsConnected;
+
+  // Create wallet data from connected account
+  const connectedWallets: Wallet[] = [];
+  
+  // Add MetaMask wallet if connected
+  if (address) {
+    connectedWallets.push({
+      id: address,
+      address,
+      name: ensName || `MetaMask Wallet`,
+      network: currentNetwork.toLowerCase(),
+      balance: balance ? balance.formatted : undefined,
+      ensName
+    });
+  }
+  
+  // Add Web3Auth wallet if connected (avoid duplicates)
+  if (web3AuthAddress && !address) {
+    const userName = (web3AuthUserInfo as any)?.name || (web3AuthUserInfo as any)?.email || 'Social Wallet';
+    connectedWallets.push({
+      id: web3AuthAddress,
+      address: web3AuthAddress,
+      name: userName,
+      network: currentNetwork.toLowerCase(),
+      balance: undefined, // Web3Auth doesn't provide balance directly
+      ensName: undefined
+    });
+    // Debug log to verify Web3Auth integration
+    console.log('Web3Auth wallet detected:', { address: web3AuthAddress, userName, userInfo: web3AuthUserInfo });
+  }
+
+  const userWallet = primaryAddress;
+  const userAlias = ensName || 
+    ((web3AuthUserInfo as any)?.name || (web3AuthUserInfo as any)?.email || '') ||
+    (primaryAddress ? `Wallet ${primaryAddress.slice(0, 6)}...${primaryAddress.slice(-4)}` : "");
 
   const connectWallet = async () => {
     const metaMaskConnector = connectors.find(connector => connector.name === 'MetaMask');
@@ -109,9 +178,22 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const disconnectWallet = () => {
+  const disconnectWallet = async () => {
     setIsLoggingOut(true);
-    disconnect();
+    try {
+      // Disconnect Web3Auth first if connected
+      if (web3AuthIsConnected && web3auth?.web3Auth) {
+        await web3auth.web3Auth.logout();
+      }
+      // Also disconnect from Wagmi if connected
+      if (isConnected) {
+        disconnect();
+      }
+    } catch (error) {
+      console.error('Disconnect error:', error);
+      // Fallback to wagmi disconnect
+      disconnect();
+    }
   };
 
   const addWallet = (wallet: Omit<Wallet, 'id'>) => {
@@ -304,7 +386,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <WalletContext.Provider value={{
-      isConnected,
+      isConnected: primaryIsConnected,
       userWallet,
       userAlias,
       connectedWallets,
