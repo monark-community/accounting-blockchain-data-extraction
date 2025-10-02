@@ -26,10 +26,13 @@ export default function Auth() {
       if (window.location.hash) {
         console.log('Web3Auth callback detected:', window.location.hash);
         
+        // Show immediate toast since we detected the callback
+        toast?.success?.('Successfully logged in with social provider!');
+        
         // Wait for Web3Auth to process the redirect callback
         const checkConnection = async () => {
           // Wait a bit for Web3Auth to initialize
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1500));
           
           if (web3auth?.isConnected) {
             console.log('Web3Auth connected, redirecting to dashboard');
@@ -49,6 +52,17 @@ export default function Auth() {
     };
     
     handleCallback();
+  }, [web3auth?.isConnected, navigate]);
+
+  // Additional effect to monitor Web3Auth connection changes
+  useEffect(() => {
+    if (web3auth?.isConnected && window.location.hash) {
+      console.log('Web3Auth connection detected via state change');
+      toast?.success?.('Successfully logged in with social provider!');
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1000);
+    }
   }, [web3auth?.isConnected, navigate]);
 
   async function handleSocialLogin(provider: string) {
