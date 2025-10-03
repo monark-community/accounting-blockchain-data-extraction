@@ -1,0 +1,80 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+title Slide 3 — Vue logique (composants & rôles)
+
+package "Frontend (Next.js)" as FE {
+  [UI Holdings]
+  [UI Transactions]
+  [UI Export]
+  [Auth Client (Wallet/OAuth)]
+}
+
+package "API Gateway (Express/TS)" as API {
+  [REST Endpoints]
+  [Orchestration]
+  [Validation & Security]
+}
+
+package "Services Métier" as SVC {
+  [Ingestion]
+  [Normalisation]
+  [Classification]
+  [Reporting / Export]
+  [Data Access]
+}
+
+database "PostgreSQL" as DB
+cloud "Blockchain Sources" as CHAIN {
+  [The Graph]
+  [RPC (Alchemy/...)]
+}
+cloud "OAuth Provider" as OAUTH
+cloud "Pricing Provider" as PRICES {
+  [Dexscreener]
+  [Autres prix]
+}
+
+' --- Flux principaux ---
+FE --> API : HTTPS (REST)
+API --> SVC : appels internes
+SVC --> DB : lecture/écriture (idempotent)
+
+' --- Intégrations externes ---
+SVC --> CHAIN : Tx/Events (GraphQL / JSON-RPC)
+API --> OAUTH : Auth (redirect/callback)
+SVC --> PRICES : Cours tokens
+
+' --- Lectures pour UI ---
+API --> FE : Holdings/Transactions/KPIs
+API --> FE : Lien export (CSV/JSON)
+
+' --- Détails rôles (notes courtes) ---
+note right of Ingestion
+- pagination/curseurs
+- fallback providers
+end note
+
+note right of Normalisation
+- unités, décimales
+- métadonnées tokens
+end note
+
+note right of Classification
+- type (income/expense/...)
+- contrepartie, fees
+end note
+
+note right of "Reporting / Export"
+- job async
+- CSV/JSON
+end note
+
+note right of "Data Access"
+- index ciblés
+- vues/materialized
+end note
+
+@enduml

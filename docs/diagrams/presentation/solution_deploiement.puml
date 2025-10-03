@@ -1,0 +1,50 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+title Slide 2 — Déploiement (haut niveau)
+
+actor "Utilisateur" as User
+
+node "Vercel\n<<Frontend Next.js>>" as VERCEL
+node "Infra Backend\n<<Docker Hosts / Orchestrator>>" as INFRA {
+  node "API\nExpress/TypeScript\n<<Docker Container>>" as API
+  database "PostgreSQL\n<<Managed / VM>>" as PG
+}
+
+cloud "OAuth Provider\n<<External>>" as OAUTH
+cloud "The Graph / Alchemy (RPC)\n<<External>>" as CHAIN
+cloud "Dexscreener (Prix)\n<<External>>" as PRICES
+node "Storage Exports\n<<File/Object>>" as STORE
+
+' --- Flux utilisateur ---
+User --> VERCEL : HTTPS (UI)
+VERCEL --> API : HTTPS (REST/JWT)
+
+' --- Backend <-> DB ---
+API --> PG : LAN privé (5432)
+
+' --- Intégrations externes ---
+API --> OAUTH : OAuth/OIDC (HTTPS)
+API --> CHAIN : GraphQL / JSON-RPC (HTTPS)
+API --> PRICES : HTTP(S) API (prix)
+
+' --- Exports ---
+API --> STORE : write/read fichiers (CSV/JSON)
+VERCEL <-- API : liens de téléchargement
+
+' --- Notes sécurité / ops ---
+note right of API
+- Conteneur Docker
+- CORS restreint (origines Vercel)
+- Cookies httpOnly / JWT
+- Idempotence (upsert)
+end note
+
+note bottom of PG
+- Réseau privé
+- Sauvegardes régulières
+- Index clés (date, address, tx_hash)
+end note
+@enduml

@@ -1,0 +1,58 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+skinparam ParticipantPadding 10
+title 5.2.5 — Exporter (CSV/JSON) une sélection de données
+
+actor User
+participant "Frontend (Next.js)" as Front
+participant "API /exports" as API
+participant "Reporting Service" as Rep
+database "DB (PostgreSQL)" as DB
+participant "Storage (file/obj)" as Store
+
+== Demande d'export ==
+note over Front
+  L’utilisateur choisit:
+  - kind: transactions | holdings
+  - scope: pageVisible | filtresCourants | tout
+  - format: CSV | JSON
+end note
+Front -> API: POST /api/exports\n{kind,address,scope,filters,format}
+API -> API: createExportJob(payload)
+API --> Front: 202 { exportId, status:"PENDING" }
+
+== Polling statut ==
+loop Toutes les X s
+  Front -> API: GET /api/exports/{exportId}/status
+  API --> Front: { status, progress% }
+end
+
+== Exécution du job ==
+API -> Rep: startExport(exportId, payload)
+Rep -> DB: SELECT selon kind/scope/filters\n-- stream rows par lot (mémoire O(1))
+DB --> Rep: rows (cursor)
+Rep -> Rep: Format en CSV/JSON (flux)
+Rep -> Store: WRITE /exports/{exportId}.{csv|json}
+Store --> Rep: OK
+Rep -> API: mark DONE (size, checksum, url)
+
+== Téléchargement ==
+alt Statut DONE
+  Front -> API: GET /api/exports/{exportId}/download
+  API -> Store: READ fichier
+  Store --> API: stream bytes
+  API --> Front: 200 (fichier)
+else Statut ERROR
+  API --> Front: 500 { error: "ExportFailed" }
+end
+
+== Remarques ==
+note over API,Rep
+  - Déduplication / idempotence par exportId
+  - Limites de volume (ex: hard cap 100k lignes)
+  - Logs d’audit (qui exporte quoi)
+end note
+@enduml
