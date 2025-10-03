@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
+import { useWeb3Auth } from '@web3auth/no-modal-react-hooks';
 import {
   Card,
   CardContent,
@@ -14,15 +15,95 @@ import { Wallet, ArrowRight } from "lucide-react";
 
 export default function Auth() {
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  const web3auth = useWeb3Auth();
+  const navigate = useNavigate();
+
+
+  // Handle Web3Auth redirect callback
+  useEffect(() => {
+    const handleCallback = async () => {
+      // Check if we're coming back from Web3Auth redirect (has hash parameters)
+      if (window.location.hash) {
+        console.log('Web3Auth callback detected:', window.location.hash);
+        
+        // Show immediate toast since we detected the callback
+        toast?.success?.('Successfully logged in with social provider!');
+        
+        // Wait for Web3Auth to process the redirect callback
+        const checkConnection = async () => {
+          // Wait a bit for Web3Auth to initialize
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          
+          if (web3auth?.isConnected) {
+            console.log('Web3Auth connected, redirecting to dashboard');
+            navigate('/dashboard');
+          } else {
+            console.log('Web3Auth not connected, staying on auth page');
+          }
+        };
+        
+        checkConnection();
+      }
+      
+      // Regular check for already connected users
+      if (web3auth?.isConnected && !window.location.hash) {
+        navigate('/dashboard');
+      }
+    };
+    
+    handleCallback();
+  }, [web3auth?.isConnected, navigate]);
+
+  // Additional effect to monitor Web3Auth connection changes
+  useEffect(() => {
+    if (web3auth?.isConnected && window.location.hash) {
+      console.log('Web3Auth connection detected via state change');
+      toast?.success?.('Successfully logged in with social provider!');
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1000);
+    }
+  }, [web3auth?.isConnected, navigate]);
 
   async function handleSocialLogin(provider: string) {
     setIsLoading(provider);
     try {
-      // TODO: Implement Web3Auth social login
-      toast?.info?.(`${provider} login coming soon!`);
-      console.log(`Login with ${provider}`);
+      // Check if already connected with Web3Auth
+      if (web3auth?.isConnected) {
+        toast?.success?.(`Already connected with ${provider}! Redirecting to dashboard...`);
+        // Let Web3Auth handle the redirect
+        return;
+      }
+
+      // Map UI provider names to Web3Auth login types
+      const providerMap: { [key: string]: string } = {
+        Google: 'google',
+        Facebook: 'facebook', 
+        X: 'twitter',
+        Discord: 'discord'
+      };
+
+      const loginProvider = providerMap[provider];
+      if (!loginProvider) {
+        throw new Error(`Unsupported provider: ${provider}`);
+      }
+
+      // Call Web3Auth login - access the web3auth instance
+      const web3AuthInstance = web3auth.web3Auth;
+      if (!web3AuthInstance) {
+        throw new Error('Web3Auth not initialized');
+      }
+      
+      // Use the correct Web3Auth v9 login method - this will redirect the user
+      await web3AuthInstance.connectTo('openlogin', {
+        loginProvider: loginProvider as any,
+      });
+      
+      // Note: User will be redirected by Web3Auth, so we don't need to navigate manually
+      
     } catch (err: any) {
-      toast?.error?.(`${provider} login failed`);
+      console.error(`${provider} login error:`, err);
+      toast?.error?.(`${provider} login failed: ${err.message || 'Unknown error'}`);
     } finally {
       setIsLoading(null);
     }

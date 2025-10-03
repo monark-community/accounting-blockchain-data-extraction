@@ -15,6 +15,9 @@ const Navbar = () => {
   const { isConnected, userWallet, userAlias, disconnectWallet, currentNetwork, connectedWallets } = useWallet();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Debug log to see wallet values
+  console.log('Navbar debug:', { isConnected, userWallet, userAlias, currentNetwork });
 
   const handleLogout = () => {
     disconnectWallet();
@@ -71,7 +74,7 @@ const Navbar = () => {
                   </Avatar>
                   <div className="text-left">
                     <div className="text-white font-medium text-sm">{userAlias}</div>
-                    <div className="text-gray-400 text-xs">{userWallet.slice(0, 6)}...{userWallet.slice(-4)}</div>
+                    <div className="text-gray-400 text-xs font-mono break-all">{userWallet}</div>
                     {currentNetwork && (
                       <div className="text-blue-400 text-xs">{currentNetwork}</div>
                     )}
