@@ -1,0 +1,24 @@
+@startuml
+title 6.2 — Topologie 
+
+actor User
+
+package "Internet (TLS)" #DDDDDD {
+  node "Frontend (Next.js)" as FE
+  cloud "The Graph / RPC" as GRAPH
+}
+
+package "Zone privée (VPC / VM)" #EEEEEE {
+  node "API / portfolios (Docker)\nVM ~2 vCPU • 2–4 GB RAM" as API
+  database "DB (PostgreSQL)\n10–50 GB" as DB
+  ' Optionnel :
+  node "Stockage objet (S3/MinIO)\nExports CSV/JSON" as OBJ
+}
+
+User --> FE : HTTPS
+FE --> API : HTTPS (CORS/JWT)
+API --> DB  : LAN/VPC (connexion DB)
+API --> GRAPH : HTTPS / Web3 RPC
+API --> OBJ : LAN/VPC (PUT/GET)  ' (si utilisé)
+
+@enduml

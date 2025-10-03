@@ -1,5 +1,6 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   TrendingUp,
   TrendingDown,
@@ -29,7 +30,7 @@ import {
   type CapitalGainEntry,
   type AccountingMethod,
 } from "@/utils/capitalGains";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useMemo } from "react";
 import { Tooltip } from "recharts";
 
@@ -40,6 +41,8 @@ type PricedHolding = {
   qty: string;
   priceUsd: number;
   valueUsd: number;
+  delta24hUsd?: number | null;
+  delta24hPct?: number | null;
 };
 
 type OverviewResponse = {
@@ -254,7 +257,8 @@ const fmtUSD = (n: number) =>
   });
 
 const Dashboard = () => {
-  const { connectedWallets, getWalletName, userPreferences } = useWallet();
+  const { connectedWallets, getWalletName, userPreferences, chainId, userWallet, isConnected } = useWallet();
+  const navigate = useNavigate();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
 
@@ -279,7 +283,17 @@ const Dashboard = () => {
   const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
   const [params] = useSearchParams();
-  const address = params.get("address") || "";
+  const urlAddress = params.get("address") || "";
+
+  // Use connected wallet address if available, otherwise use URL address
+  const address = isConnected && userWallet ? userWallet : urlAddress;
+
+  // Redirect to home if no address available and not connected
+  useEffect(() => {
+    if (!address && !isConnected) {
+      navigate("/");
+    }
+  }, [address, isConnected, navigate]);
 
   // --- Overview state ---
   const [ov, setOv] = useState<OverviewResponse | null>(null);
@@ -328,12 +342,12 @@ const Dashboard = () => {
     if (!address) return;
     setLoadingOv(true);
     setErrorOv(null);
-    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}?minUsd=1`)
+    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}?minUsd=1&chainId=${chainId}`)
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then(setOv)
       .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
       .finally(() => setLoadingOv(false));
-  }, [address]);
+  }, [address, chainId, userWallet, isConnected]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -352,9 +366,9 @@ const Dashboard = () => {
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="income">Income</TabsTrigger>
-            <TabsTrigger value="expenses">Expenses</TabsTrigger>
-            <TabsTrigger value="capital-gains">Capital Gains</TabsTrigger>
+            {/* <TabsTrigger value="income">Income</TabsTrigger>
+            <TabsTrigger value="expenses">Expenses</TabsTrigger> */}
+            {/* <TabsTrigger value="capital-gains">Capital Gains</TabsTrigger> */}
             <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
           </TabsList>
 
@@ -363,16 +377,22 @@ const Dashboard = () => {
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-slate-600 text-sm font-medium">
                       Total Portfolio Value
                     </p>
-                    <CurrencyDisplay
-                      amount={ov?.kpis.totalValueUsd ?? 0}
-                      currency={userPreferences.currency}
-                      variant="large"
-                      showSign={false}
-                    />
+                    {loadingOv ? (
+                      <div className="mt-2">
+                        <Skeleton className="h-8 w-32" />
+                      </div>
+                    ) : (
+                      <CurrencyDisplay
+                        amount={ov?.kpis.totalValueUsd ?? 0}
+                        currency={userPreferences.currency}
+                        variant="large"
+                        showSign={false}
+                      />
+                    )}
                   </div>
                   <Wallet className="w-12 h-12 text-blue-500" />
                 </div>
@@ -380,23 +400,35 @@ const Dashboard = () => {
 
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="text-slate-600 text-sm font-medium">
                       24h Change
                     </p>
-                    <CurrencyDisplay
-                      amount={ov?.kpis.delta24hUsd ?? 0}
-                      currency={userPreferences.currency}
-                      variant="large"
-                    />
+                    {loadingOv ? (
+                      <div className="mt-2">
+                        <Skeleton className="h-8 w-24" />
+                      </div>
+                    ) : (
+                      <CurrencyDisplay
+                        amount={ov?.kpis.delta24hUsd ?? 0}
+                        currency={userPreferences.currency}
+                        variant="large"
+                      />
+                    )}
                   </div>
-                  {ov?.kpis.delta24hUsd >= 0 ? (
+                  {loadingOv ? (
+                    <Skeleton className="w-12 h-12 rounded-full" />
+                  ) : ov?.kpis.delta24hUsd >= 0 ? (
                     <TrendingUp className="w-12 h-12 text-green-500" />
                   ) : (
                     <TrendingDown className="w-12 h-12 text-red-500" />
                   )}
                 </div>
               </Card>
+
+              {/* 
+              
+              TO DO : Metrics below require real data, so hiding for now, do after the MVP (demo) is done
 
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
@@ -428,12 +460,12 @@ const Dashboard = () => {
                   </div>
                   <DollarSign className="w-12 h-12 text-orange-500" />
                 </div>
-              </Card>
+              </Card> */}
             </div>
 
             {/* Charts */}
             <div className="grid lg:grid-cols-2 gap-6">
-              <Card className="p-6 bg-white shadow-sm">
+              {/* <Card className="p-6 bg-white shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   Portfolio Performance
                 </h3>
@@ -450,37 +482,36 @@ const Dashboard = () => {
                     />
                   </LineChart>
                 </ResponsiveContainer>
-              </Card>
+              </Card> */}
 
               <Card className="p-6 bg-white shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   Asset Allocation
                 </h3>
 
-                {!ov && (
+                {loadingOv ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-[300px] w-full" />
+                  </div>
+                ) : !ov ? (
                   <div className="text-sm text-slate-500">
                     Load an address to see allocation.
                   </div>
-                )}
-                {ov && allocationData.length === 0 && (
+                ) : ov && allocationData.length === 0 ? (
                   <div className="text-sm text-slate-500">
                     No priced tokens to display.
                   </div>
-                )}
-
-                {ov && allocationData.length > 0 && (
+                ) : (
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={allocationData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                       <Tooltip
-                        formatter={(value: any, _name, entry: any) => {
+                        formatter={(value: unknown, _name: string, entry: { payload?: { pct: number; usd: number } }) => {
                           if (entry?.payload) {
-                            const row = entry.payload as {
-                              pct: number;
-                              usd: number;
-                            };
+                            const row = entry.payload;
                             return [
                               `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
                               "Allocation",
@@ -513,15 +544,33 @@ const Dashboard = () => {
 
               <div className="space-y-4">
                 {loadingOv && (
-                  <div className="text-sm text-slate-500">
-                    Loading overview…
-                  </div>
+                  <>
+                    {/* Loading skeletons for top holdings */}
+                    {[...Array(3)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="w-10 h-10 rounded-full" />
+                          <div>
+                            <Skeleton className="h-4 w-16 mb-2" />
+                            <Skeleton className="h-3 w-20" />
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Skeleton className="h-4 w-20 mb-1" />
+                          <Skeleton className="h-3 w-12" />
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 )}
                 {errorOv && (
                   <div className="text-sm text-red-500">{errorOv}</div>
                 )}
 
-                {ov &&
+                {!loadingOv && ov &&
                   topHoldingsLive.map((h) => {
                     const delta = h.delta24hUsd ?? null;
                     const pct = h.delta24hPct ?? null;
@@ -529,8 +578,8 @@ const Dashboard = () => {
                       delta == null
                         ? "text-slate-600"
                         : delta >= 0
-                        ? "text-green-600"
-                        : "text-red-600";
+                          ? "text-green-600"
+                          : "text-red-600";
                     return (
                       <div
                         key={(h.contract ?? h.symbol) || Math.random()}
@@ -548,9 +597,9 @@ const Dashboard = () => {
                               {/* weight from allocation isn’t 1:1; show share via value proportion */}
                               {ov.kpis?.totalValueUsd
                                 ? `${(
-                                    (h.valueUsd / ov.kpis.totalValueUsd) *
-                                    100
-                                  ).toFixed(1)}% of portfolio`
+                                  (h.valueUsd / ov.kpis.totalValueUsd) *
+                                  100
+                                ).toFixed(1)}% of portfolio`
                                 : "—"}
                             </p>
                           </div>
@@ -620,11 +669,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="all-transactions">
-            <AllTransactionsTab
-              transactions={transactions}
-              connectedWallets={connectedWallets}
-              getWalletName={getWalletName}
-            />
+            <AllTransactionsTab />
           </TabsContent>
         </Tabs>
       </main>

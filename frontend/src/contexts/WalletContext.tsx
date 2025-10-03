@@ -1,13 +1,14 @@
-import React, { createContext, useContext, ReactNode } from 'react';
-import { 
-  useAccount, 
-  useConnect, 
-  useDisconnect, 
+import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
+import {
+  useAccount,
+  useConnect,
+  useDisconnect,
   useSwitchChain,
   useBalance,
   useEnsName,
   useChainId
 } from 'wagmi';
+import { useWeb3Auth } from '@web3auth/no-modal-react-hooks';
 import { mainnet, polygon, bsc, avalanche, arbitrum, optimism } from 'wagmi/chains';
 
 export interface Wallet {
@@ -32,11 +33,13 @@ interface WalletContextType {
   connectedWallets: Wallet[];
   userPreferences: UserPreferences;
   currentNetwork: string;
+  chainId: number;
   isMetaMaskInstalled: boolean;
   connectError: Error | null;
   isPending: boolean;
+  isLoggingOut: boolean;
   connectWallet: () => Promise<void>;
-  disconnectWallet: () => void;
+  disconnectWallet: () => Promise<void>;
   addWallet: (wallet: Omit<Wallet, 'id'>) => void;
   removeWallet: (id: string) => void;
   updatePreferences: (preferences: Partial<UserPreferences>) => void;
@@ -65,35 +68,144 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   
+  // Web3Auth integration
+  const web3auth = useWeb3Auth();
+
   // Get balance and ENS name for connected wallet
   const { data: balance } = useBalance({
     address: address,
   });
-  
+
   const { data: ensName } = useEnsName({
     address: address,
   });
 
   // Check if MetaMask is installed
-  const isMetaMaskInstalled = typeof window !== 'undefined' && 
+  const isMetaMaskInstalled = typeof window !== 'undefined' &&
     connectors.some(connector => connector.name === 'MetaMask');
 
   // Get current network name
   const currentNetwork = networks[chainId]?.name || 'Unknown Network';
 
-  // Create wallet data from connected account
-  const connectedWallets: Wallet[] = address ? [{
-    id: address,
-    address,
-    name: ensName || `Main Wallet`,
-    network: currentNetwork.toLowerCase(),
-    balance: balance ? balance.formatted : undefined,
-    ensName
-  }] : [];
+  // Check Web3Auth connection status
+  const web3AuthIsConnected = web3auth?.isConnected || false;
+  // Get Web3Auth wallet address using getAccount() method
+  const [web3AuthAddress, setWeb3AuthAddress] = useState<string>("");
+  const web3AuthUserInfo = web3auth?.userInfo;
+  
+  // Get Web3Auth account address when connected
+  useEffect(() => {
+    const getWeb3AuthAccount = async () => {
+      if (web3AuthIsConnected && web3auth?.web3Auth?.provider) {
+        try {
+          const provider = web3auth.web3Auth.provider;
+          const accounts = await provider.request({ method: "eth_accounts" });
+          if (accounts && accounts.length > 0) {
+            setWeb3AuthAddress(accounts[0]);
+          }
+        } catch (error) {
+          console.error('Error getting Web3Auth account:', error);
+        }
+      } else {
+        setWeb3AuthAddress("");
+      }
+    };
+    
+    getWeb3AuthAccount();
+  }, [web3AuthIsConnected, web3auth]);
 
-  const userWallet = address || "";
-  const userAlias = ensName || (address ? `Wallet ${address.slice(0, 6)}...${address.slice(-4)}` : "");
+  // Listen for Web3Auth connection events
+  useEffect(() => {
+    if (web3auth?.web3Auth) {
+      const handleAccountChange = () => {
+        console.log('Web3Auth account changed, updating address');
+        // Trigger a re-fetch of the account
+        setTimeout(() => {
+          const getAccount = async () => {
+            try {
+              if (web3auth?.web3Auth?.provider) {
+                const provider = web3auth.web3Auth.provider;
+                const accounts = await provider.request({ method: "eth_accounts" });
+                if (accounts && accounts.length > 0) {
+                  setWeb3AuthAddress(accounts[0]);
+                }
+              }
+            } catch (error) {
+              console.error('Error updating Web3Auth account:', error);
+            }
+          };
+          getAccount();
+        }, 1000);
+      };
+
+      // Add event listeners for Web3Auth events
+      web3auth.web3Auth.on('connected', handleAccountChange);
+      web3auth.web3Auth.on('disconnected', () => {
+        setWeb3AuthAddress("");
+      });
+
+      return () => {
+        // Clean up event listeners
+        web3auth.web3Auth?.off('connected', handleAccountChange);
+        web3auth.web3Auth?.off('disconnected', () => {
+          setWeb3AuthAddress("");
+        });
+      };
+    }
+  }, [web3auth?.web3Auth]);
+  
+  // Debug log to see what Web3Auth provides
+  useEffect(() => {
+    if (web3auth) {
+      console.log('Web3Auth debug info:', {
+        isConnected: web3auth.isConnected,
+        userInfo: web3auth.userInfo,
+        web3AuthAddress: web3AuthAddress,
+        allProperties: Object.keys(web3auth)
+      });
+    }
+  }, [web3auth, web3AuthAddress]);
+
+  // Determine the primary wallet address (prioritize MetaMask over Web3Auth)
+  const primaryAddress = address || web3AuthAddress;
+  const primaryIsConnected = isConnected || web3AuthIsConnected;
+
+  // Create wallet data from connected account
+  const connectedWallets: Wallet[] = [];
+  
+  // Add MetaMask wallet if connected
+  if (address) {
+    connectedWallets.push({
+      id: address,
+      address,
+      name: ensName || `MetaMask Wallet`,
+      network: currentNetwork.toLowerCase(),
+      balance: balance ? balance.formatted : undefined,
+      ensName
+    });
+  }
+  
+  // Add Web3Auth wallet if connected (avoid duplicates)
+  if (web3AuthAddress && !address) {
+    const userName = (web3AuthUserInfo as any)?.name || (web3AuthUserInfo as any)?.email || 'Social Wallet';
+    connectedWallets.push({
+      id: web3AuthAddress,
+      address: web3AuthAddress,
+      name: userName,
+      network: currentNetwork.toLowerCase(),
+      balance: undefined, // Web3Auth doesn't provide balance directly
+      ensName: undefined
+    });
+    // Debug log to verify Web3Auth integration
+    console.log('Web3Auth wallet detected:', { address: web3AuthAddress, userName, userInfo: web3AuthUserInfo });
+  }
+
+  const userWallet = primaryAddress;
+  const userAlias = ensName || 
+    ((web3AuthUserInfo as any)?.name || (web3AuthUserInfo as any)?.email || '') ||
+    (primaryAddress ? `Wallet ${primaryAddress.slice(0, 6)}...${primaryAddress.slice(-4)}` : "");
 
   const connectWallet = async () => {
     const metaMaskConnector = connectors.find(connector => connector.name === 'MetaMask');
@@ -106,8 +218,22 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const disconnectWallet = () => {
-    disconnect();
+  const disconnectWallet = async () => {
+    setIsLoggingOut(true);
+    try {
+      // Disconnect Web3Auth first if connected
+      if (web3AuthIsConnected && web3auth?.web3Auth) {
+        await web3auth.web3Auth.logout();
+      }
+      // Also disconnect from Wagmi if connected
+      if (isConnected) {
+        disconnect();
+      }
+    } catch (error) {
+      console.error('Disconnect error:', error);
+      // Fallback to wagmi disconnect
+      disconnect();
+    }
   };
 
   const addWallet = (wallet: Omit<Wallet, 'id'>) => {
@@ -159,11 +285,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   const switchNetworkHandler = async (chainId: number) => {
     console.log('Attempting to switch to chain ID:', chainId);
-    
+
     if (!window.ethereum) {
       throw new Error('MetaMask is not installed');
     }
-    
+
     try {
       // First try to switch to the network using MetaMask API directly
       console.log('Calling wallet_switchEthereumChain with chainId:', `0x${chainId.toString(16)}`);
@@ -174,7 +300,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       console.log('Network switched successfully');
     } catch (error: any) {
       console.log('Switch failed with error:', error);
-      
+
       // If the network is not added to MetaMask (error code 4902), add it first
       if (error.code === 4902) {
         console.log('Network not found, attempting to add network');
@@ -285,6 +411,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return "0";
   };
 
+  // Reset isLoggingOut when disconnect completes
+  useEffect(() => {
+    if (!isConnected && isLoggingOut) {
+      setIsLoggingOut(false);
+    }
+  }, [isConnected, isLoggingOut]);
+
   const userPreferences: UserPreferences = {
     currency: 'CAD',
     country: 'Canada',
@@ -293,15 +426,17 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <WalletContext.Provider value={{
-      isConnected,
+      isConnected: primaryIsConnected,
       userWallet,
       userAlias,
       connectedWallets,
       userPreferences,
       currentNetwork,
+      chainId,
       isMetaMaskInstalled,
       connectError,
       isPending,
+      isLoggingOut,
       connectWallet,
       disconnectWallet,
       addWallet,

@@ -1,0 +1,13 @@
+@startuml
+title 6.4 — Données & persistance (selon documents)
+
+node "API (Docker)\nExpress/TypeScript" as API
+database "PostgreSQL\nBase principale\n10–50 GB" as PG
+database "ClickHouse (optionnel)\nAnalytique" as CH
+node "Stockage objet (optionnel)\nS3/MinIO — Exports CSV/JSON" as OBJ
+
+API --> PG  : Lecture / Écriture
+API --> CH  : Requêtes analytiques (si activé)
+API --> OBJ : Génération et récupération d'exports
+
+@enduml

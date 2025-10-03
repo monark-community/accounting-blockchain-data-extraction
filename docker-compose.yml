@@ -42,6 +42,8 @@ services:
     # Expose Vite:5173 on localhost:3000 (your preference)
     ports:
       - "3000:5173"
+    env_file:
+      - ./frontend/.env
     environment:
       HOST: 0.0.0.0
       CHOKIDAR_USEPOLLING: "true"
