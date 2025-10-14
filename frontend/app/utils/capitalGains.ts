@@ -68,7 +68,7 @@ export class CapitalGainsCalculator {
       const isLongTerm = holdingPeriod >= 365;
 
       gains.push({
-        id: `${transactionId}_${entry.id}_${Date.now()}`,
+        id: `${transactionId}_${entry.id}_${Math.floor(Math.random() * 1000000)}`,
         asset,
         quantity: quantityToSell,
         salePrice,

@@ -9,6 +9,7 @@ import { WalletProvider } from "@/contexts/WalletContext";
 import { config } from "@/lib/wagmi";
 import { Web3AuthProvider } from '@web3auth/no-modal-react-hooks';
 import { web3authConfig } from '@/lib/web3auth';
+import MonarkBannerWrapper from "@/components/MonarkDemoWrapper";
 import { useState } from 'react';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
@@ -22,7 +23,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <WalletProvider>
               <Toaster />
               <Sonner />
-              {children}
+              <MonarkBannerWrapper>
+                {children}
+              </MonarkBannerWrapper>
             </WalletProvider>
           </TooltipProvider>
         </QueryClientProvider>
@@ -30,5 +33,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     </Web3AuthProvider>
   );
 }
+
 
 

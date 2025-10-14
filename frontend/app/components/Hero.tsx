@@ -1,3 +1,5 @@
+'use client';
+
 import {
   ArrowRight,
   TrendingUp,
@@ -44,6 +46,12 @@ const Hero = () => {
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
   const [hasTimedOut, setHasTimedOut] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Only render on client side to avoid hydration issues
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Watch for connection changes
   useEffect(() => {
@@ -185,15 +193,19 @@ const Hero = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!address) return;
+    // console.log("Hero: Submitting search for address:", address);
     router.push(`/dashboard?address=${encodeURIComponent(address)}`);
   };
 
   const handlePick = (addr: string) => {
+    // console.log("Hero: Picked address from suggestions:", addr);
     setAddress(addr);
     setOpenSuggest(false);
   };
 
   useEffect(() => {
+    if (!mounted) return;
+    
     const interval = setInterval(() => {
       // Get a random transaction from the pool
       const randomTransaction =
@@ -211,7 +223,7 @@ const Hero = () => {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [mounted]);
 
   const chartConfig = {
     value: {
@@ -225,6 +237,32 @@ const Hero = () => {
       label: "Expenses",
     },
   };
+
+  // Don't render anything until mounted to avoid hydration issues
+  if (!mounted) {
+    return (
+      <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden pt-20">
+        <div className="relative z-10 container mx-auto px-4 py-4">
+          <div className="grid lg:grid-cols-2 gap-12 items-start">
+            <div className="text-center lg:text-left mt-[80px]">
+              <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
+                Multi-Chain
+                <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                  {" "}
+                  Crypto{" "}
+                </span>
+                Accounting
+              </h1>
+              <p className="text-xl text-blue-100 mb-8 leading-relaxed max-w-2xl">
+                Connect all your wallets. Automatically classify transactions
+                across any blockchain. Get audit-ready reports in minutes.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden pt-20">
@@ -303,8 +341,6 @@ const Hero = () => {
                 <span className="text-blue-100 font-medium">Tax Ready</span>
               </div>
             </div>
-
-            {/* Connexion Button */}
 
             {/* Connexion Button — Option 2: primary + secondary */}
             <div className="max-w-xl w-full space-y-4">
@@ -473,7 +509,7 @@ const Hero = () => {
                 <div className="space-y-3 overflow-hidden">
                   {visibleTransactions.map((tx, index) => (
                     <div
-                      key={`${tx.type}-${tx.amount}-${index}-${Date.now()}`}
+                      key={`${tx.type}-${tx.amount}-${index}`}
                       className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${isAnimating
                           ? index === 0
                             ? "opacity-0 -translate-y-2 animate-fade-in-down"

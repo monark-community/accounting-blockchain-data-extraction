@@ -3,7 +3,6 @@
 // Reads the wallet address from the URL (e.g., /dashboard?address=vitalik.eth)
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,8 +107,14 @@ const typeIcon = (t: TxType) => {
 };
 
 export default function AllTransactionsTab() {
-  const params = useSearchParams();
-  const address = params.get("address") || "";
+  const [address, setAddress] = useState<string>("");
+
+  // Get address from URL params on client side to avoid hydration issues
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const addressParam = urlParams.get("address") || "";
+    setAddress(addressParam);
+  }, []);
   const PAGE_SIZE = 20; // keep in sync with ?limit
   const [totalCount, setTotalCount] = useState<number | null>(null); // optional; backend may return null
   const [viewPage, setViewPage] = useState(1); // 1-based page window for the visible slice
@@ -141,7 +146,11 @@ export default function AllTransactionsTab() {
   >({ ...visibleColumnsInit });
 
   const loadPage = async (append: boolean) => {
-    if (!address) return;
+    if (!address) {
+      // console.log("No address provided to loadPage");
+      return;
+    }
+    // console.log("Loading transactions for address:", address);
     setLoading(true);
     setError(null);
     try {
@@ -151,18 +160,23 @@ export default function AllTransactionsTab() {
       if (serverType) qs.set("type", serverType);
       if (append && nextCursor) qs.set("cursor", nextCursor);
 
-      const res = await fetch(
-        `/api/portfolio/txs/${encodeURIComponent(address)}?${qs}`
-      );
+      const url = `/api/portfolio/txs/${encodeURIComponent(address)}?${qs}`;
+      // console.log("Fetching from URL:", url);
+      
+      const res = await fetch(url);
+      // console.log("Response status:", res.status);
+      
       if (!res.ok) {
         let msg = "Failed to load transactions";
         try {
           const j = await res.json();
           msg = j?.error?.message || msg;
         } catch {}
+        // console.error("API error:", msg);
         throw new Error(msg);
       }
       const data = (await res.json()) as TxFeed;
+      // console.log("Received data:", data);
       const pageItems = data?.items || [];
       setItems((prev) => (append ? [...prev, ...pageItems] : pageItems));
       setNextCursor(data?.page?.nextCursor || null);
@@ -170,6 +184,7 @@ export default function AllTransactionsTab() {
         setTotalCount((data as any).page.total);
       }
     } catch (e: any) {
+      // console.error("Error loading transactions:", e);
       setError(e?.message || "Failed to load transactions");
     } finally {
       setLoading(false);
@@ -235,7 +250,7 @@ export default function AllTransactionsTab() {
   const goPrev = () => setViewPage((p) => Math.max(1, p - 1));
 
   const goNext = async () => {
-    // If we’re at the end of loaded rows but backend has more, load then advance
+    // If we're at the end of loaded rows but backend has more, load then advance
     if (windowEndIdx >= filtered.length && nextCursor) {
       await loadPage(true);
     }

@@ -16,28 +16,17 @@ export default function HomePage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  useEffect(() => {
-    // Only redirect if wallet is connected AND has an address AND not logging out
-    if (isConnected && userWallet && !isLoggingOut) {
-      toast({
-        title: "Wallet Connected",
-        description: (
-          <div>
-            <div>Redirecting to your dashboard...</div>
-            <div className="mt-1 text-xs opacity-75">
-              You can disconnect anytime from the navigation menu to continue browsing.
-            </div>
-          </div>
-        ),
-        duration: 4000,
-      });
-
-      // Small delay to show the notification before redirecting
-      setTimeout(() => {
-        router.push("/dashboard");
-      }, 500);
-    }
-  }, [isConnected, userWallet, isLoggingOut, router, toast]);
+  // Remove automatic redirect - let users choose when to go to dashboard
+  // useEffect(() => {
+  //   // Only redirect if wallet is connected AND has an address AND not logging out
+  //   if (isConnected && userWallet && !isLoggingOut) {
+  //     toast({
+  //       title: "Wallet Connected",
+  //       description: "You can now access your dashboard from the navigation menu.",
+  //       duration: 3000,
+  //     });
+  //   }
+  // }, [isConnected]);
 
   return (
     <div className="min-h-screen">
