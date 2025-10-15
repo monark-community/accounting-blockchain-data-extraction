@@ -12,6 +12,10 @@ build/
 */dist/
 */build/
 
+# Next.js
+.next/
+out/
+
 # Vite / caches
 **/.vite/
 **/.cache/
