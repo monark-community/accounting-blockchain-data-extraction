@@ -4,12 +4,19 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/contexts/WalletContext";
 import { useToast } from "@/hooks/use-toast";
+import dynamic from "next/dynamic";
 import Navbar from "@/components/Navbar";
-import Hero from "@/components/Hero";
 import Features from "@/components/Features";
 import UseCases from "@/components/UseCases";
 import CTA from "@/components/CTA";
 import Footer from "@/components/Footer";
+import HeroSkeleton from "@/components/HeroSkeleton";
+
+// Dynamically import Hero with SSR disabled to prevent hydration issues
+const Hero = dynamic(() => import("@/components/Hero"), {
+  ssr: false,
+  loading: () => <HeroSkeleton />
+});
 
 export default function HomePage() {
   const { isConnected, userWallet, isLoggingOut } = useWallet();

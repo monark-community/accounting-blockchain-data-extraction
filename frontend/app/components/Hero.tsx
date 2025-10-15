@@ -47,11 +47,46 @@ const Hero = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [hasTimedOut, setHasTimedOut] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [dependenciesReady, setDependenciesReady] = useState(false);
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
 
   // Only render on client side to avoid hydration issues
   useEffect(() => {
     setMounted(true);
-  }, []);
+    
+    // Set a timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      setLoadingTimeout(true);
+    }, 10000); // 10 second timeout
+
+    // Check if dependencies are ready
+    const checkDependencies = () => {
+      try {
+        // Check if wallet context is properly initialized
+        const walletReady = typeof connectWallet === 'function' && 
+                           typeof isMetaMaskInstalled !== 'undefined' &&
+                           typeof router !== 'undefined' &&
+                           typeof toast !== 'undefined';
+        
+        if (walletReady) {
+          setDependenciesReady(true);
+          clearTimeout(timeout);
+        }
+      } catch (error) {
+        console.log('Dependencies not ready yet:', error);
+      }
+    };
+
+    // Check immediately and then periodically
+    checkDependencies();
+    const interval = setInterval(checkDependencies, 100);
+
+    // Cleanup
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [connectWallet, isMetaMaskInstalled, router, toast]);
 
   // Watch for connection changes
   useEffect(() => {
@@ -238,8 +273,8 @@ const Hero = () => {
     },
   };
 
-  // Don't render anything until mounted to avoid hydration issues
-  if (!mounted) {
+  // Don't render anything until mounted and dependencies are ready
+  if (!mounted || !dependenciesReady) {
     return (
       <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 overflow-hidden pt-20">
         <div className="relative z-10 container mx-auto px-4 py-4">
@@ -257,6 +292,23 @@ const Hero = () => {
                 Connect all your wallets. Automatically classify transactions
                 across any blockchain. Get audit-ready reports in minutes.
               </p>
+              
+              {/* Loading indicator */}
+              <div className="mt-8">
+                <div className="flex items-center justify-center lg:justify-start space-x-2 text-blue-300">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400"></div>
+                  <span>Loading application...</span>
+                </div>
+              </div>
+              
+              {/* Timeout fallback */}
+              {loadingTimeout && (
+                <div className="mt-4 p-4 bg-orange-500/20 border border-orange-500/30 rounded-lg">
+                  <p className="text-orange-200 text-sm">
+                    Loading is taking longer than expected. Please refresh the page if this continues.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
