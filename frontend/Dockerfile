@@ -4,38 +4,41 @@ WORKDIR /app
 # Install build dependencies for native modules
 RUN apk add --no-cache python3 make g++
 COPY package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
-# ---------- Dev stage: Vite HMR (final image: dev) ----------
+# ---------- Dev stage: Next.js dev server (final image: dev) ----------
 FROM node:20-alpine AS dev
 WORKDIR /app
 # Install build dependencies for native modules
 RUN apk add --no-cache python3 make g++
 # copy only lockfiles; app code will be bind-mounted at runtime
 COPY package*.json ./
-# re-use the deps install (faster when Docker cache is warm)
-# (optional: if you want to stick to single-step: RUN npm ci)
-# keeping npm ci here for independence:
-RUN npm ci
-ENV HOST=0.0.0.0
-ENV CHOKIDAR_USEPOLLING=true
-EXPOSE 5173
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+# Install dependencies with retry and network timeout
+RUN npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-retries 5 && \
+    npm install --legacy-peer-deps
+ENV HOSTNAME=0.0.0.0
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
 
-# ---------- Prod build stage: Vite build ----------
+# ---------- Prod build stage: Next.js build ----------
 FROM deps AS builder
 COPY . .
 ENV CI=true
+ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# ---------- Prod runtime: Nginx serving /dist (final image: prod) ----------
-FROM nginx:1.27-alpine AS prod
-WORKDIR /
-RUN apk add --no-cache bash gettext
-COPY nginx.conf.template /etc/nginx/templates/nginx.conf.template
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-COPY --from=builder /app/dist /usr/share/nginx/html
-ENV BACKEND_URL=http://backend:8080
-EXPOSE 80
-CMD ["/docker-entrypoint.sh"]
+# ---------- Prod runtime: Node.js serving Next.js (final image: prod) ----------
+FROM node:20-alpine AS prod
+WORKDIR /app
+RUN apk add --no-cache python3 make g++
+COPY package*.json ./
+RUN npm install --legacy-peer-deps --only=production --legacy-peer-deps
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/next.config.js ./
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+EXPOSE 3000
+CMD ["npm", "start"]

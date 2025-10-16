@@ -9,7 +9,7 @@ services:
     env_file:
       - ./backend/.env
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       NODE_ENV: development
       PORT: 8080
@@ -39,14 +39,13 @@ services:
       context: ./frontend
       target: dev
     container_name: frontend-dev
-    # Expose Vite:5173 on localhost:3000 (your preference)
+    # Expose Next.js:3000 on localhost:3000
     ports:
-      - "3000:5173"
+      - "3000:3000"
     env_file:
       - ./frontend/.env
     environment:
-      HOST: 0.0.0.0
-      CHOKIDAR_USEPOLLING: "true"
+      HOSTNAME: 0.0.0.0
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -90,10 +89,10 @@ services:
       target: prod
     container_name: frontend
     environment:
-      # Frontend Nginx proxies /api to backend service on the compose network
-      BACKEND_URL: http://backend:8080
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: 1
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
       backend:
         condition: service_healthy
