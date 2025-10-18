@@ -5,6 +5,7 @@ import { loginSchema } from "../schemas/login.schema";
 import { authenticateUser } from "../services/auth.service";
 import { optionalAuth } from "../middleware/session";
 import { findUserById } from "../repositories/user.repo";
+import { pool } from "../db/pool";
 import cookieParser from "cookie-parser";
 
 const router = Router();
@@ -79,6 +80,65 @@ router.get("/me", optionalAuth, async (req, res) => {
 router.post("/logout", (_req, res) => {
   res.clearCookie(SESSION_NAME, { path: "/" });
   return res.status(204).end();
+});
+
+// POST /api/auth/web3auth-session
+// Create a backend session for Web3Auth users
+router.post("/web3auth-session", async (req, res) => {
+  try {
+    const { address, userInfo } = req.body;
+
+    if (!address) {
+      return res.status(400).json({ error: "Wallet address is required" });
+    }
+
+    // Check if user exists by wallet address
+    let { rows: existingUsers } = await pool.query(
+      `SELECT id, name, email, wallet_address FROM users WHERE wallet_address = $1`,
+      [address]
+    );
+    
+    let user = existingUsers[0];
+    
+    if (!user) {
+      // Create a new user for this Web3Auth address
+      const name = userInfo?.name || userInfo?.email || 'Web3Auth User';
+      const email = userInfo?.email || `${address}@web3auth.local`;
+      
+      // Insert user with a dummy password (Web3Auth users don't use passwords)
+      const bcrypt = require('bcryptjs');
+      const dummyPassword = await bcrypt.hash(Math.random().toString(), 10);
+      
+      const { rows } = await pool.query(
+        `INSERT INTO users (name, email, password_hash, wallet_address)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, email, wallet_address`,
+        [name, email, dummyPassword, address]
+      );
+      
+      user = rows[0];
+    }
+
+    if (!user) {
+      return res.status(500).json({ error: "Failed to create user" });
+    }
+
+    // Create session token
+    const token = require("../utils/jwt").signSession(user.id);
+
+    res.cookie(SESSION_NAME, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: isProd,
+      signed: true,
+      path: "/",
+      maxAge: ttlMs,
+    });
+
+    return res.status(200).json({ user });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
 });
 
 export default router;
