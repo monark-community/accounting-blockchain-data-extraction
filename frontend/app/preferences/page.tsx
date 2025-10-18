@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from "react";
-import { ArrowLeft, Save, Download, Upload } from "lucide-react";
+import { useState, useEffect } from "react";
+import { ArrowLeft, Save, Download, Upload, Shield, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -11,12 +11,17 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/contexts/WalletContext";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
+import { MFASetupDialog } from "@/components/MFASetupDialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const Preferences = () => {
   const { userPreferences, updatePreferences, exportWallets, importWallets } = useWallet();
   const { toast } = useToast();
   const router = useRouter();
   const [importData, setImportData] = useState("");
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [showMFASetup, setShowMFASetup] = useState(false);
+  const [loadingMFA, setLoadingMFA] = useState(true);
 
   const currencies = [
     { value: 'CAD', label: 'Canadian Dollar (CAD)' },
@@ -85,6 +90,35 @@ const Preferences = () => {
     }
   };
 
+  // Check MFA status on mount
+  useEffect(() => {
+    checkMFAStatus();
+  }, []);
+
+  const checkMFAStatus = async () => {
+    try {
+      const response = await fetch('/api/mfa/status', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMfaEnabled(data.enabled);
+      }
+    } catch (error) {
+      console.error('Failed to check MFA status:', error);
+    } finally {
+      setLoadingMFA(false);
+    }
+  };
+
+  const handleMFASetupComplete = () => {
+    setMfaEnabled(true);
+    toast({
+      title: "2FA Enabled",
+      description: "Two-factor authentication has been successfully enabled for your account.",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       <Navbar />
@@ -103,6 +137,51 @@ const Preferences = () => {
           </div>
 
           <div className="grid gap-6">
+            {/* Security Settings */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="w-5 h-5" />
+                  Security Settings
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between p-4 bg-slate-50 rounded-lg">
+                    <div className="flex-1">
+                      <h4 className="font-semibold mb-1">Two-Factor Authentication (2FA)</h4>
+                      <p className="text-sm text-slate-600">
+                        Add an extra layer of security to your account with authenticator app codes.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {loadingMFA ? (
+                        <div className="text-sm text-slate-500">Loading...</div>
+                      ) : mfaEnabled ? (
+                        <div className="flex items-center gap-2 text-green-600">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="text-sm font-medium">Enabled</span>
+                        </div>
+                      ) : (
+                        <Button onClick={() => setShowMFASetup(true)} size="sm">
+                          Enable 2FA
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {mfaEnabled && (
+                    <Alert>
+                      <Shield className="h-4 w-4" />
+                      <AlertDescription>
+                        Your account is protected with two-factor authentication. You'll need to enter a code from your authenticator app when logging in.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* General Preferences */}
             <Card>
               <CardHeader>
@@ -225,6 +304,13 @@ const Preferences = () => {
           </div>
         </div>
       </div>
+
+      {/* MFA Setup Dialog */}
+      <MFASetupDialog
+        open={showMFASetup}
+        onClose={() => setShowMFASetup(false)}
+        onComplete={handleMFASetupComplete}
+      />
     </div>
   );
 };
