@@ -95,7 +95,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [web3AuthAddress, setWeb3AuthAddress] = useState<string>("");
   const web3AuthUserInfo = web3auth?.userInfo;
   
-  // Get Web3Auth account address when connected
+  // Get Web3Auth account address when connected and create backend session if needed
   useEffect(() => {
     const getWeb3AuthAccount = async () => {
       if (web3AuthIsConnected && web3auth?.web3Auth?.provider) {
@@ -103,10 +103,33 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
           const provider = web3auth.web3Auth.provider;
           const accounts = await provider.request({ method: "eth_accounts" }) as string[];
           if (accounts && accounts.length > 0) {
-            setWeb3AuthAddress(accounts[0]);
+            const address = accounts[0];
+            setWeb3AuthAddress(address);
+            
+            // Check if backend session exists by trying to fetch user info
+            try {
+              const sessionCheck = await fetch('/api/auth/me', { credentials: 'include' });
+              const sessionData = await sessionCheck.json();
+              
+              if (!sessionData.user) {
+                // No backend session, check if we need to create one
+                const mfaResponse = await fetch(`/api/mfa/status-by-address?address=${encodeURIComponent(address)}`);
+                
+                if (mfaResponse.ok) {
+                  const mfaData = await mfaResponse.json();
+                  
+                  if (!mfaData.enabled) {
+                    // MFA is not enabled, create backend session
+                    await createBackendSession(address, web3auth.userInfo);
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error checking backend session:', error);
+            }
           }
         } catch (error) {
-          console.error('Error getting Web3Auth account:', error);
+          console.error('[WalletContext] Error getting Web3Auth account:', error);
         }
       } else {
         setWeb3AuthAddress("");
@@ -116,57 +139,40 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     getWeb3AuthAccount();
   }, [web3AuthIsConnected, web3auth]);
 
-  // Listen for Web3Auth connection events
+  // Create backend session after Web3Auth login
+  const createBackendSession = async (address: string, userInfo: any) => {
+    try {
+      await fetch('/api/auth/web3auth-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          address,
+          userInfo
+        })
+      });
+    } catch (error) {
+      console.error('Error creating backend session:', error);
+    }
+  };
+
+  // Listen for Web3Auth connection/disconnection events
   useEffect(() => {
     if (web3auth?.web3Auth) {
-      const handleAccountChange = () => {
-        console.log('Web3Auth account changed, updating address');
-        // Trigger a re-fetch of the account
-        setTimeout(() => {
-          const getAccount = async () => {
-            try {
-              if (web3auth?.web3Auth?.provider) {
-                const provider = web3auth.web3Auth.provider;
-                const accounts = await provider.request({ method: "eth_accounts" }) as string[];
-                if (accounts && accounts.length > 0) {
-                  setWeb3AuthAddress(accounts[0]);
-                }
-              }
-            } catch (error) {
-              console.error('Error updating Web3Auth account:', error);
-            }
-          };
-          getAccount();
-        }, 1000);
+      const handleDisconnected = () => {
+        setWeb3AuthAddress("");
       };
 
       // Add event listeners for Web3Auth events
-      web3auth.web3Auth.on('connected', handleAccountChange);
-      web3auth.web3Auth.on('disconnected', () => {
-        setWeb3AuthAddress("");
-      });
+      web3auth.web3Auth.on('disconnected', handleDisconnected);
 
       return () => {
         // Clean up event listeners
-        web3auth.web3Auth?.off('connected', handleAccountChange);
-        web3auth.web3Auth?.off('disconnected', () => {
-          setWeb3AuthAddress("");
-        });
+        web3auth.web3Auth?.off('disconnected', handleDisconnected);
       };
     }
   }, [web3auth?.web3Auth]);
   
-  // Debug log to see what Web3Auth provides
-  useEffect(() => {
-    if (web3auth) {
-      console.log('Web3Auth debug info:', {
-        isConnected: web3auth.isConnected,
-        userInfo: web3auth.userInfo,
-        web3AuthAddress: web3AuthAddress,
-        allProperties: Object.keys(web3auth)
-      });
-    }
-  }, [web3auth, web3AuthAddress]);
 
   // Determine the primary wallet address (prioritize MetaMask over Web3Auth)
   const primaryAddress = address || web3AuthAddress;
@@ -198,8 +204,6 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       balance: undefined, // Web3Auth doesn't provide balance directly
       ensName: undefined
     });
-    // Debug log to verify Web3Auth integration
-    console.log('Web3Auth wallet detected:', { address: web3AuthAddress, userName, userInfo: web3AuthUserInfo });
   }
 
   const userWallet = primaryAddress;
