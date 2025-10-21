@@ -10,7 +10,7 @@ const router = Router();
 router.get("/holdings/:address", async (req, res) => {
   const address = String(req.params.address || "").trim();
   const chainId = Number(req.query.chainId) || 1;
-  
+
   if (!address) {
     return res
       .status(400)
@@ -34,7 +34,7 @@ router.get("/holdings/:address", async (req, res) => {
 router.get("/overview/:address", async (req, res) => {
   const address = String(req.params.address || "").trim();
   const chainId = Number(req.query.chainId) || 1;
-  
+
   if (!address)
     return res
       .status(400)
@@ -88,7 +88,7 @@ router.get("/token/:address", async (req, res) => {
   const symbol =
     typeof req.query.symbol === "string" ? req.query.symbol : undefined;
   const chainId = Number(req.query.chainId) || 1;
-  
+
   if (!address)
     return res
       .status(400)
@@ -102,7 +102,12 @@ router.get("/token/:address", async (req, res) => {
     });
 
   try {
-    const data = await getTokenForAddress({ address, contract, symbol, chainId });
+    const data = await getTokenForAddress({
+      address,
+      contract,
+      symbol,
+      chainId,
+    });
     return res.json(data);
   } catch (e: any) {
     const msg = e?.message || "Something went wrong";

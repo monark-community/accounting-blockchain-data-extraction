@@ -1,9 +1,12 @@
-import { de } from "zod/v4/locales";
+// backend/src/services/portfolio.service.ts
+// Purpose: Provide portfolio-related data to routes.
+// This version fetches holdings from the Pinax-built Token API (The Graph).
+
+import { tokenApiGet, resolveNetwork } from "../utils/tokenApi";
 import { getAlchemyForChainId, getNetworkName } from "../utils/alchemy";
 import {
   getEthUsd,
   getErc20Usd,
-  // getErc20UsdViaDexScreener,
   getErc20NowAndH24ViaDexScreener,
   resolveContractsOnEthereum,
   getEthUsdAt,
@@ -23,44 +26,96 @@ function fromHexQty(hex: string, decimals = 18): string {
   return s ? `${whole}.${s}` : whole.toString();
 }
 
-export async function getHoldings(address: string, chainId: number = 1) {
-  const alchemy = getAlchemyForChainId(chainId);
-  
-  const ethBal = await alchemy.core.getBalance(address).catch(() => null);
-  if (!ethBal) {
-    const err = new Error("Wallet not found");
-    (err as any).code = "WalletNotFound";
-    throw err;
-  }
-  const ethQty = fromHexQty((ethBal as any)._hex ?? (ethBal as any), 18);
+/** ===== Types coming back from the Token API ===== */
+type TokenApiBalance = {
+  contract: string; // "0xeeee...eeee" for native ETH/BNB
+  symbol: string | null;
+  name?: string | null;
+  decimals: number | null;
+  amount: string; // human-readable string (already adjusted by decimals)
+  network_id: "mainnet" | "bsc";
+  block_num?: number;
+  last_balance_update?: string;
+};
 
-  const tb = await alchemy.core.getTokenBalances(address);
-  const nonZero = tb.tokenBalances.filter(
-    (t) => t.tokenBalance && t.tokenBalance !== "0x0"
+type TokenApiBalancesResp = {
+  data: TokenApiBalance[];
+  pagination: {
+    previous_page?: number | null;
+    current_page: number;
+    next_page: number | null;
+    total_pages: number;
+  };
+  results: number;
+  total_results?: number;
+  request_time: string; // ISO string
+  duration_ms?: number;
+};
+
+/** ===== Public output shape expected by your frontend ===== */
+export type HoldingRow = {
+  contract: string | null;
+  symbol: string;
+  decimals: number;
+  qty: string; // keep as string; frontend formats
+};
+
+export type HoldingsResponse = {
+  address: string;
+  chain: "eth-mainnet" | "bnb-mainnet";
+  chainId: 1 | 56;
+  currency: "USD";
+  asOf: string; // ISO
+  holdings: HoldingRow[];
+  pagination: {
+    page: number;
+    nextPage: number | null;
+    totalPages: number;
+  };
+};
+
+/** ===== Main entry used by /api/portfolio/holdings/:address ===== */
+export async function getHoldings(
+  address: string,
+  opts?: { chain?: string | number; page?: number; limit?: number }
+): Promise<HoldingsResponse> {
+  const { chain, page = 1, limit = 20 } = opts ?? {};
+  const { networkId, chainId, chainLabel } = resolveNetwork(chain);
+
+  // Call Token API
+  const resp = await tokenApiGet<TokenApiBalancesResp>(
+    `/balances/evm/${address}`,
+    {
+      network_id: networkId, // "mainnet" | "bsc"
+      page,
+      limit,
+    }
   );
 
-  const tokens = await Promise.all(
-    nonZero.map(async (t) => {
-      const md = await alchemy.core
-        .getTokenMetadata(t.contractAddress)
-        .catch(() => null);
-      const decimals = md?.decimals ?? 18;
-      const symbol = md?.symbol ?? "UNKNOWN";
-      const qty = fromHexQty(t.tokenBalance!, decimals);
-      return { contract: t.contractAddress, symbol, decimals, qty };
-    })
-  );
+  // Normalize for your frontend
+  const holdings: HoldingRow[] = resp.data.map((row) => ({
+    contract:
+      row.contract?.toLowerCase() ===
+      "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        ? null
+        : row.contract,
+    symbol: row.symbol ?? "",
+    decimals: row.decimals ?? 18,
+    qty: row.amount,
+  }));
 
   return {
     address,
-    chain: getNetworkName(chainId),
-    chainId,
+    chain: chainLabel, // "eth-mainnet" | "bnb-mainnet"
+    chainId, // 1 | 56
     currency: "USD",
-    asOf: new Date().toISOString(),
-    holdings: [
-      { contract: null as null, symbol: "ETH", decimals: 18, qty: ethQty },
-      ...tokens,
-    ],
+    asOf: resp.request_time,
+    holdings,
+    pagination: {
+      page: resp.pagination.current_page,
+      nextPage: resp.pagination.next_page ?? null,
+      totalPages: resp.pagination.total_pages,
+    },
   };
 }
 
