@@ -1,16 +1,33 @@
-import { createConfig, http } from 'wagmi'
-import { mainnet, polygon, bsc, avalanche, arbitrum, optimism, goerli, sepolia, polygonMumbai } from 'wagmi/chains'
-import { injected, metaMask, walletConnect } from 'wagmi/connectors'
+import { createConfig, http } from "wagmi";
+import {
+  mainnet,
+  polygon,
+  bsc,
+  avalanche,
+  arbitrum,
+  optimism,
+  goerli,
+  sepolia,
+  polygonMumbai,
+} from "wagmi/chains";
+import { injected, metaMask, walletConnect } from "wagmi/connectors";
+
+const wcId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+if (!wcId) throw new Error("Missing NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID");
 
 export const config = createConfig({
-  chains: [mainnet, polygon, bsc, avalanche, arbitrum, optimism, goerli, sepolia, polygonMumbai],
-  connectors: [
-    injected(),
-    metaMask(),
-    walletConnect({
-      projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || 'your-project-id',
-    }),
+  chains: [
+    mainnet,
+    polygon,
+    bsc,
+    avalanche,
+    arbitrum,
+    optimism,
+    goerli,
+    sepolia,
+    polygonMumbai,
   ],
+  connectors: [injected(), metaMask(), walletConnect({ projectId: wcId })],
   transports: {
     [mainnet.id]: http(),
     [polygon.id]: http(),
@@ -22,10 +39,10 @@ export const config = createConfig({
     [sepolia.id]: http(),
     [polygonMumbai.id]: http(),
   },
-})
+});
 
-declare module 'wagmi' {
+declare module "wagmi" {
   interface Register {
-    config: typeof config
+    config: typeof config;
   }
 }
