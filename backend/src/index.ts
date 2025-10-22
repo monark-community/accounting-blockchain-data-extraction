@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import authRoutes from "./routes/auth.routes";
 import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
 import portfolioRouter from "./routes/portfolio.routes";
@@ -17,8 +16,6 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api/health", healthRouter);
-
-app.use("/api/auth", authRoutes);
 
 app.use("/api/portfolio", portfolioRouter);
 
