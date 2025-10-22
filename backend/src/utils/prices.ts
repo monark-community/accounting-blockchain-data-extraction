@@ -138,3 +138,29 @@ export async function getErc20UsdAt(
   }
   return out;
 }
+
+/** Convert raw token quantity (hex or decimal string) to a JS number using decimals. */
+export async function toDecimalQty(
+  input: string | number,
+  decimals = 18
+): number {
+  // Accepts "0x..." hex, decimal string, or number
+  let raw: bigint;
+  if (typeof input === "number") {
+    raw = BigInt(Math.trunc(input));
+  } else if (typeof input === "string" && input.startsWith("0x")) {
+    raw = BigInt(input);
+  } else {
+    raw = BigInt(String(input));
+  }
+
+  if (decimals === 0) return Number(raw);
+
+  const base = 10n ** BigInt(decimals);
+  const whole = raw / base;
+  const frac = raw % base;
+
+  // Keep up to 6 fractional digits to avoid huge floats
+  const fracStr = frac.toString().padStart(decimals, "0").slice(0, 6);
+  return Number(`${whole}.${fracStr}`);
+}

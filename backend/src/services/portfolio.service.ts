@@ -11,20 +11,8 @@ import {
   resolveContractsOnEthereum,
   getEthUsdAt,
   getErc20UsdAt,
+  toDecimalQty,
 } from "../utils/prices";
-
-function fromHexQty(hex: string, decimals = 18): string {
-  const bi = BigInt(hex);
-  const base = BigInt(10) ** BigInt(decimals);
-  const whole = bi / base;
-  const frac = bi % base;
-  const s = frac
-    .toString()
-    .padStart(decimals, "0")
-    .slice(0, 8)
-    .replace(/0+$/, "");
-  return s ? `${whole}.${s}` : whole.toString();
-}
 
 /** ===== Types coming back from the Token API ===== */
 type TokenApiBalance = {
@@ -82,39 +70,71 @@ export async function getHoldings(
   const { chain, page = 1, limit = 20 } = opts ?? {};
   const { networkId, chainId, chainLabel } = resolveNetwork(chain);
 
-  // Call Token API
+  // Call Token API (Pinax/The Graph)
   const resp = await tokenApiGet<TokenApiBalancesResp>(
     `/balances/evm/${address}`,
     {
-      network_id: networkId, // "mainnet" | "bsc"
+      network_id: networkId, // e.g., "mainnet" | "bsc"
       page,
       limit,
     }
   );
 
-  // Normalize for your frontend
-  const holdings: HoldingRow[] = resp.data.map((row) => ({
-    contract:
-      row.contract?.toLowerCase() ===
-      "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-        ? null
-        : row.contract,
-    symbol: row.symbol ?? "",
-    decimals: row.decimals ?? 18,
-    qty: row.amount,
-  }));
+  // 👇 Use the actual response object we just fetched
+  const items = (resp?.data?.items ?? resp?.data ?? []) as any[];
+
+  // Build holdings with human-readable qty and USD value
+  const holdings = items.map((row: any) => {
+    const decimals = Number(
+      row.decimals ?? row.token_decimals ?? row.token?.decimals ?? 18
+    );
+
+    const rawBalance =
+      row.balance ??
+      row.rawBalance ??
+      row.amount ??
+      row.qty ??
+      row.token_balance ??
+      "0";
+
+    const qty = toDecimalQty(rawBalance, decimals);
+
+    // If Pinax returns price, use it; otherwise 0 for now (we'll wire a price call next)
+    const priceUsd = Number(
+      row.priceUsd ??
+        row.usd_price ??
+        row.token_price_usd ??
+        row.token?.priceUsd ??
+        0
+    );
+
+    const valueUsd = qty * priceUsd;
+
+    return {
+      address: row.token_address ?? row.address ?? row.contract ?? "",
+      symbol: row.symbol ?? row.token?.symbol ?? "",
+      name: row.name ?? row.token?.name ?? "",
+      decimals,
+      qty,
+      priceUsd,
+      valueUsd,
+      chainId: row.chainId ?? row.chain_id ?? chainId,
+      logo: row.logo ?? row.token?.logo ?? undefined,
+      // keep any extra fields you already expose
+    };
+  });
 
   return {
     address,
     chain: chainLabel, // "eth-mainnet" | "bnb-mainnet"
     chainId, // 1 | 56
     currency: "USD",
-    asOf: resp.request_time,
+    asOf: (resp as any)?.request_time ?? new Date().toISOString(),
     holdings,
     pagination: {
-      page: resp.pagination.current_page,
-      nextPage: resp.pagination.next_page ?? null,
-      totalPages: resp.pagination.total_pages,
+      page: (resp as any)?.pagination?.current_page ?? page,
+      nextPage: (resp as any)?.pagination?.next_page ?? null,
+      totalPages: (resp as any)?.pagination?.total_pages ?? page,
     },
   };
 }
@@ -269,7 +289,7 @@ export async function getTokenForAddress(params: {
       const decimals = md?.decimals ?? 18;
       const symbol = md?.symbol ?? "";
       const name = md?.name ?? "";
-      const qty = b.balHex ? fromHexQty(b.balHex, decimals) : "0";
+      const qty = b.balHex ? await toDecimalQty(b.balHex, decimals) : "0";
       return { contract: b.contract, symbol, name, decimals, qty };
     })
   );
