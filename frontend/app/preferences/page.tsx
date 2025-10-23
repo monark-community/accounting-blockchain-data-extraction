@@ -23,6 +23,7 @@ const Preferences = () => {
   const [showMFASetup, setShowMFASetup] = useState(false);
   const [showMFADisable, setShowMFADisable] = useState(false);
   const [loadingMFA, setLoadingMFA] = useState(true);
+  const [disablingMFA, setDisablingMFA] = useState(false);
 
   const currencies = [
     { value: 'CAD', label: 'Canadian Dollar (CAD)' },
@@ -120,6 +121,37 @@ const Preferences = () => {
     });
   };
 
+  const handleMFADisable = async () => {
+    try {
+      const response = await fetch('/api/mfa/disable', {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        setMfaEnabled(false);
+        setShowMFADisable(false);
+        toast({
+          title: "2FA Disabled",
+          description: "Two-factor authentication has been successfully disabled for your account.",
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Disable Failed",
+          description: error.error || "Failed to disable 2FA. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Disable Failed",
+        description: "Network error. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       <Navbar />
@@ -165,9 +197,10 @@ const Preferences = () => {
                             <span className="text-sm font-medium">Enabled</span>
                           </div>
                           <Button 
-                            onClick={() => setShowMFADisable(true)} 
+                            onClick={handleMFADisable} 
                             size="sm" 
                             variant="destructive"
+                            className="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 active:scale-95"
                           >
                             Disable 2FA
                           </Button>
