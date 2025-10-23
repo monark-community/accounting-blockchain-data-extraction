@@ -21,6 +21,7 @@ const Preferences = () => {
   const [importData, setImportData] = useState("");
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [showMFASetup, setShowMFASetup] = useState(false);
+  const [showMFADisable, setShowMFADisable] = useState(false);
   const [loadingMFA, setLoadingMFA] = useState(true);
 
   const currencies = [
@@ -158,9 +159,18 @@ const Preferences = () => {
                       {loadingMFA ? (
                         <div className="text-sm text-slate-500">Loading...</div>
                       ) : mfaEnabled ? (
-                        <div className="flex items-center gap-2 text-green-600">
-                          <CheckCircle2 className="w-5 h-5" />
-                          <span className="text-sm font-medium">Enabled</span>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 text-green-600">
+                            <CheckCircle2 className="w-5 h-5" />
+                            <span className="text-sm font-medium">Enabled</span>
+                          </div>
+                          <Button 
+                            onClick={() => setShowMFADisable(true)} 
+                            size="sm" 
+                            variant="destructive"
+                          >
+                            Disable 2FA
+                          </Button>
                         </div>
                       ) : (
                         <Button onClick={() => setShowMFASetup(true)} size="sm">
