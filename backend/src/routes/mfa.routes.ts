@@ -4,6 +4,7 @@ import {
   setupMFA,
   verifyMFA,
   enableMFA,
+  disableMFA,
   isMFAEnabled,
   getBackupCodes,
   regenerateBackupCodes,
@@ -156,6 +157,20 @@ router.post("/enable", async (req, res) => {
     const userId = (req as any).user.id;
     await enableMFA(userId);
     return res.json({ success: true, message: "MFA enabled successfully" });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/mfa/disable
+ * Disable MFA for the user
+ */
+router.post("/disable", async (req, res) => {
+  try {
+    const userId = (req as any).user.id;
+    await disableMFA(userId);
+    return res.json({ success: true, message: "MFA disabled successfully" });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
   }
