@@ -117,6 +117,21 @@ export async function enableMFA(userId: string): Promise<void> {
 }
 
 /**
+ * Disable MFA for a user
+ */
+export async function disableMFA(userId: string): Promise<void> {
+  await pool.query(
+    `UPDATE users 
+     SET mfa_enabled = FALSE,
+         mfa_secret = NULL,
+         mfa_backup_codes = NULL,
+         updated_at = NOW()
+     WHERE id = $1`,
+    [userId]
+  );
+}
+
+/**
  * Check if MFA is enabled for a user
  */
 export async function isMFAEnabled(userId: string): Promise<boolean> {
