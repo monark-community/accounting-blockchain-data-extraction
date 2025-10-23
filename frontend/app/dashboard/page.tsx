@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
@@ -259,7 +259,14 @@ const fmtUSD = (n: number) =>
   });
 
 const Dashboard = () => {
-  const { connectedWallets, getWalletName, userPreferences, chainId, userWallet, isConnected } = useWallet();
+  const {
+    connectedWallets,
+    getWalletName,
+    userPreferences,
+    chainId,
+    userWallet,
+    isConnected,
+  } = useWallet();
   const router = useRouter();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
@@ -285,17 +292,22 @@ const Dashboard = () => {
   const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
   const [urlAddress, setUrlAddress] = useState<string>("");
+  const [urlReady, setUrlReady] = useState(false);
 
   // Get address from URL params on client side to avoid hydration issues
+  // Read ?address=... exactly once after mount
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const addressParam = urlParams.get("address") || "";
-    // console.log("Dashboard: Setting URL address to:", addressParam);
-    setUrlAddress(addressParam);
+    const sp = new URLSearchParams(window.location.search);
+    setUrlAddress(sp.get("address") || "");
+    setUrlReady(true);
   }, []);
 
   // Use URL address if available, otherwise use connected wallet address
-  const address = urlAddress || (isConnected && userWallet ? userWallet : "");
+  const address = useMemo(
+    () =>
+      urlAddress ? urlAddress : isConnected && userWallet ? userWallet : "",
+    [urlAddress, isConnected, userWallet]
+  );
 
   // Debug logging
   // useEffect(() => {
@@ -305,12 +317,13 @@ const Dashboard = () => {
   //   console.log("Dashboard: urlAddress:", urlAddress);
   // }, [address, isConnected, userWallet, urlAddress]);
 
-  // Redirect to home if no address available and not connected
+  // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
+    if (!urlReady) return;
     if (!address && !isConnected) {
       router.push("/");
     }
-  }, [address, isConnected, router]);
+  }, [urlReady, address, isConnected, router]);
 
   // --- Overview state ---
   const [ov, setOv] = useState<OverviewResponse | null>(null);
@@ -359,7 +372,11 @@ const Dashboard = () => {
     if (!address) return;
     setLoadingOv(true);
     setErrorOv(null);
-    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}?minUsd=1&chainId=${chainId}`)
+    fetch(
+      `/api/portfolio/overview/${encodeURIComponent(
+        address
+      )}?minUsd=1&chainId=${chainId}`
+    )
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then(setOv)
       .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
@@ -388,7 +405,7 @@ const Dashboard = () => {
             {/* <TabsTrigger value="capital-gains">Capital Gains</TabsTrigger> */}
             <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="overview" className="space-y-6">
             {/* Portfolio Summary Cards */}
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -526,7 +543,11 @@ const Dashboard = () => {
                       <XAxis dataKey="name" />
                       <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                       <Tooltip
-                        formatter={(value: unknown, _name: string, entry: { payload?: { pct: number; usd: number } }) => {
+                        formatter={(
+                          value: unknown,
+                          _name: string,
+                          entry: { payload?: { pct: number; usd: number } }
+                        ) => {
                           if (entry?.payload) {
                             const row = entry.payload;
                             return [
@@ -587,7 +608,8 @@ const Dashboard = () => {
                   <div className="text-sm text-red-500">{errorOv}</div>
                 )}
 
-                {!loadingOv && ov &&
+                {!loadingOv &&
+                  ov &&
                   topHoldingsLive.map((h, index) => {
                     const delta = h.delta24hUsd ?? null;
                     const pct = h.delta24hPct ?? null;
@@ -595,8 +617,8 @@ const Dashboard = () => {
                       delta == null
                         ? "text-slate-600"
                         : delta >= 0
-                          ? "text-green-600"
-                          : "text-red-600";
+                        ? "text-green-600"
+                        : "text-red-600";
                     return (
                       <div
                         key={h.contract ?? h.symbol ?? `holding-${index}`}
@@ -614,9 +636,9 @@ const Dashboard = () => {
                               {/* weight from allocation isn't 1:1; show share via value proportion */}
                               {ov.kpis?.totalValueUsd
                                 ? `${(
-                                  (h.valueUsd / ov.kpis.totalValueUsd) *
-                                  100
-                                ).toFixed(1)}% of portfolio`
+                                    (h.valueUsd / ov.kpis.totalValueUsd) *
+                                    100
+                                  ).toFixed(1)}% of portfolio`
                                 : "—"}
                             </p>
                           </div>
@@ -660,7 +682,7 @@ const Dashboard = () => {
               </div>
             </Card>
           </TabsContent>
-          
+
           <TabsContent value="income">
             <IncomeTab
               transactions={transactions}
@@ -668,7 +690,7 @@ const Dashboard = () => {
               getWalletName={getWalletName}
             />
           </TabsContent>
-          
+
           <TabsContent value="expenses">
             <ExpensesTab
               transactions={transactions}
@@ -684,7 +706,7 @@ const Dashboard = () => {
               setAccountingMethod={setAccountingMethod}
             />
           </TabsContent>
-          
+
           <TabsContent value="all-transactions">
             <AllTransactionsTab />
           </TabsContent>
