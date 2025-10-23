@@ -281,19 +281,6 @@ const Hero = () => {
         <div className="relative z-10 container mx-auto px-4 py-4">
           <div className="grid lg:grid-cols-2 gap-12 items-start">
             <div className="text-center lg:text-left mt-[80px]">
-              <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
-                Multi-Chain
-                <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-                  {" "}
-                  Crypto{" "}
-                </span>
-                Accounting
-              </h1>
-              <p className="text-xl text-blue-100 mb-8 leading-relaxed max-w-2xl">
-                Connect all your wallets. Automatically classify transactions
-                across any blockchain. Get audit-ready reports in minutes.
-              </p>
-
               {/* Loading indicator */}
               <div className="mt-8">
                 <div className="flex items-center justify-center lg:justify-start space-x-2 text-blue-300">
