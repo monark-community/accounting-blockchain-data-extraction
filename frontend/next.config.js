@@ -24,11 +24,12 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
+    const base = process.env.API_BASE ?? "http://backend-dev:8080";
+
     return [
       {
         source: "/api/:path*",
-        destination:
-          process.env.API_BASE ?? "http://backend-dev:8080/api/:path*",
+        destination: `${base}/api/:path*`,
       },
     ];
   },
