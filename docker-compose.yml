@@ -37,22 +37,26 @@ services:
     profiles: ["dev"]
     build:
       context: ./frontend
+      dockerfile: Dockerfile
       target: dev
     container_name: frontend-dev
-    # Expose Next.js:3000 on localhost:3000
     ports:
       - "3000:3000"
+    working_dir: /app
     env_file:
       - ./frontend/.env
     environment:
       HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
       backend-dev:
         condition: service_started
-    restart: unless-stopped
+    command: sh -c "npm run dev -- -p 3000 -H 0.0.0.0"
 
   # ---------- PROD STACK (Nginx build + Node runtime) ----------
   backend:

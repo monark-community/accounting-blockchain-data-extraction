@@ -292,7 +292,6 @@ const Hero = () => {
               <p className="text-xl text-blue-100 mb-8 leading-relaxed max-w-2xl">
                 Connect all your wallets. Automatically classify transactions
                 across any blockchain. Get audit-ready reports in minutes.
-                sadasd
               </p>
 
               {/* Loading indicator */}
