@@ -1,6 +1,8 @@
 // backend/src/utils/priceApi.ts
 // Multi-EVM prices via DefiLlama (+ optional DexScreener fallback)
 
+import { networkForChainId } from "./tokenApi";
+
 export type PriceQuote = { priceUsd: number; priceUsd24h: number | null };
 
 /** Map EVM chainId -> DefiLlama key + native coin id */
@@ -143,7 +145,14 @@ export async function fetchPricesUsd(
 
   const nativeNow = nowMap[nativeId] ?? 0;
   const nativeOld = Number.isFinite(h24Map[nativeId]) ? h24Map[nativeId] : null;
-  out[`native:${chainKey}`] = { priceUsd: nativeNow, priceUsd24h: nativeOld };
+  const networkKey = networkForChainId(chainId);
+  out[`native:${networkKey}`] = { priceUsd: nativeNow, priceUsd24h: nativeOld };
+
+  console.log("[prices] keys sample:", Object.keys(out).slice(0, 5));
+  console.log(
+    "[prices] native key present?",
+    `native:${networkForChainId(chainId)}` in out
+  );
 
   for (const c of contracts) {
     const id = `${chainKey}:${c}`;

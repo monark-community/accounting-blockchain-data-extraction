@@ -230,6 +230,10 @@ export async function getOverview(
 
   // 3) Fetch prices and attach
   const priceMap = await fetchPricesUsd(chainId, base);
+
+  console.log("[overview] priceMap size:", Object.keys(priceMap).length);
+  console.log("[overview] check native key:", `native:${network}`);
+
   const holdings: OverviewHoldingRow[] = base.map((h) => {
     const key = h.contract ? h.contract : `native:${network}`;
     const quote = priceMap[key.toLowerCase?.() ?? key] ?? {

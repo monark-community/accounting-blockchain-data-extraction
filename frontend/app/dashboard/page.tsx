@@ -57,6 +57,23 @@ type OverviewResponse = {
   topHoldings: { symbol: string; valueUsd: number; weightPct: number }[];
 };
 
+/** Format a number as USD */
+const fmtUSD = (n: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n);
+
+/** Format a number as percentage */
+const fmtPct = (n: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(n / 100);
+
 const Dashboard = () => {
   const {
     connectedWallets,
