@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
-import portfolioRouter from "./routes/portfolio.routes";
+import portfolioRoutes from "./routes/portfolio.routes";
 import txsRouter from "./routes/txs.routes";
 
 const app = express();
@@ -17,7 +17,7 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/health", healthRouter);
 
-app.use("/api/portfolio", portfolioRouter);
+app.use("/api/portfolio", portfolioRoutes);
 
 app.use("/api/portfolio", txsRouter);
 
