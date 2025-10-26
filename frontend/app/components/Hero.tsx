@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import {
   ArrowRight,
@@ -53,7 +53,7 @@ const Hero = () => {
   // Only render on client side to avoid hydration issues
   useEffect(() => {
     setMounted(true);
-    
+
     // Set a timeout to prevent infinite loading
     const timeout = setTimeout(() => {
       setLoadingTimeout(true);
@@ -63,17 +63,18 @@ const Hero = () => {
     const checkDependencies = () => {
       try {
         // Check if wallet context is properly initialized
-        const walletReady = typeof connectWallet === 'function' && 
-                           typeof isMetaMaskInstalled !== 'undefined' &&
-                           typeof router !== 'undefined' &&
-                           typeof toast !== 'undefined';
-        
+        const walletReady =
+          typeof connectWallet === "function" &&
+          typeof isMetaMaskInstalled !== "undefined" &&
+          typeof router !== "undefined" &&
+          typeof toast !== "undefined";
+
         if (walletReady) {
           setDependenciesReady(true);
           clearTimeout(timeout);
         }
       } catch (error) {
-        console.log('Dependencies not ready yet:', error);
+        console.log("Dependencies not ready yet:", error);
       }
     };
 
@@ -240,7 +241,7 @@ const Hero = () => {
 
   useEffect(() => {
     if (!mounted) return;
-    
+
     const interval = setInterval(() => {
       // Get a random transaction from the pool
       const randomTransaction =
@@ -280,19 +281,6 @@ const Hero = () => {
         <div className="relative z-10 container mx-auto px-4 py-4">
           <div className="grid lg:grid-cols-2 gap-12 items-start">
             <div className="text-center lg:text-left mt-[80px]">
-              <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 leading-tight">
-                Multi-Chain
-                <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-                  {" "}
-                  Crypto{" "}
-                </span>
-                Accounting
-              </h1>
-              <p className="text-xl text-blue-100 mb-8 leading-relaxed max-w-2xl">
-                Connect all your wallets. Automatically classify transactions
-                across any blockchain. Get audit-ready reports in minutes.
-              </p>
-              
               {/* Loading indicator */}
               <div className="mt-8">
                 <div className="flex items-center justify-center lg:justify-start space-x-2 text-blue-300">
@@ -300,12 +288,13 @@ const Hero = () => {
                   <span>Loading application...</span>
                 </div>
               </div>
-              
+
               {/* Timeout fallback */}
               {loadingTimeout && (
                 <div className="mt-4 p-4 bg-orange-500/20 border border-orange-500/30 rounded-lg">
                   <p className="text-orange-200 text-sm">
-                    Loading is taking longer than expected. Please refresh the page if this continues.
+                    Loading is taking longer than expected. Please refresh the
+                    page if this continues.
                   </p>
                 </div>
               )}
@@ -562,14 +551,15 @@ const Hero = () => {
                   {visibleTransactions.map((tx, index) => (
                     <div
                       key={`${tx.type}-${tx.amount}-${index}`}
-                      className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${isAnimating
+                      className={`flex items-center justify-between p-2 bg-white/5 rounded-lg transition-all duration-500 ease-out ${
+                        isAnimating
                           ? index === 0
                             ? "opacity-0 -translate-y-2 animate-fade-in-down"
                             : index === 3
-                              ? "opacity-100 translate-y-2 animate-fade-out-down"
-                              : "translate-y-6 transition-transform duration-500 ease-out"
+                            ? "opacity-100 translate-y-2 animate-fade-out-down"
+                            : "translate-y-6 transition-transform duration-500 ease-out"
                           : "opacity-100 translate-y-0"
-                        }`}
+                      }`}
                     >
                       <div>
                         <p className="font-medium">{tx.type}</p>
@@ -577,10 +567,11 @@ const Hero = () => {
                       </div>
                       <div className="text-right">
                         <p
-                          className={`font-bold ${tx.status === "Income"
+                          className={`font-bold ${
+                            tx.status === "Income"
                               ? "text-green-400"
                               : "text-orange-400"
-                            }`}
+                          }`}
                         >
                           {tx.status === "Income" ? "+" : "-"}
                           {tx.amount}

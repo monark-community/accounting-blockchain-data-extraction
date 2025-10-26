@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
@@ -57,274 +57,80 @@ type OverviewResponse = {
   topHoldings: { symbol: string; valueUsd: number; weightPct: number }[];
 };
 
-interface Transaction {
-  id: string;
-  date: string;
-  description: string;
-  amount: string;
-  usdValue: number;
-  hash: string;
-  type: "income" | "expense" | "swap";
-  network: string;
-  walletId: string;
-}
-
-const mockTransactions: Transaction[] = [
-  {
-    id: "1",
-    date: "2023-01-15",
-    description: "ETH deposit",
-    amount: "2.5 ETH",
-    usdValue: 3750,
-    hash: "0xabc123",
-    type: "income",
-    network: "ethereum",
-    walletId: "1",
-  },
-  {
-    id: "2",
-    date: "2023-02-01",
-    description: "BTC purchase",
-    amount: "0.1 BTC",
-    usdValue: -2300,
-    hash: "0xdef456",
-    type: "expense",
-    network: "ethereum",
-    walletId: "1",
-  },
-  {
-    id: "3",
-    date: "2023-02-10",
-    description: "ETH/USDC swap",
-    amount: "1.0 ETH",
-    usdValue: 1500,
-    hash: "0xghi789",
-    type: "swap",
-    network: "ethereum",
-    walletId: "2",
-  },
-  {
-    id: "4",
-    date: "2023-03-01",
-    description: "MATIC staking reward",
-    amount: "150 MATIC",
-    usdValue: 150,
-    hash: "0xjkl012",
-    type: "income",
-    network: "polygon",
-    walletId: "3",
-  },
-  {
-    id: "5",
-    date: "2023-03-15",
-    description: "SOL transfer",
-    amount: "5 SOL",
-    usdValue: -1000,
-    hash: "0xmno345",
-    type: "expense",
-    network: "solana",
-    walletId: "2",
-  },
-  {
-    id: "6",
-    date: "2023-04-01",
-    description: "USDC interest",
-    amount: "20 USDC",
-    usdValue: 20,
-    hash: "0xpqr678",
-    type: "income",
-    network: "ethereum",
-    walletId: "1",
-  },
-  {
-    id: "7",
-    date: "2023-04-15",
-    description: "AVAX purchase",
-    amount: "2 AVAX",
-    usdValue: -200,
-    hash: "0xstu901",
-    type: "expense",
-    network: "avalanche",
-    walletId: "3",
-  },
-  {
-    id: "8",
-    date: "2023-05-01",
-    description: "LINK airdrop",
-    amount: "10 LINK",
-    usdValue: 75,
-    hash: "0vwx234",
-    type: "income",
-    network: "ethereum",
-    walletId: "2",
-  },
-  {
-    id: "9",
-    date: "2023-05-15",
-    description: "BNB transfer",
-    amount: "0.5 BNB",
-    usdValue: -150,
-    hash: "0xyz567",
-    type: "expense",
-    network: "bsc",
-    walletId: "1",
-  },
-  {
-    id: "10",
-    date: "2023-06-01",
-    description: "UNI swap",
-    amount: "3 UNI",
-    usdValue: 45,
-    hash: "0x123abc",
-    type: "swap",
-    network: "ethereum",
-    walletId: "3",
-  },
-];
-
-const mockCapitalGainsData = (
-  transactions: Transaction[]
-): {
-  realized: CapitalGainEntry[];
-  unrealized: CapitalGainEntry[];
-  totalRealizedGains: number;
-  totalUnrealizedGains: number;
-  shortTermGains: number;
-  longTermGains: number;
-} => {
-  const realized: CapitalGainEntry[] = [];
-  const unrealized: CapitalGainEntry[] = [];
-  let totalRealizedGains = 0;
-  let totalUnrealizedGains = 0;
-  let shortTermGains = 0;
-  let longTermGains = 0;
-
-  // Mock Realized Gains
-  for (let i = 1; i <= 5; i++) {
-    const gain: CapitalGainEntry = {
-      id: `realized-${i}`,
-      asset: `Asset ${i}`,
-      quantity: i * 10,
-      costBasis: 100 * i,
-      salePrice: 150 * i,
-      gain: 50 * i,
-      gainPercent: 50,
-      holdingPeriod: 365 + i,
-      isLongTerm: true,
-      saleDate: "2023-06-01",
-      purchaseDate: "2022-06-01",
-      transactionId: `tx-${i}`,
-    };
-    realized.push(gain);
-    totalRealizedGains += gain.gain;
-    longTermGains += gain.gain;
-  }
-
-  // Mock Unrealized Gains
-  for (let i = 1; i <= 5; i++) {
-    const gain: CapitalGainEntry = {
-      id: `unrealized-${i}`,
-      asset: `Asset ${i}`,
-      quantity: i * 5,
-      costBasis: 50 * i,
-      salePrice: 75 * i,
-      gain: 25 * i,
-      gainPercent: 50,
-      holdingPeriod: 180 - i,
-      isLongTerm: false,
-      saleDate: "2023-06-01",
-      purchaseDate: "2023-01-01",
-      transactionId: `tx-unrealized-${i}`,
-    };
-    unrealized.push(gain);
-    totalUnrealizedGains += gain.gain;
-    shortTermGains += gain.gain;
-  }
-
-  return {
-    realized,
-    unrealized,
-    totalRealizedGains,
-    totalUnrealizedGains,
-    shortTermGains,
-    longTermGains,
-  };
-};
-
+/** Format a number as USD */
 const fmtUSD = (n: number) =>
-  n.toLocaleString(undefined, {
+  new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  });
+  }).format(n);
+
+/** Format a number as percentage */
+const fmtPct = (n: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(n / 100);
 
 const Dashboard = () => {
-  const { connectedWallets, getWalletName, userPreferences, chainId, userWallet, isConnected } = useWallet();
+  const {
+    connectedWallets,
+    getWalletName,
+    userPreferences,
+    chainId,
+    userWallet,
+    isConnected,
+  } = useWallet();
   const router = useRouter();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
 
-  const transactions = mockTransactions;
-  const capitalGainsData = mockCapitalGainsData(transactions);
-
-  const portfolioData = [
-    { month: "Jan", value: 45000 },
-    { month: "Feb", value: 52000 },
-    { month: "Mar", value: 48000 },
-    { month: "Apr", value: 61000 },
-    { month: "May", value: 55000 },
-    { month: "Jun", value: 67000 },
-  ];
-
-  const fmtUSD = (n: number) =>
-    n.toLocaleString(undefined, {
-      style: "currency",
-      currency: "USD",
-      maximumFractionDigits: 2,
-    });
-  const fmtPct = (n: number) => `${n.toFixed(1)}%`;
-
+  // Remove mock data
   const [urlAddress, setUrlAddress] = useState<string>("");
-
-  // Get address from URL params on client side to avoid hydration issues
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const addressParam = urlParams.get("address") || "";
-    // console.log("Dashboard: Setting URL address to:", addressParam);
-    setUrlAddress(addressParam);
-  }, []);
-
-  // Use URL address if available, otherwise use connected wallet address
-  const address = urlAddress || (isConnected && userWallet ? userWallet : "");
-
-  // Debug logging
-  // useEffect(() => {
-  //   console.log("Dashboard: Current address:", address);
-  //   console.log("Dashboard: isConnected:", isConnected);
-  //   console.log("Dashboard: userWallet:", userWallet);
-  //   console.log("Dashboard: urlAddress:", urlAddress);
-  // }, [address, isConnected, userWallet, urlAddress]);
-
-  // Redirect to home if no address available and not connected
-  useEffect(() => {
-    if (!address && !isConnected) {
-      router.push("/");
-    }
-  }, [address, isConnected, router]);
-
-  // --- Overview state ---
+  const [urlReady, setUrlReady] = useState(false);
   const [ov, setOv] = useState<OverviewResponse | null>(null);
   const [loadingOv, setLoadingOv] = useState(false);
   const [errorOv, setErrorOv] = useState<string | null>(null);
-
   const [showChange, setShowChange] = useState(false);
 
+  // Get address from URL params on client side to avoid hydration issues
+  // Read ?address=... exactly once after mount
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    setUrlAddress(sp.get("address") || "");
+    setUrlReady(true);
+  }, []);
+
+  // Use URL address if available, otherwise use connected wallet address
+  const address = useMemo(
+    () =>
+      urlAddress ? urlAddress : isConnected && userWallet ? userWallet : "",
+    [urlAddress, isConnected, userWallet]
+  );
+
+  // Redirect to home ONLY after URL is parsed and truly no address is available
+  useEffect(() => {
+    if (!urlReady) return;
+    if (!address && !isConnected) {
+      router.push("/");
+    }
+  }, [urlReady, address, isConnected, router]);
+
+  // --- Overview state ---
   const topHoldingsLive = useMemo(() => {
-    if (!ov) return [];
-    return (ov.holdings || [])
-      .filter((h) => (h.valueUsd ?? 0) > 0)
-      .sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0))
-      .slice(0, 5);
+    const rows = (ov?.holdings ?? []).slice();
+    rows.sort((a, b) => {
+      const va = a.valueUsd ?? 0;
+      const vb = b.valueUsd ?? 0;
+      if (vb !== va) return vb - va; // prefer priced when available
+      // fallback by qty if both 0
+      const qa = parseFloat(a.qty || "0");
+      const qb = parseFloat(b.qty || "0");
+      return qb - qa;
+    });
+    return rows.slice(0, 5);
   }, [ov]);
 
   const allocationData = useMemo(() => {
@@ -359,7 +165,11 @@ const Dashboard = () => {
     if (!address) return;
     setLoadingOv(true);
     setErrorOv(null);
-    fetch(`/api/portfolio/overview/${encodeURIComponent(address)}?minUsd=1&chainId=${chainId}`)
+    fetch(
+      `/api/portfolio/overview/${encodeURIComponent(
+        address
+      )}?minUsd=0&chainId=${chainId}`
+    )
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then(setOv)
       .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
@@ -381,14 +191,11 @@ const Dashboard = () => {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            {/* <TabsTrigger value="income">Income</TabsTrigger>
-            <TabsTrigger value="expenses">Expenses</TabsTrigger> */}
-            {/* <TabsTrigger value="capital-gains">Capital Gains</TabsTrigger> */}
             <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="overview" className="space-y-6">
             {/* Portfolio Summary Cards */}
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -526,7 +333,11 @@ const Dashboard = () => {
                       <XAxis dataKey="name" />
                       <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
                       <Tooltip
-                        formatter={(value: unknown, _name: string, entry: { payload?: { pct: number; usd: number } }) => {
+                        formatter={(
+                          value: unknown,
+                          _name: string,
+                          entry: { payload?: { pct: number; usd: number } }
+                        ) => {
                           if (entry?.payload) {
                             const row = entry.payload;
                             return [
@@ -587,7 +398,8 @@ const Dashboard = () => {
                   <div className="text-sm text-red-500">{errorOv}</div>
                 )}
 
-                {!loadingOv && ov &&
+                {!loadingOv &&
+                  ov &&
                   topHoldingsLive.map((h, index) => {
                     const delta = h.delta24hUsd ?? null;
                     const pct = h.delta24hPct ?? null;
@@ -595,8 +407,8 @@ const Dashboard = () => {
                       delta == null
                         ? "text-slate-600"
                         : delta >= 0
-                          ? "text-green-600"
-                          : "text-red-600";
+                        ? "text-green-600"
+                        : "text-red-600";
                     return (
                       <div
                         key={h.contract ?? h.symbol ?? `holding-${index}`}
@@ -614,9 +426,9 @@ const Dashboard = () => {
                               {/* weight from allocation isn't 1:1; show share via value proportion */}
                               {ov.kpis?.totalValueUsd
                                 ? `${(
-                                  (h.valueUsd / ov.kpis.totalValueUsd) *
-                                  100
-                                ).toFixed(1)}% of portfolio`
+                                    (h.valueUsd / ov.kpis.totalValueUsd) *
+                                    100
+                                  ).toFixed(1)}% of portfolio`
                                 : "—"}
                             </p>
                           </div>
@@ -660,31 +472,7 @@ const Dashboard = () => {
               </div>
             </Card>
           </TabsContent>
-          
-          <TabsContent value="income">
-            <IncomeTab
-              transactions={transactions}
-              connectedWallets={connectedWallets}
-              getWalletName={getWalletName}
-            />
-          </TabsContent>
-          
-          <TabsContent value="expenses">
-            <ExpensesTab
-              transactions={transactions}
-              connectedWallets={connectedWallets}
-              getWalletName={getWalletName}
-            />
-          </TabsContent>
 
-          <TabsContent value="capital-gains">
-            <CapitalGainsTab
-              capitalGainsData={capitalGainsData}
-              accountingMethod={accountingMethod}
-              setAccountingMethod={setAccountingMethod}
-            />
-          </TabsContent>
-          
           <TabsContent value="all-transactions">
             <AllTransactionsTab />
           </TabsContent>

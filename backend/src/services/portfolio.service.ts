@@ -1,239 +1,305 @@
-import { de } from "zod/v4/locales";
-import { getAlchemyForChainId, getNetworkName } from "../utils/alchemy";
 import {
-  getEthUsd,
-  getErc20Usd,
-  // getErc20UsdViaDexScreener,
-  getErc20NowAndH24ViaDexScreener,
-  resolveContractsOnEthereum,
-  getEthUsdAt,
-  getErc20UsdAt,
-} from "../utils/prices";
+  tokenApiGet,
+  networkForChainId,
+  normalizeChainId,
+  fetchErc20Balances,
+  fetchNativeBalance,
+  TokenApiRow,
+} from "../utils/tokenApi";
 
-function fromHexQty(hex: string, decimals = 18): string {
-  const bi = BigInt(hex);
-  const base = BigInt(10) ** BigInt(decimals);
-  const whole = bi / base;
-  const frac = bi % base;
-  const s = frac
-    .toString()
-    .padStart(decimals, "0")
-    .slice(0, 8)
-    .replace(/0+$/, "");
-  return s ? `${whole}.${s}` : whole.toString();
+import { toHumanQty } from "../utils/pricesBasic";
+
+import { fetchPricesUsd } from "../utils/priceApi";
+
+/** ===== Public output shape expected by your frontend ===== */
+export type HoldingRow = {
+  contract: string | null; // null for native
+  symbol: string;
+  decimals: number;
+  qty: string; // human units string
+};
+
+export type HoldingsResponse = {
+  address: string;
+  chain: string; // e.g., "eth-mainnet", "bsc-mainnet", "polygon-mainnet"
+  chainId: number; // e.g., 1, 56, 137...
+  currency: "USD";
+  asOf: string; // ISO
+  holdings: HoldingRow[];
+  pagination: {
+    page: number;
+    nextPage: number | null;
+    totalPages: number;
+  };
+};
+
+/** Derive a chain label for the UI */
+function chainLabelForNetwork(network: string): string {
+  // Keep simple “<short>-mainnet” naming for now
+  switch (network) {
+    case "mainnet":
+      return "eth-mainnet";
+    case "bsc":
+      return "bnb-mainnet";
+    case "polygon":
+      return "polygon-mainnet";
+    case "optimism":
+      return "optimism-mainnet";
+    case "arbitrum-one":
+      return "arbitrum-one";
+    case "base":
+      return "base-mainnet";
+    case "avalanche":
+      return "avalanche-mainnet";
+    default:
+      return `${network}`;
+  }
 }
 
-export async function getHoldings(address: string, chainId: number = 1) {
-  const alchemy = getAlchemyForChainId(chainId);
-  
-  const ethBal = await alchemy.core.getBalance(address).catch(() => null);
-  if (!ethBal) {
-    const err = new Error("Wallet not found");
-    (err as any).code = "WalletNotFound";
-    throw err;
-  }
-  const ethQty = fromHexQty((ethBal as any)._hex ?? (ethBal as any), 18);
-
-  const tb = await alchemy.core.getTokenBalances(address);
-  const nonZero = tb.tokenBalances.filter(
-    (t) => t.tokenBalance && t.tokenBalance !== "0x0"
-  );
-
-  const tokens = await Promise.all(
-    nonZero.map(async (t) => {
-      const md = await alchemy.core
-        .getTokenMetadata(t.contractAddress)
-        .catch(() => null);
-      const decimals = md?.decimals ?? 18;
-      const symbol = md?.symbol ?? "UNKNOWN";
-      const qty = fromHexQty(t.tokenBalance!, decimals);
-      return { contract: t.contractAddress, symbol, decimals, qty };
-    })
-  );
+/** Normalize one TokenAPI row to your HoldingRow */
+function toHoldingRow(row: TokenApiRow, isNative = false): HoldingRow {
+  const decimals = Number.isFinite(row.decimals)
+    ? Number(row.decimals)
+    : isNative
+    ? 18
+    : 18;
+  // Prefer amount (string human units); if missing, fallback to value or "0"
+  const qty =
+    typeof row.amount === "string" && row.amount.length > 0
+      ? row.amount
+      : typeof row.value === "number"
+      ? String(row.value)
+      : "0";
 
   return {
-    address,
-    chain: getNetworkName(chainId),
-    chainId,
-    currency: "USD",
-    asOf: new Date().toISOString(),
-    holdings: [
-      { contract: null as null, symbol: "ETH", decimals: 18, qty: ethQty },
-      ...tokens,
-    ],
+    contract: isNative ? null : String(row.address || "").toLowerCase(),
+    symbol: row.symbol || (isNative ? "ETH" : ""),
+    decimals,
+    qty,
   };
 }
 
-export async function getOverview(address: string, chainId: number = 1) {
-  // 1) Base holdings + current prices
-  const base = await getHoldings(address, chainId);
-  const ethUsd = await getEthUsd();
+/** ===== What /overview returns to the frontend ===== */
+export type OverviewHoldingRow = {
+  contract: string | null; // null for native
+  symbol: string;
+  decimals: number;
+  qty: string; // human units (string)
+  priceUsd: number; // current price
+  valueUsd: number; // qty * priceUsd
+  priceUsd24h: number | null;
+  valueUsd24h: number | null;
+  delta24hUsd: number | null; // valueUsd - valueUsd24h
+  delta24hPct: number | null; // 100 * delta24hUsd / valueUsd24h
+};
 
-  const erc20 = base.holdings.filter((h) => h.contract && Number(h.qty) > 0);
-  const contracts = Array.from(
-    new Set(erc20.map((h) => String(h.contract).toLowerCase()))
-  );
-  const priceMap = await getErc20Usd(contracts);
+export type AllocationRow = {
+  symbol: string;
+  valueUsd: number;
+  weightPct: number;
+};
 
-  // DexScreener fallback for current prices
-  const missingNow = contracts.filter((c) => !priceMap.has(c));
-  if (missingNow.length) {
-    const dsNow = await getErc20NowAndH24ViaDexScreener(
-      missingNow.slice(0, 60)
-    );
-    for (const a of missingNow) {
-      const row = dsNow.get(a);
-      if (row?.price && row.price > 0) priceMap.set(a, row.price);
-    }
-  }
+export type OverviewResponse = {
+  address: string;
+  asOf: string; // ISO
+  currency: "USD";
+  kpis: {
+    totalValueUsd: number;
+    delta24hUsd: number;
+    delta24hPct: number;
+  };
+  holdings: OverviewHoldingRow[];
+  allocation: AllocationRow[];
+  topHoldings: AllocationRow[];
+};
 
-  // 2) Build 24h-ago price map (DefiLlama + DexScreener h24%)
-  const ts24h = Math.floor(Date.now() / 1000) - 24 * 3600;
-  const histEth = await getEthUsdAt(ts24h);
-  const histMap = await getErc20UsdAt(contracts, ts24h);
+/** Small helper to turn a TokenAPI row into our base holding (before pricing) */
+function toBaseHolding(row: TokenApiRow, isNative = false) {
+  const decimals = Number.isFinite(row.decimals) ? Number(row.decimals) : 18;
 
-  // Fill gaps with DexScreener h24%: now = prev * (1 + h24/100) => prev = now / (1+h24/100)
-  const needDs = contracts.filter((a) => !histMap.has(a));
-  if (needDs.length) {
-    const dsNowH24 = await getErc20NowAndH24ViaDexScreener(needDs.slice(0, 60));
-    for (const a of needDs) {
-      const row = dsNowH24.get(a);
-      if (!row) continue;
-      if (!priceMap.has(a) && row.price > 0) priceMap.set(a, row.price);
-      if (row.h24 != null && isFinite(row.h24) && row.h24 > -100) {
-        const prev = row.price / (1 + row.h24 / 100);
-        if (prev > 0 && isFinite(prev)) histMap.set(a, prev);
-      }
-    }
-  }
+  return {
+    contract: isNative ? null : String(row.address || "").toLowerCase(),
+    symbol: row.symbol || (isNative ? "ETH" : ""),
+    decimals,
+    qty: toHumanQty(row),
+  };
+}
 
-  // 3) Holdings with per-token 24h fields
-  const pricedHoldings = base.holdings.map((h) => {
-    const addr = h.contract ? String(h.contract).toLowerCase() : null;
-    const qty = Number(h.qty);
-    const priceNow = addr ? priceMap.get(addr) ?? 0 : ethUsd;
-    const price24h = addr ? histMap.get(addr) ?? 0 : histEth;
+/** Build allocation/topHoldings from priced holdings */
+function buildAllocation(holdings: OverviewHoldingRow[]): {
+  allocation: AllocationRow[];
+  topHoldings: AllocationRow[];
+} {
+  const total = holdings.reduce((s, h) => s + (h.valueUsd || 0), 0);
+  const allocation = holdings
+    .filter((h) => (h.valueUsd || 0) > 0)
+    .map<AllocationRow>((h) => ({
+      symbol: h.symbol || "(unknown)",
+      valueUsd: h.valueUsd || 0,
+      weightPct: total ? ((h.valueUsd || 0) / total) * 100 : 0,
+    }))
+    .sort((a, b) => b.valueUsd - a.valueUsd);
+  return { allocation, topHoldings: allocation.slice(0, 10) };
+}
 
-    const valueNow = qty * priceNow;
-    const hasHist = qty > 0 && price24h > 0;
-    const value24h = hasHist ? qty * price24h : null;
-    const deltaUsd = hasHist ? valueNow - (value24h as number) : null;
+/** Main: Get holdings (EVM) */
+export async function getHoldings(
+  address: string,
+  opts?: { chain?: string | number; page?: number; limit?: number }
+): Promise<HoldingsResponse> {
+  const addr = String(address).trim().toLowerCase();
+  const chainIdNum = normalizeChainId(opts?.chain ?? 1);
+  const network = networkForChainId(chainIdNum);
+  const page = Math.max(1, opts?.page ?? 1);
+  const limit = Math.min(Math.max(1, opts?.limit ?? 20), 1000); // safety cap
+  const pageFetchSize = Math.max(limit * page, 200); // one-shot fetch, slice locally
+
+  // Pull both ERC20 and native
+  const [erc20, native] = await Promise.all([
+    fetchErc20Balances(addr, network),
+    fetchNativeBalance(addr, network),
+  ]);
+
+  // Normalize to HoldingRow[]
+  const rows: HoldingRow[] = [
+    ...(native ? [toHoldingRow(native, true)] : []),
+    ...erc20.map((r) => toHoldingRow(r, false)),
+  ];
+
+  // Timestamp: prefer native’s “as of” inferred from server time
+  const asOf = new Date().toISOString();
+
+  // Local pagination
+  const start = (page - 1) * limit;
+  const end = start + limit;
+  const total = rows.length;
+
+  // Helpful debug logs while you wire the UI
+  // console.log(
+  //   `[holdings] ${addr} on ${network} — total rows: ${total} (native:${!!native})`
+  // );
+
+  // console.log(
+  //   `[getHoldings] network=${network} native=${!!native} erc20=${erc20.length}`
+  // );
+
+  // console.log("[getHoldings] sample:", rows.slice(0, 3));
+
+  return {
+    address: addr,
+    chain: chainLabelForNetwork(network),
+    chainId: chainIdNum,
+    currency: "USD",
+    asOf,
+    holdings: rows.slice(start, end),
+    pagination: {
+      page,
+      nextPage: end < total ? page + 1 : null,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+}
+
+/** ===== Main: Overview (EVM) =====
+ * Respects: minUsd (filter after pricing), chainId (hex or number)
+ */
+export async function getOverview(
+  address: string,
+  chainIdInput: string | number = 1,
+  minUsd: number = 0
+): Promise<OverviewResponse> {
+  const addr = String(address).trim().toLowerCase();
+  const chainId = normalizeChainId(chainIdInput);
+  const network = networkForChainId(chainId);
+
+  // 1) Fetch balances (native + ERC-20)
+  const [erc20, native] = await Promise.all([
+    fetchErc20Balances(addr, network),
+    fetchNativeBalance(addr, network),
+  ]);
+
+  // console.log(`[getOverview] addr=${addr} network=${network}`);
+  // console.log("[getOverview] erc20 count:", erc20?.length || 0);
+  // console.log("[getOverview] native row:", native);
+
+  // 2) Normalize into base holdings (no pricing yet)
+  const base = [
+    ...(native ? [toBaseHolding(native, true)] : []),
+    ...erc20.map((r) => toBaseHolding(r, false)),
+  ];
+
+  // 3) Fetch prices and attach
+  const priceMap = await fetchPricesUsd(chainId, base);
+
+  console.log("[overview] priceMap size:", Object.keys(priceMap).length);
+  console.log("[overview] check native key:", `native:${network}`);
+
+  const holdings: OverviewHoldingRow[] = base.map((h) => {
+    const key = h.contract ? h.contract : `native:${network}`;
+    const quote = priceMap[key.toLowerCase?.() ?? key] ?? {
+      priceUsd: 0,
+      priceUsd24h: null,
+    };
+    const qtyNum = parseFloat(h.qty || "0");
+    const priceNow = Number.isFinite(quote.priceUsd) ? quote.priceUsd : 0;
+    const valueNow = qtyNum * priceNow;
+    const price24h = quote.priceUsd24h;
+    const value24h = price24h != null ? qtyNum * price24h : null;
+    const deltaUsd = value24h != null ? valueNow - value24h : null;
     const deltaPct =
-      hasHist && (value24h as number) > 0
-        ? ((deltaUsd as number) / (value24h as number)) * 100
-        : null;
+      value24h && value24h !== 0 ? (deltaUsd! / value24h) * 100 : null;
 
     return {
       ...h,
       priceUsd: priceNow,
-      priceUsd24h: hasHist ? price24h : null,
       valueUsd: valueNow,
+      priceUsd24h: price24h,
       valueUsd24h: value24h,
       delta24hUsd: deltaUsd,
       delta24hPct: deltaPct,
     };
   });
 
-  // 4) KPIs + allocation/top
-  const totalValueUsd = pricedHoldings.reduce(
-    (s, h) => s + (h.valueUsd || 0),
+  // console.log("[getOverview] first 3 holdings:", holdings.slice(0, 3));
+
+  // 4) Apply minUsd filter (keep rows with valueUsd >= minUsd)
+  const filtered =
+    minUsd && minUsd > 0
+      ? holdings.filter((h) => (h.valueUsd || 0) >= minUsd)
+      : holdings;
+
+  // 5) KPIs and allocation
+  const totalValueUsd = filtered.reduce((s, h) => s + (h.valueUsd || 0), 0);
+  // For now, portfolio 24h deltas are 0 unless you wire real prices (then sum from holdings)
+  const portfolioDeltaUsd = filtered.reduce(
+    (s, h) => s + (h.delta24hUsd || 0),
     0
   );
-  const totalPrev = pricedHoldings.reduce(
-    (s, h) =>
-      s + (typeof h.valueUsd24h === "number" ? (h.valueUsd24h as number) : 0),
+  const portfolioValue24h = filtered.reduce(
+    (s, h) => s + (h.valueUsd24h || 0),
     0
   );
-  const delta24hUsd = totalValueUsd - totalPrev;
-  const delta24hPct = totalPrev ? (delta24hUsd / totalPrev) * 100 : 0;
+  const portfolioDeltaPct = portfolioValue24h
+    ? (portfolioDeltaUsd / portfolioValue24h) * 100
+    : 0;
 
-  const allocation = pricedHoldings
-    .filter((h) => (h.valueUsd || 0) > 0)
-    .map((h) => ({
-      symbol: h.symbol || "(unknown)",
-      valueUsd: h.valueUsd || 0,
-      weightPct: totalValueUsd ? ((h.valueUsd || 0) / totalValueUsd) * 100 : 0,
-    }))
-    .sort((a, b) => b.valueUsd - a.valueUsd);
+  const { allocation, topHoldings } = buildAllocation(filtered);
 
-  const topHoldings = allocation.slice(0, 10);
+  // 6) Sort holdings descending by value (nicer UX)
+  filtered.sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0));
 
+  // 7) Return in the exact shape your frontend expects
   return {
-    address: base.address,
+    address: addr,
     asOf: new Date().toISOString(),
     currency: "USD",
-    kpis: { totalValueUsd, delta24hUsd, delta24hPct },
-    holdings: pricedHoldings,
+    kpis: {
+      totalValueUsd,
+      delta24hUsd: portfolioDeltaUsd,
+      delta24hPct: portfolioDeltaPct,
+    },
+    holdings: filtered,
     allocation,
     topHoldings,
   };
-}
-
-export async function getTokenForAddress(params: {
-  address: string;
-  contract?: string;
-  symbol?: string;
-  chainId?: number;
-}) {
-  const address = params.address.trim();
-  const chainId = params.chainId || 1;
-  const alchemy = getAlchemyForChainId(chainId);
-  let contracts: string[] = [];
-
-  if (params.contract) {
-    const c = params.contract.trim().toLowerCase();
-    if (!c.startsWith("0x") || c.length !== 42)
-      throw Object.assign(new Error("Bad contract"), { code: "BadRequest" });
-    contracts = [c];
-  } else if (params.symbol) {
-    contracts = await resolveContractsOnEthereum(params.symbol);
-    if (!contracts.length)
-      return {
-        matches: [],
-        note: "No ethereum tokens matched that symbol/name.",
-      };
-  } else {
-    throw Object.assign(new Error("contract or symbol required"), {
-      code: "BadRequest",
-    });
-  }
-
-  // Ask Alchemy for just these contracts (fast)
-  const res: any = await alchemy.core.getTokenBalances(address, contracts);
-  const balances = (res?.tokenBalances ?? []).map((t: any) => ({
-    contract: String(t.contractAddress).toLowerCase(),
-    balHex: t.tokenBalance as string | null,
-  }));
-
-  // Enrich metadata + qty only for matches with a non-null balance (zero hex still possible)
-  const enriched = await Promise.all(
-    balances.map(async (b) => {
-      const md = await alchemy.core
-        .getTokenMetadata(b.contract)
-        .catch(() => null);
-      const decimals = md?.decimals ?? 18;
-      const symbol = md?.symbol ?? "";
-      const name = md?.name ?? "";
-      const qty = b.balHex ? fromHexQty(b.balHex, decimals) : "0";
-      return { contract: b.contract, symbol, name, decimals, qty };
-    })
-  );
-
-  // Price (DefiLlama first, DexScreener fallback)
-  const addrs = enriched.map((e) => e.contract);
-  const priceMap = await getErc20Usd(addrs);
-  const missing = addrs.filter((a) => !priceMap.has(a));
-  if (missing.length) {
-    const ds = await getErc20NowAndH24ViaDexScreener(missing.slice(0, 60));
-    for (const [k, v] of ds) priceMap.set(k, v);
-  }
-
-  const items = enriched.map((e) => {
-    const priceUsd = priceMap.get(e.contract) ?? 0;
-    const valueUsd = Number(e.qty) * priceUsd;
-    return { ...e, priceUsd, valueUsd };
-  });
-
-  // If user searched by symbol, return all matches; if by contract, return single
-  return params.symbol ? { matches: items } : items[0];
 }

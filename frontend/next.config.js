@@ -15,34 +15,36 @@ const nextConfig = {
       assert: false,
       os: false,
       path: false,
-      buffer: require.resolve('buffer'),
-      process: require.resolve('process/browser'),
+      buffer: require.resolve("buffer"),
+      process: require.resolve("process/browser"),
       // Add fallbacks for packages that are not needed in browser
-      '@react-native-async-storage/async-storage': false,
-      'pino-pretty': false,
+      "@react-native-async-storage/async-storage": false,
+      "pino-pretty": false,
     };
     return config;
   },
   async rewrites() {
+    const base = process.env.API_BASE ?? "http://backend-dev:8080";
+
     return [
       {
-        source: '/api/:path*',
-        destination: 'http://backend-dev:8080/api/:path*',
+        source: "/api/:path*",
+        destination: `${base}/api/:path*`,
       },
     ];
   },
   headers: async () => {
     return [
       {
-        source: '/(.*)',
+        source: "/(.*)",
         headers: [
           {
-            key: 'Cross-Origin-Opener-Policy',
-            value: 'same-origin-allow-popups',
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin-allow-popups",
           },
           {
-            key: 'Cross-Origin-Embedder-Policy',
-            value: 'unsafe-none',
+            key: "Cross-Origin-Embedder-Policy",
+            value: "unsafe-none",
           },
         ],
       },
