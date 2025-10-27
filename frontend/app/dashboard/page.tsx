@@ -44,44 +44,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { Tooltip } from "recharts";
 import { useWallets } from "@/hooks/use-wallets";
-
-type PricedHolding = {
-  contract: string | null;
-  symbol: string;
-  decimals: number;
-  qty: string;
-  priceUsd: number;
-  valueUsd: number;
-  delta24hUsd?: number | null;
-  delta24hPct?: number | null;
-};
-
-type OverviewResponse = {
-  address: string;
-  asOf: string;
-  currency: "USD";
-  kpis: { totalValueUsd: number; delta24hUsd: number; delta24hPct: number };
-  holdings: PricedHolding[];
-  allocation: { symbol: string; valueUsd: number; weightPct: number }[];
-  topHoldings: { symbol: string; valueUsd: number; weightPct: number }[];
-};
-
-/** Format a number as USD */
-const fmtUSD = (n: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n);
-
-/** Format a number as percentage */
-const fmtPct = (n: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "percent",
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(n / 100);
+import { OverviewResponse, PricedHolding } from "@/lib/portfolioTypes";
+import {
+  fmtUSD,
+  fmtPct,
+  chainBadgeClass,
+  CHAIN_LABEL,
+  computeHHI,
+  isStable,
+} from "@/lib/portfolioUtils";
 
 const Dashboard = () => {
   const {
@@ -97,7 +68,6 @@ const Dashboard = () => {
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
 
-  // Remove mock data
   const [urlAddress, setUrlAddress] = useState<string>("");
   const [urlReady, setUrlReady] = useState(false);
   const [ov, setOv] = useState<OverviewResponse | null>(null);
@@ -166,20 +136,25 @@ const Dashboard = () => {
     }
   }, [urlReady, address, isConnected, router]);
 
-  // --- Overview state ---
-  const topHoldingsLive = useMemo(() => {
-    const rows = (ov?.holdings ?? []).slice();
-    rows.sort((a, b) => {
-      const va = a.valueUsd ?? 0;
-      const vb = b.valueUsd ?? 0;
-      if (vb !== va) return vb - va; // prefer priced when available
-      // fallback by qty if both 0
-      const qa = parseFloat(a.qty || "0");
-      const qb = parseFloat(b.qty || "0");
-      return qb - qa;
-    });
-    return rows.slice(0, 5);
-  }, [ov]);
+  const [networks, setNetworks] = useState<string>(
+    "mainnet,polygon,base,optimism,arbitrum-one,bsc,avalanche,unichain"
+  );
+
+  useEffect(() => {
+    if (!address) return;
+    setLoadingOv(true);
+    setErrorOv(null);
+
+    const url = `/api/holdings/${encodeURIComponent(
+      address
+    )}?networks=${encodeURIComponent(networks)}&withDelta24h=true`;
+
+    fetch(url)
+      .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
+      .then((data: OverviewResponse) => setOv(data))
+      .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
+      .finally(() => setLoadingOv(false));
+  }, [address, networks, userWallet, isConnected]);
 
   const allocationData = useMemo(() => {
     if (!ov) return [];
@@ -209,20 +184,74 @@ const Dashboard = () => {
     return rows;
   }, [ov]);
 
-  useEffect(() => {
-    if (!address) return;
-    setLoadingOv(true);
-    setErrorOv(null);
-    fetch(
-      `/api/portfolio/overview/${encodeURIComponent(
-        address
-      )}?minUsd=0&chainId=${chainId}`
-    )
-      .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
-      .then(setOv)
-      .catch((e) => setErrorOv(e?.error?.message || "Failed to load overview"))
-      .finally(() => setLoadingOv(false));
-  }, [address, chainId, userWallet, isConnected]);
+  // --- Overview state ---
+  const topHoldingsLive = useMemo(() => {
+    const rows = (ov?.holdings ?? []).slice();
+    rows.sort((a, b) => {
+      const va = a.valueUsd ?? 0;
+      const vb = b.valueUsd ?? 0;
+      if (vb !== va) return vb - va; // prefer priced when available
+      // fallback by qty if both 0
+      const qa = parseFloat(a.qty || "0");
+      const qb = parseFloat(b.qty || "0");
+      return qb - qa;
+    });
+    return rows.slice(0, 10);
+  }, [ov]);
+
+  // Chain-level breakdown (sum of values per chain)
+  const chainBreakdown = useMemo(() => {
+    if (!ov) return [];
+    const byChain = new Map<string, number>();
+    for (const h of ov.holdings) {
+      byChain.set(h.chain, (byChain.get(h.chain) ?? 0) + (h.valueUsd || 0));
+    }
+    const total = [...byChain.values()].reduce((s, v) => s + v, 0) || 1;
+    return [...byChain.entries()]
+      .map(([chain, usd]) => ({
+        chain,
+        label: CHAIN_LABEL[chain] ?? chain,
+        usd,
+        pct: (usd / total) * 100,
+      }))
+      .sort((a, b) => b.usd - a.usd);
+  }, [ov]);
+
+  // Top movers (24h) — requires deltas present
+  const movers = useMemo(() => {
+    const rows = (ov?.holdings ?? []).filter(
+      (h) => typeof h.delta24hUsd === "number"
+    );
+    const gainers = rows
+      .slice()
+      .sort((a, b) => b.delta24hUsd! - a.delta24hUsd!)
+      .slice(0, 5);
+    const losers = rows
+      .slice()
+      .sort((a, b) => a.delta24hUsd! - b.delta24hUsd!)
+      .slice(0, 5);
+    return { gainers, losers };
+  }, [ov]);
+
+  // Concentration metrics & stablecoin share (quick badges)
+  const concentration = useMemo(() => {
+    const w = (ov?.allocation ?? []).map((a) => a.weightPct);
+    const hhi = computeHHI(w);
+    const label =
+      hhi > 25
+        ? "Highly concentrated"
+        : hhi > 15
+        ? "Moderately concentrated"
+        : "Well diversified";
+    const stablesUSD = (ov?.holdings ?? [])
+      .filter((h) => isStable(h.symbol))
+      .reduce((s, h) => s + (h.valueUsd || 0), 0);
+    const stableSharePct =
+      (ov?.kpis.totalValueUsd ?? 0) > 0
+        ? (stablesUSD / ov!.kpis.totalValueUsd) * 100
+        : 0;
+    return { hhi, label, stableSharePct };
+  }, [ov]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -349,6 +378,56 @@ const Dashboard = () => {
                 </div>
               </Card>
 
+              <Card className="p-6 bg-white shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-slate-600 text-sm font-medium">
+                      Diversification (HHI)
+                    </p>
+                    {loadingOv ? (
+                      <div className="mt-2">
+                        <Skeleton className="h-8 w-28" />
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <p className="text-xl font-semibold text-slate-800">
+                          {concentration.hhi.toFixed(1)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {concentration.label}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <BarChart3 className="w-12 h-12 text-purple-500" />
+                </div>
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-slate-600 text-sm font-medium">
+                      Stablecoin Share
+                    </p>
+                    {loadingOv ? (
+                      <div className="mt-2">
+                        <Skeleton className="h-8 w-24" />
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <p className="text-xl font-semibold text-slate-800">
+                          {concentration.stableSharePct.toFixed(1)}%
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Of total portfolio
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <DollarSign className="w-12 h-12 text-orange-500" />
+                </div>
+              </Card>
+
               {/* 
               
               TO DO : Metrics below require real data, so hiding for now, do after the MVP (demo) is done
@@ -406,6 +485,55 @@ const Dashboard = () => {
                   </LineChart>
                 </ResponsiveContainer>
               </Card> */}
+
+              <Card className="p-6 bg-white shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold text-slate-800">
+                    Allocation by Chain
+                  </h3>
+                </div>
+
+                {loadingOv ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-[300px] w-full" />
+                  </div>
+                ) : !ov ? (
+                  <div className="text-sm text-slate-500">
+                    Load an address to see allocation by chain.
+                  </div>
+                ) : chainBreakdown.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No priced tokens to display.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={chainBreakdown}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" />
+                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                      <Tooltip
+                        formatter={(
+                          value: unknown,
+                          _name: string,
+                          entry: { payload?: { pct: number; usd: number } }
+                        ) => {
+                          if (entry?.payload) {
+                            const row = entry.payload;
+                            return [
+                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
+                              "Allocation",
+                            ];
+                          }
+                          return [value, "Allocation"];
+                        }}
+                        labelFormatter={(label) => String(label)}
+                      />
+                      <Bar dataKey="pct" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
 
               <Card className="p-6 bg-white shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
@@ -518,12 +646,20 @@ const Dashboard = () => {
                             {(h.symbol || "TOK").slice(0, 3).toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-medium text-slate-800">
+                            <p className="font-medium text-slate-800 flex items-center gap-2">
                               {h.symbol || "(unknown)"}
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded ${
+                                  chainBadgeClass[(h as any).chain] ||
+                                  "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {CHAIN_LABEL[(h as any).chain] ??
+                                  (h as any).chain}
+                              </span>
                             </p>
                             <p className="text-sm text-slate-500">
-                              {/* weight from allocation isn't 1:1; show share via value proportion */}
-                              {ov.kpis?.totalValueUsd
+                              {ov?.kpis?.totalValueUsd
                                 ? `${(
                                     (h.valueUsd / ov.kpis.totalValueUsd) *
                                     100
@@ -569,6 +705,96 @@ const Dashboard = () => {
                     </div>
                   )}
               </div>
+            </Card>
+
+            <Card className="p-6 bg-white shadow-sm mt-6">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Top Movers (24h)
+              </h3>
+
+              {loadingOv ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                </div>
+              ) : !ov ? (
+                <div className="text-sm text-slate-500">
+                  Load an address to see movers.
+                </div>
+              ) : movers.gainers.length + movers.losers.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No 24h change data available.
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Gainers */}
+                  <div>
+                    <p className="text-sm font-medium text-green-700 mb-2">
+                      Top Gainers
+                    </p>
+                    {movers.gainers.map((h, i) => (
+                      <div
+                        key={`g-${i}`}
+                        className="flex items-center justify-between py-2 border-b border-slate-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded ${
+                              chainBadgeClass[h.chain] ||
+                              "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {CHAIN_LABEL[h.chain] ?? h.chain}
+                          </span>
+                          <span className="font-medium text-slate-800">
+                            {h.symbol || "(unknown)"}
+                          </span>
+                        </div>
+                        <div className="text-right text-green-700 font-semibold">
+                          {fmtUSD(h.delta24hUsd ?? 0)}{" "}
+                          <span className="text-xs text-green-700">
+                            ({h.delta24hPct?.toFixed(2) ?? "0.00"}%)
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Losers */}
+                  <div>
+                    <p className="text-sm font-medium text-red-700 mb-2">
+                      Top Losers
+                    </p>
+                    {movers.losers.map((h, i) => (
+                      <div
+                        key={`l-${i}`}
+                        className="flex items-center justify-between py-2 border-b border-slate-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 text-xs rounded ${
+                              chainBadgeClass[h.chain] ||
+                              "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {CHAIN_LABEL[h.chain] ?? h.chain}
+                          </span>
+                          <span className="font-medium text-slate-800">
+                            {h.symbol || "(unknown)"}
+                          </span>
+                        </div>
+                        <div className="text-right text-red-700 font-semibold">
+                          {fmtUSD(h.delta24hUsd ?? 0)}{" "}
+                          <span className="text-xs text-red-700">
+                            ({h.delta24hPct?.toFixed(2) ?? "0.00"}%)
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
           </TabsContent>
 
