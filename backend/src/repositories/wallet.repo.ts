@@ -1,10 +1,9 @@
 import { pool } from "../db/pool";
 
 export type UserWalletRow = {
-  id: string;
-  user_id: string;
-  name: string;
+  main_wallet_address: string;
   address: string;
+  name: string;
   chain_id: number;
   is_active: boolean;
   created_at: string;
@@ -12,78 +11,66 @@ export type UserWalletRow = {
 };
 
 // Trouver tous les portefeuilles actifs d'un utilisateur
-export async function findUserWalletsByUserId(
-  userId: string
+export async function findUserWalletsByMainAddress(
+  mainAddress: string
 ): Promise<UserWalletRow[]> {
   const { rows } = await pool.query<UserWalletRow>(
-    `SELECT id, user_id, name, address, chain_id, is_active, created_at, updated_at 
+    `SELECT main_wallet_address, address, name, chain_id, is_active, created_at, updated_at 
      FROM user_wallets 
-     WHERE user_id = $1 AND is_active = TRUE 
+     WHERE main_wallet_address = $1 AND is_active = TRUE 
      ORDER BY created_at DESC`,
-    [userId]
+    [mainAddress.toLowerCase()]
   );
   return rows;
 }
 
-// Trouver un portefeuille par son ID
-export async function findWalletById(
-  walletId: string
-): Promise<UserWalletRow | null> {
-  const { rows } = await pool.query<UserWalletRow>(
-    `SELECT id, user_id, name, address, chain_id, is_active, created_at, updated_at 
-     FROM user_wallets 
-     WHERE id = $1 LIMIT 1`,
-    [walletId]
-  );
-  return rows[0] ?? null;
-}
-
-// Trouver un portefeuille par son adresse et user_id
-export async function findWalletByAddressAndUser(
+// Trouver un portefeuille par son adresse et main_wallet_address
+export async function findWalletByAddressAndMain(
   address: string,
-  userId: string
+  mainAddress: string
 ): Promise<UserWalletRow | null> {
   const { rows } = await pool.query<UserWalletRow>(
-    `SELECT id, user_id, name, address, chain_id, is_active, created_at, updated_at 
+    `SELECT main_wallet_address, address, name, chain_id, is_active, created_at, updated_at 
      FROM user_wallets 
-     WHERE address = $1 AND user_id = $2 LIMIT 1`,
-    [address.toLowerCase(), userId]
+     WHERE address = $1 AND main_wallet_address = $2 LIMIT 1`,
+    [address.toLowerCase(), mainAddress.toLowerCase()]
   );
   return rows[0] ?? null;
 }
 
 // Ajouter un nouveau portefeuille pour un utilisateur
 export async function createUserWallet(data: {
-  userId: string;
+  mainWalletAddress: string;
   name: string;
   address: string;
   chainId: number;
 }): Promise<UserWalletRow> {
   const { rows } = await pool.query<UserWalletRow>(
-    `INSERT INTO user_wallets (user_id, name, address, chain_id)
+    `INSERT INTO user_wallets (main_wallet_address, address, name, chain_id)
      VALUES ($1, $2, $3, $4)
-     RETURNING id, user_id, name, address, chain_id, is_active, created_at, updated_at`,
-    [data.userId, data.name, data.address.toLowerCase(), data.chainId]
+     RETURNING main_wallet_address, address, name, chain_id, is_active, created_at, updated_at`,
+    [data.mainWalletAddress.toLowerCase(), data.address.toLowerCase(), data.name, data.chainId]
   );
   return rows[0];
 }
 
 // Désactiver un portefeuille (soft delete)
-export async function deactivateUserWallet(walletId: string): Promise<boolean> {
+export async function deactivateUserWallet(mainAddress: string, address: string): Promise<boolean> {
   const { rowCount } = await pool.query(
     `UPDATE user_wallets 
      SET is_active = FALSE, updated_at = NOW() 
-     WHERE id = $1`,
-    [walletId]
+     WHERE main_wallet_address = $1 AND address = $2`,
+    [mainAddress.toLowerCase(), address.toLowerCase()]
   );
   return rowCount > 0;
 }
 
 // Supprimer définitivement un portefeuille
-export async function deleteUserWallet(walletId: string): Promise<boolean> {
+export async function deleteUserWallet(mainAddress: string, address: string): Promise<boolean> {
   const { rowCount } = await pool.query(
-    `DELETE FROM user_wallets WHERE id = $1`,
-    [walletId]
+    `DELETE FROM user_wallets 
+     WHERE main_wallet_address = $1 AND address = $2`,
+    [mainAddress.toLowerCase(), address.toLowerCase()]
   );
   return rowCount > 0;
 }
