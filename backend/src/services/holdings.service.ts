@@ -1,8 +1,13 @@
 // src/services/holdings.service.ts
 import fetch from "node-fetch";
 import { EVM_NETWORKS, type EvmNetwork } from "../config/networks";
-import { getPricesFor, NATIVE_SENTINEL } from "./pricing.service";
 import { getDelta24hQtyByContract } from "./delta24h.service";
+import { SPAM_FILTER_MODE, scoreSpam, cleanSymbol } from "../config/filters";
+import {
+  getPricesFor,
+  NATIVE_SENTINEL,
+  getNativePriceUsd,
+} from "./pricing.service";
 
 const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL ?? "https://token-api.thegraph.com/v1";
@@ -102,8 +107,17 @@ function toFloat(balanceRaw: string, decimals: number): number {
 export async function getHoldingsOverview(
   address: string,
   networks: EvmNetwork[] = EVM_NETWORKS,
-  withDelta24h = true
+  withDelta24h = true,
+  opts?: {
+    minUsd?: number;
+    includeZero?: boolean;
+    spamFilter?: "off" | "soft" | "hard";
+  }
 ): Promise<OverviewResponse> {
+  const minUsd = Math.max(0, Number(opts?.minUsd ?? 0));
+  const includeZero = !!opts?.includeZero;
+  const spamFilterOn = opts?.spamFilter ?? true;
+
   // 1) Fetch balances per network
   const rows: RawBalance[] = [];
   for (const net of networks) {
@@ -131,6 +145,13 @@ export async function getHoldingsOverview(
     m.forEach((v, k) => priceMap.set(k, v));
   }
 
+  // 2b) add native prices
+  const nativePriceMap = new Map<EvmNetwork, number>();
+  for (const net of networks) {
+    const p = await getNativePriceUsd(net);
+    if (p != null) nativePriceMap.set(net, p);
+  }
+
   // 3) Optional 24h delta (qty change only — value uses current price)
   const deltaMaps = new Map<string, { deltaQty: number; prevQty: number }>(); // `${net}:${contract}`
   if (withDelta24h) {
@@ -140,40 +161,69 @@ export async function getHoldingsOverview(
     }
   }
 
-  // 4) Assemble holdings
-  const holdings: PricedHolding[] = rows.map((r) => {
-    const qty = toFloat(r.balance, r.decimals);
-    const key = `${r.network}:${(r.contract ?? NATIVE_SENTINEL).toLowerCase()}`;
-    const priceUsd =
-      (typeof r.price_usd === "number" ? r.price_usd : undefined) ??
-      priceMap.get(key) ??
-      0;
+  // 4) assemble holdings with filtering
+  const spamMode = opts?.spamFilter ?? SPAM_FILTER_MODE;
+  const holdings: (PricedHolding & {
+    isSpam?: boolean;
+    spamReasons?: string[];
+  })[] = rows
+    .map((r) => {
+      const qty = toFloat(r.amount, r.decimals);
+      const isNative =
+        (r.contract?.toLowerCase?.() ?? NATIVE_SENTINEL) === NATIVE_SENTINEL;
+      const key = `${r.network}:${(
+        r.contract ?? NATIVE_SENTINEL
+      ).toLowerCase()}`;
 
-    const valueUsd = qty * priceUsd;
+      const displaySymbol = cleanSymbol(r.symbol);
 
-    let delta24hUsd: number | null = null;
-    let delta24hPct: number | null = null;
-    const d = deltaMaps.get(key);
-    if (d) {
-      delta24hUsd = d.deltaQty * priceUsd;
-      const prevVal = d.prevQty * priceUsd;
-      delta24hPct =
-        prevVal > 0 ? (delta24hUsd / prevVal) * 100 : valueUsd > 0 ? 100 : 0;
-    }
+      let priceUsd =
+        (typeof r.price_usd === "number" ? r.price_usd : undefined) ??
+        (isNative
+          ? nativePriceMap.get(r.network) ?? 0
+          : priceMap.get(key) ?? 0);
 
-    return {
-      chain: r.network,
-      contract:
-        r.contract.toLowerCase() === NATIVE_SENTINEL ? null : r.contract,
-      symbol: r.symbol,
-      decimals: r.decimals,
-      qty: qty.toString(),
-      priceUsd,
-      valueUsd,
-      delta24hUsd,
-      delta24hPct,
-    };
-  });
+      const valueUsd = qty * (priceUsd || 0);
+
+      let delta24hUsd: number | null = null;
+      let delta24hPct: number | null = null;
+      const d = deltaMaps.get(key);
+      if (d) {
+        delta24hUsd = d.deltaQty * (priceUsd || 0);
+        const prevVal = d.prevQty * (priceUsd || 0);
+        delta24hPct =
+          prevVal > 0 ? (delta24hUsd / prevVal) * 100 : valueUsd > 0 ? 100 : 0;
+      }
+
+      const spamEval = scoreSpam(displaySymbol);
+
+      const row: PricedHolding & { isSpam?: boolean; spamReasons?: string[] } =
+        {
+          chain: r.network,
+          contract: isNative ? null : r.contract,
+          symbol: displaySymbol ?? "(unknown)",
+          decimals: r.decimals,
+          qty: qty.toString(),
+          priceUsd: priceUsd || 0,
+          valueUsd,
+          delta24hUsd,
+          delta24hPct,
+        };
+
+      if (spamMode !== "off" && spamEval.score >= 2) {
+        row.isSpam = true;
+        row.spamReasons = spamEval.reasons;
+      }
+      return row;
+    })
+    // basic numeric gating first
+    .filter((h) => (opts?.includeZero ? true : h.qty !== "0"))
+    .filter((h) => (opts?.includeZero ? true : h.valueUsd > 0))
+    .filter((h) =>
+      opts?.minUsd ? h.valueUsd >= Math.max(0, opts!.minUsd!) : true
+    )
+    // drop only if "hard"
+    .filter((h) => (spamMode === "hard" ? !h.isSpam : true));
 
   // 5) KPIs & allocation
   const totalValueUsd = holdings.reduce((s, h) => s + h.valueUsd, 0);

@@ -74,7 +74,7 @@ export async function getDelta24hQtyByContract(
   for (const row of data as any[]) {
     const c = (row.contract ?? NATIVE_SENTINEL).toLowerCase();
     if (!byContract.has(c)) byContract.set(c, []);
-    byContract.get(c)!.push({ balance: row.balance, decimals: row.decimals });
+    byContract.get(c)!.push({ balance: row.amount, decimals: row.decimals });
   }
 
   const out = new Map<string, { deltaQty: number; prevQty: number }>();
@@ -84,8 +84,8 @@ export async function getDelta24hQtyByContract(
     if (sorted.length < 2) return;
     const prev = sorted[0];
     const curr = sorted[1];
-    const prevQty = toFloat(prev.balance, prev.decimals);
-    const currQty = toFloat(curr.balance, curr.decimals);
+    const prevQty = toFloat(prev.amount, prev.decimals);
+    const currQty = toFloat(curr.amount, curr.decimals);
     const deltaQty = currQty - prevQty;
     out.set(c, { deltaQty, prevQty });
   });

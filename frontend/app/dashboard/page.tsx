@@ -147,7 +147,9 @@ const Dashboard = () => {
 
     const url = `/api/holdings/${encodeURIComponent(
       address
-    )}?networks=${encodeURIComponent(networks)}&withDelta24h=true`;
+    )}?networks=${encodeURIComponent(
+      networks
+    )}&withDelta24h=false&minUsd=0&includeZero=true&spamFilter=hard`;
 
     fetch(url)
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
@@ -196,7 +198,7 @@ const Dashboard = () => {
       const qb = parseFloat(b.qty || "0");
       return qb - qa;
     });
-    return rows.slice(0, 10);
+    return rows.slice(0, 5);
   }, [ov]);
 
   // Chain-level breakdown (sum of values per chain)
@@ -705,6 +707,93 @@ const Dashboard = () => {
                     </div>
                   )}
               </div>
+            </Card>
+
+            <Card className="p-6 bg-white shadow-sm mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  All Holdings
+                </h3>
+                {/* optional: filters dropdown later */}
+              </div>
+
+              {loadingOv ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                </div>
+              ) : !ov || ov.holdings.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No holdings to display.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-slate-500">
+                        <th className="px-2 py-2">Asset</th>
+                        <th className="px-2 py-2">Chain</th>
+                        <th className="px-2 py-2 text-right">Qty</th>
+                        <th className="px-2 py-2 text-right">Price</th>
+                        <th className="px-2 py-2 text-right">Value</th>
+                        <th className="px-2 py-2 text-right">24h Δ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ov.holdings
+                        .slice()
+                        .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
+                        .map((h, i) => (
+                          <tr
+                            key={`${h.contract ?? h.symbol ?? i}`}
+                            className="border-t"
+                          >
+                            <td className="px-2 py-2 font-medium text-slate-800">
+                              {h.symbol || "(unknown)"}
+                            </td>
+                            <td className="px-2 py-2">
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded ${
+                                  chainBadgeClass[(h as any).chain] ||
+                                  "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {CHAIN_LABEL[(h as any).chain] ??
+                                  (h as any).chain}
+                              </span>
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {parseFloat(h.qty).toLocaleString()}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {fmtUSD(h.priceUsd || 0)}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {fmtUSD(h.valueUsd || 0)}
+                            </td>
+                            <td
+                              className={`px-2 py-2 text-right ${
+                                (h.delta24hUsd ?? 0) >= 0
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {h.delta24hUsd == null
+                                ? "—"
+                                : `${h.delta24hUsd >= 0 ? "+" : ""}${fmtUSD(
+                                    Math.abs(h.delta24hUsd)
+                                  )}`}
+                              {h.delta24hPct == null
+                                ? ""
+                                : ` (${h.delta24hPct.toFixed(2)}%)`}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
 
             <Card className="p-6 bg-white shadow-sm mt-6">
