@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useState, useEffect } from "react";
 import { ArrowLeft, Plus, Trash2, Edit2, Wallet, RefreshCw, Crown } from "lucide-react";
@@ -6,14 +6,36 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/contexts/WalletContext";
 import { useWallets } from "@/hooks/use-wallets";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
-import { mainnet, polygon, bsc, avalanche, arbitrum, optimism, goerli, sepolia, polygonMumbai } from 'wagmi/chains';
+import {
+  mainnet,
+  polygon,
+  bsc,
+  avalanche,
+  arbitrum,
+  optimism,
+  goerli,
+  sepolia,
+  polygonMumbai,
+} from "wagmi/chains";
 
 const ManageWallets = () => {
   const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance, isConnected, userWallet } = useWallet();
@@ -28,37 +50,114 @@ const ManageWallets = () => {
   const [editingWallet, setEditingWallet] = useState<{ address: string; name: string } | null>(null);
   const [editWalletName, setEditWalletName] = useState("");
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
-  const [availableNetworks, setAvailableNetworks] = useState<(typeof networks[0] & { balance?: number; isPopular?: boolean })[]>([]);
+  const [availableNetworks, setAvailableNetworks] = useState<
+    ((typeof networks)[0] & { balance?: number; isPopular?: boolean })[]
+  >([]);
   const [isDetectingNetworks, setIsDetectingNetworks] = useState(false);
   const [showTestnets, setShowTestnets] = useState(true);
 
   const networks = [
     // Mainnets
-    { value: 'ethereum', label: 'Ethereum', chainId: mainnet.id, type: 'mainnet' },
-    { value: 'polygon', label: 'Polygon', chainId: polygon.id, type: 'mainnet' },
-    { value: 'bsc', label: 'Binance Smart Chain', chainId: bsc.id, type: 'mainnet' },
-    { value: 'avalanche', label: 'Avalanche', chainId: avalanche.id, type: 'mainnet' },
-    { value: 'arbitrum', label: 'Arbitrum', chainId: arbitrum.id, type: 'mainnet' },
-    { value: 'optimism', label: 'Optimism', chainId: optimism.id, type: 'mainnet' },
+    {
+      value: "ethereum",
+      label: "Ethereum",
+      chainId: mainnet.id,
+      type: "mainnet",
+    },
+    {
+      value: "polygon",
+      label: "Polygon",
+      chainId: polygon.id,
+      type: "mainnet",
+    },
+    {
+      value: "bsc",
+      label: "Binance Smart Chain",
+      chainId: bsc.id,
+      type: "mainnet",
+    },
+    {
+      value: "avalanche",
+      label: "Avalanche",
+      chainId: avalanche.id,
+      type: "mainnet",
+    },
+    {
+      value: "arbitrum",
+      label: "Arbitrum",
+      chainId: arbitrum.id,
+      type: "mainnet",
+    },
+    {
+      value: "optimism",
+      label: "Optimism",
+      chainId: optimism.id,
+      type: "mainnet",
+    },
     // Testnets
-    { value: 'goerli', label: 'Goerli (Testnet)', chainId: goerli.id, type: 'testnet' },
-    { value: 'sepolia', label: 'Sepolia (Testnet)', chainId: sepolia.id, type: 'testnet' },
-    { value: 'mumbai', label: 'Mumbai (Polygon Testnet)', chainId: polygonMumbai.id, type: 'testnet' }
+    {
+      value: "goerli",
+      label: "Goerli (Testnet)",
+      chainId: goerli.id,
+      type: "testnet",
+    },
+    {
+      value: "sepolia",
+      label: "Sepolia (Testnet)",
+      chainId: sepolia.id,
+      type: "testnet",
+    },
+    {
+      value: "mumbai",
+      label: "Mumbai (Polygon Testnet)",
+      chainId: polygonMumbai.id,
+      type: "testnet",
+    },
   ];
 
   // Most popular networks to show as fallback
   const popularNetworks = [
-    { value: 'ethereum', label: 'Ethereum', chainId: mainnet.id, type: 'mainnet', isPopular: true },
-    { value: 'polygon', label: 'Polygon', chainId: polygon.id, type: 'mainnet', isPopular: true },
-    { value: 'arbitrum', label: 'Arbitrum', chainId: arbitrum.id, type: 'mainnet', isPopular: true },
-    { value: 'optimism', label: 'Optimism', chainId: optimism.id, type: 'mainnet', isPopular: true },
-    { value: 'sepolia', label: 'Sepolia (Testnet)', chainId: sepolia.id, type: 'testnet', isPopular: true }
+    {
+      value: "ethereum",
+      label: "Ethereum",
+      chainId: mainnet.id,
+      type: "mainnet",
+      isPopular: true,
+    },
+    {
+      value: "polygon",
+      label: "Polygon",
+      chainId: polygon.id,
+      type: "mainnet",
+      isPopular: true,
+    },
+    {
+      value: "arbitrum",
+      label: "Arbitrum",
+      chainId: arbitrum.id,
+      type: "mainnet",
+      isPopular: true,
+    },
+    {
+      value: "optimism",
+      label: "Optimism",
+      chainId: optimism.id,
+      type: "mainnet",
+      isPopular: true,
+    },
+    {
+      value: "sepolia",
+      label: "Sepolia (Testnet)",
+      chainId: sepolia.id,
+      type: "testnet",
+      isPopular: true,
+    },
   ];
 
   // Function to detect networks with funds
   const detectAvailableNetworks = async () => {
     setIsDetectingNetworks(true);
-    if (typeof window !== 'undefined' && window.ethereum) {
+    if (typeof window !== "undefined" && window.ethereum) {
       try {
         const networksWithFunds = [];
         const currentAccount = window.ethereum.selectedAddress;
@@ -66,7 +165,8 @@ const ManageWallets = () => {
         if (!currentAccount && !isConnected) {
           toast({
             title: "No Account Selected",
-            description: "Please connect your wallet first to check network balances.",
+            description:
+              "Please connect your wallet first to check network balances.",
             variant: "destructive",
           });
           setAvailableNetworks(popularNetworks);
@@ -80,29 +180,29 @@ const ManageWallets = () => {
           setIsDetectingNetworks(false);
           return;
         }
-        
+
         for (const network of networks) {
           try {
             // Switch to the network first
             await window.ethereum.request({
-              method: 'wallet_switchEthereumChain',
+              method: "wallet_switchEthereumChain",
               params: [{ chainId: `0x${network.chainId.toString(16)}` }],
             });
-            
+
             // Get balance for the current account on this network
             const balance = await window.ethereum.request({
-              method: 'eth_getBalance',
-              params: [currentAccount, 'latest'],
+              method: "eth_getBalance",
+              params: [currentAccount, "latest"],
             });
-            
+
             // Convert balance from wei to ether
             const balanceInEth = parseInt(balance, 16) / Math.pow(10, 18);
-            
+
             // Only add networks that have funds (balance > 0)
             if (balanceInEth > 0) {
               networksWithFunds.push({
                 ...network,
-                balance: balanceInEth
+                balance: balanceInEth,
               });
             }
           } catch (error: any) {
@@ -111,23 +211,26 @@ const ManageWallets = () => {
               // Network exists but might have other issues, try to get balance anyway
               try {
                 const balance = await window.ethereum.request({
-                  method: 'eth_getBalance',
-                  params: [currentAccount, 'latest'],
+                  method: "eth_getBalance",
+                  params: [currentAccount, "latest"],
                 });
                 const balanceInEth = parseInt(balance, 16) / Math.pow(10, 18);
                 if (balanceInEth > 0) {
                   networksWithFunds.push({
                     ...network,
-                    balance: balanceInEth
+                    balance: balanceInEth,
                   });
                 }
               } catch (balanceError) {
-                console.log(`Could not get balance for ${network.label}:`, balanceError);
+                console.log(
+                  `Could not get balance for ${network.label}:`,
+                  balanceError
+                );
               }
             }
           }
         }
-        
+
         // If no networks with funds found, show popular networks as fallback
         if (networksWithFunds.length === 0) {
           setAvailableNetworks(popularNetworks);
@@ -144,7 +247,7 @@ const ManageWallets = () => {
           });
         }
       } catch (error) {
-        console.error('Error detecting networks with funds:', error);
+        console.error("Error detecting networks with funds:", error);
         // Fallback to showing popular networks
         setAvailableNetworks(popularNetworks);
         toast({
@@ -166,21 +269,22 @@ const ManageWallets = () => {
   }, []);
 
   const handleSwitchNetwork = async (chainId: number) => {
-    console.log('handleSwitchNetwork called with chainId:', chainId);
+    console.log("handleSwitchNetwork called with chainId:", chainId);
     setIsSwitchingNetwork(true);
     try {
-      console.log('Calling switchNetwork function');
+      console.log("Calling switchNetwork function");
       await switchNetwork(chainId);
-      console.log('switchNetwork completed successfully');
+      console.log("switchNetwork completed successfully");
       toast({
         title: "Network Switched",
         description: "Successfully switched network!",
       });
     } catch (error: any) {
-      console.error('switchNetwork failed:', error);
+      console.error("switchNetwork failed:", error);
       toast({
         title: "Network Switch Failed",
-        description: error.message || "Failed to switch network. Please try again.",
+        description:
+          error.message || "Failed to switch network. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -293,15 +397,15 @@ const ManageWallets = () => {
 
   const getNetworkBadgeColor = (network: string) => {
     const colors: Record<string, string> = {
-      ethereum: 'bg-blue-100 text-blue-800',
-      polygon: 'bg-purple-100 text-purple-800',
-      bsc: 'bg-yellow-100 text-yellow-800',
-      avalanche: 'bg-red-100 text-red-800',
-      solana: 'bg-green-100 text-green-800',
-      arbitrum: 'bg-indigo-100 text-indigo-800',
-      optimism: 'bg-pink-100 text-pink-800'
+      ethereum: "bg-blue-100 text-blue-800",
+      polygon: "bg-purple-100 text-purple-800",
+      bsc: "bg-yellow-100 text-yellow-800",
+      avalanche: "bg-red-100 text-red-800",
+      solana: "bg-green-100 text-green-800",
+      arbitrum: "bg-indigo-100 text-indigo-800",
+      optimism: "bg-pink-100 text-pink-800",
     };
-    return colors[network] || 'bg-gray-100 text-gray-800';
+    return colors[network] || "bg-gray-100 text-gray-800";
   };
 
   return (
@@ -319,7 +423,9 @@ const ManageWallets = () => {
                 <ArrowLeft className="w-4 h-4" />
                 Back
               </Button>
-              <h1 className="text-3xl font-bold text-slate-800">Manage Wallets</h1>
+              <h1 className="text-3xl font-bold text-slate-800">
+                Manage Wallets
+              </h1>
             </div>
 
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -354,7 +460,10 @@ const ManageWallets = () => {
                   </div>
                   <div>
                     <Label htmlFor="network">Network</Label>
-                    <Select value={newWalletNetwork} onValueChange={setNewWalletNetwork}>
+                    <Select
+                      value={newWalletNetwork}
+                      onValueChange={setNewWalletNetwork}
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -371,7 +480,10 @@ const ManageWallets = () => {
                     <Button onClick={handleAddWallet} className="flex-1">
                       Add Wallet
                     </Button>
-                    <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAddDialogOpen(false)}
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -438,7 +550,7 @@ const ManageWallets = () => {
                     size="sm"
                     onClick={() => setShowTestnets(!showTestnets)}
                   >
-                    {showTestnets ? 'Hide Testnets' : 'Show Testnets'}
+                    {showTestnets ? "Hide Testnets" : "Show Testnets"}
                   </Button>
                   <Button
                     variant="outline"
@@ -446,8 +558,14 @@ const ManageWallets = () => {
                     onClick={detectAvailableNetworks}
                     disabled={isDetectingNetworks}
                   >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${isDetectingNetworks ? 'animate-spin' : ''}`} />
-                    {isDetectingNetworks ? 'Checking Balances...' : 'Refresh Balances'}
+                    <RefreshCw
+                      className={`w-4 h-4 mr-2 ${
+                        isDetectingNetworks ? "animate-spin" : ""
+                      }`}
+                    />
+                    {isDetectingNetworks
+                      ? "Checking Balances..."
+                      : "Refresh Balances"}
                   </Button>
                 </div>
               </CardTitle>
@@ -456,12 +574,16 @@ const ManageWallets = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Current Network</p>
-                  <p className="font-semibold">{currentNetwork || 'Not Connected'}</p>
+                  <p className="font-semibold">
+                    {currentNetwork || "Not Connected"}
+                  </p>
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   {availableNetworks.length > 0 ? (
                     availableNetworks
-                      .filter(network => showTestnets || network.type === 'mainnet')
+                      .filter(
+                        (network) => showTestnets || network.type === "mainnet"
+                      )
                       .map((network) => {
                       // Check if current network matches this network
                       const isCurrentNetwork = currentNetwork?.toLowerCase().includes(network.value.toLowerCase()) || 
@@ -514,7 +636,9 @@ const ManageWallets = () => {
                   ) : (
                     <div className="text-center text-slate-500 py-4">
                       <p className="text-sm">No networks detected</p>
-                      <p className="text-xs mt-1">Connect your wallet to see available networks</p>
+                      <p className="text-xs mt-1">
+                        Connect your wallet to see available networks
+                      </p>
                     </div>
                   )}
                 </div>
@@ -547,8 +671,8 @@ const ManageWallets = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         size="sm"
                         onClick={() => handleRefreshBalance(wallet.address)}
                         title="Refresh Balance"

@@ -161,7 +161,7 @@ const Dashboard = () => {
     fetch(url, { cache: "no-store" })
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then((data: OverviewResponse) => {
-        console.log("[FE] holdings overview kpis =", data.kpis); // sanity log
+        // console.log("[FE] holdings overview kpis =", data.kpis); // sanity log
         setOv(data);
       })
       .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))

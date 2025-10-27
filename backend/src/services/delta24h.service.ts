@@ -133,17 +133,17 @@ export async function getDelta24hValueByContract(
     if (key === NATIVE_SENTINEL) {
       priceNow = nativeNow ?? 0;
       price24 = price24Map.get(`${network}:__native__`) ?? 0;
-      console.log("[Δ24h native]", network, {
-        priceNow,
-        price24,
-      });
+      // console.log("[Δ24h native]", network, {
+      //   priceNow,
+      //   price24,
+      // });
     } else {
       priceNow = priceNowMap.get(`${network}:${key}`) ?? 0;
       price24 = price24Map.get(`${network}:${key}`) ?? 0;
-      console.log("[Δ24h erc20]", network, key, {
-        priceNow,
-        price24,
-      });
+      // console.log("[Δ24h erc20]", network, key, {
+      //   priceNow,
+      //   price24,
+      // });
     }
 
     const valueNow = qtyNow * (priceNow || 0);
@@ -152,17 +152,17 @@ export async function getDelta24hValueByContract(
     const deltaPct =
       value24 > 0 ? (deltaUsd / value24) * 100 : valueNow > 0 ? 100 : null;
 
-    if (network === "mainnet" && key === NATIVE_SENTINEL) {
-      console.log(
-        "[Δ24h ETH] qtyPrev=%s qtyNow=%s price24=%s priceNow=%s value24=%s valueNow=%s deltaUsd=%s",
-        qtyPrev,
-        qtyNow,
-        price24,
-        priceNow,
-        qtyPrev * price24,
-        qtyNow * priceNow,
-        qtyNow * priceNow - qtyPrev * price24
-      );
+    // if (network === "mainnet" && key === NATIVE_SENTINEL) {
+    //   console.log(
+    //     "[Δ24h ETH] qtyPrev=%s qtyNow=%s price24=%s priceNow=%s value24=%s valueNow=%s deltaUsd=%s",
+    //     qtyPrev,
+    //     qtyNow,
+    //     price24,
+    //     priceNow,
+    //     qtyPrev * price24,
+    //     qtyNow * priceNow,
+    //     qtyNow * priceNow - qtyPrev * price24
+    //   );
     }
 
     out.set(`${network}:${key}`, { deltaUsd, deltaPct });
