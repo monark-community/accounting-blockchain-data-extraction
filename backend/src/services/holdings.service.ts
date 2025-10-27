@@ -200,7 +200,7 @@ export async function getHoldingsOverview(
       // ETH debug log (optional)
       if (r.symbol === "ETH" && r.network === "mainnet") {
         const key = `${r.network}:${normalizeContractKey(r.contract)}`;
-        console.log("ETH mainnet key for delta lookup =", key);
+        // console.log("ETH mainnet key for delta lookup =", key);
       }
 
       // Normalize once for everything below
