@@ -30,6 +30,11 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  PieChart as RPieChart,
+  Pie,
+  Cell,
+  Legend,
+  Treemap,
 } from "recharts";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
@@ -75,6 +80,8 @@ const Dashboard = () => {
   const [errorOv, setErrorOv] = useState<string | null>(null);
   const [showChange, setShowChange] = useState(false);
   const [selectedWallet, setSelectedWallet] = useState<string>("");
+  const [minUsdFilter, setMinUsdFilter] = useState(5);
+  const [hideStables, setHideStables] = useState(false);
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -258,6 +265,85 @@ const Dashboard = () => {
     return { hhi, label, stableSharePct };
   }, [ov]);
 
+  const stableVsRisk = useMemo(() => {
+    if (!ov) return { stable: 0, nonStable: 0 };
+    const stable = (ov.holdings ?? [])
+      .filter((h) => isStable(h.symbol))
+      .reduce((s, h) => s + (h.valueUsd || 0), 0);
+    const total = ov.kpis.totalValueUsd || 0;
+    return { stable, nonStable: Math.max(total - stable, 0) };
+  }, [ov]);
+
+  const effectiveN = (weightsPct: number[]) => {
+    const w = weightsPct.map((p) => p / 100);
+    const sumSq = w.reduce((s, x) => s + x * x, 0) || 1;
+    return 1 / sumSq;
+  };
+
+  const concentrationExtras = useMemo(() => {
+    const ws = (ov?.allocation ?? []).map((a) => a.weightPct);
+    const effN = effectiveN(ws);
+    const sorted = [...(ov?.allocation ?? [])].sort(
+      (a, b) => b.weightPct - a.weightPct
+    );
+    const top1 = sorted[0]?.weightPct ?? 0;
+    const top3 = sorted.slice(0, 3).reduce((s, a) => s + a.weightPct, 0);
+    return { effN, top1, top3 };
+  }, [ov]);
+
+  const pnlByChain = useMemo(() => {
+    const map = new Map<
+      string,
+      { label: string; pnl: number; value: number }
+    >();
+    for (const h of ov?.holdings ?? []) {
+      const cur = map.get(h.chain) ?? {
+        label: CHAIN_LABEL[h.chain] ?? h.chain,
+        pnl: 0,
+        value: 0,
+      };
+      cur.pnl += h.delta24hUsd ?? 0;
+      cur.value += h.valueUsd ?? 0;
+      map.set(h.chain, cur);
+    }
+    return [...map.values()].sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
+  }, [ov]);
+
+  const treemapData = useMemo(() => {
+    if (!ov) return [];
+    return (ov.holdings ?? [])
+      .filter((h) => (h.valueUsd || 0) > 0)
+      .map((h) => ({
+        name: `${CHAIN_LABEL[h.chain] ?? h.chain} / ${h.symbol || "(unknown)"}`,
+        size: h.valueUsd || 0,
+      }));
+  }, [ov]);
+
+  const filteredHoldings = useMemo(() => {
+    return (ov?.holdings ?? [])
+      .filter((h) => (h.valueUsd ?? 0) >= minUsdFilter)
+      .filter((h) => (hideStables ? !isStable(h.symbol) : true))
+      .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0));
+  }, [ov, minUsdFilter, hideStables]);
+
+  const quality = useMemo(() => {
+    if (!ov) return null;
+    const tvl = ov.kpis.totalValueUsd || 1;
+    const volProxy = (Math.abs(ov.kpis.delta24hUsd || 0) / tvl) * 100;
+    const bluechipShare =
+      ((ov.holdings ?? [])
+        .filter((h) =>
+          ["ETH", "WETH", "WBTC", "BTC"].includes(
+            (h.symbol || "").toUpperCase()
+          )
+        )
+        .reduce((s, h) => s + (h.valueUsd || 0), 0) /
+        tvl) *
+      100;
+    const chainSpread = chainBreakdown.filter((c) => c.pct >= 2).length;
+    return { volProxy, bluechipShare, chainSpread };
+  }, [ov, chainBreakdown]);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -381,6 +467,19 @@ const Dashboard = () => {
                     <TrendingDown className="w-12 h-12 text-red-500" />
                   )}
                 </div>
+                {quality && (
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
+                      Vol (24h proxy): {quality.volProxy.toFixed(2)}%
+                    </span>
+                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
+                      Blue-chip: {quality.bluechipShare.toFixed(1)}%
+                    </span>
+                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
+                      Chains ≥2%: {quality.chainSpread}
+                    </span>
+                  </div>
+                )}
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
@@ -406,6 +505,13 @@ const Dashboard = () => {
                   </div>
                   <BarChart3 className="w-12 h-12 text-purple-500" />
                 </div>
+                {!loadingOv && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Eff. assets: {concentrationExtras.effN.toFixed(1)} • Top-1:{" "}
+                    {concentrationExtras.top1.toFixed(1)}% • Top-3:{" "}
+                    {concentrationExtras.top3.toFixed(1)}%
+                  </p>
+                )}
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
@@ -528,6 +634,97 @@ const Dashboard = () => {
                       />
                       <Bar dataKey="pct" fill="#3b82f6" />
                     </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                  Stable vs. Risk Assets
+                </h3>
+                {loadingOv || !ov ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RPieChart>
+                      <Pie
+                        data={[
+                          { name: "Stablecoins", value: stableVsRisk.stable },
+                          {
+                            name: "Non-stables",
+                            value: stableVsRisk.nonStable,
+                          },
+                        ]}
+                        dataKey="value"
+                        nameKey="name"
+                        outerRadius={110}
+                        label={(e) =>
+                          `${e.name} (${fmtPct(
+                            (e.value / (ov?.kpis.totalValueUsd || 1)) * 100
+                          )})`
+                        }
+                      >
+                        <Cell /> <Cell />
+                      </Pie>
+                      <Legend />
+                    </RPieChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                  24h P&L by Chain
+                </h3>
+                {loadingOv || !ov ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : pnlByChain.length === 0 ? (
+                  <div className="text-sm text-slate-500">No 24h data.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={pnlByChain}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" />
+                      <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                      <Tooltip
+                        formatter={(v: any, _n: any, e: any) => [
+                          fmtUSD(v),
+                          "24h Δ",
+                        ]}
+                      />
+                      <Bar dataKey="pnl" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+                {!loadingOv && !!ov && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Weighted move:{" "}
+                    {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over
+                    24h.
+                  </p>
+                )}
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                  Holdings Treemap
+                </h3>
+                {loadingOv || !ov ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : treemapData.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No priced holdings.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <Treemap
+                      data={treemapData}
+                      dataKey="size"
+                      nameKey="name"
+                      aspectRatio={4 / 3}
+                      stroke="#fff"
+                      fill="#8884d8"
+                    />
                   </ResponsiveContainer>
                 )}
               </Card>
@@ -752,7 +949,27 @@ const Dashboard = () => {
                 <h3 className="text-lg font-semibold text-slate-800">
                   All Holdings
                 </h3>
-                {/* optional: filters dropdown later */}
+                <div className="flex items-center gap-3">
+                  <label className="text-sm">
+                    Min value (USD):
+                    <input
+                      type="number"
+                      className="ml-2 px-2 py-1 border rounded w-24"
+                      value={minUsdFilter}
+                      onChange={(e) =>
+                        setMinUsdFilter(parseFloat(e.target.value || "0"))
+                      }
+                    />
+                  </label>
+                  <label className="text-sm flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={hideStables}
+                      onChange={(e) => setHideStables(e.target.checked)}
+                    />
+                    Hide stables
+                  </label>
+                </div>
               </div>
 
               {loadingOv ? (
@@ -761,7 +978,7 @@ const Dashboard = () => {
                   <Skeleton className="h-6 w-full" />
                   <Skeleton className="h-6 w-full" />
                 </div>
-              ) : !ov || ov.holdings.length === 0 ? (
+              ) : !filteredHoldings || filteredHoldings.length === 0 ? (
                 <div className="text-sm text-slate-500">
                   No holdings to display.
                 </div>
@@ -779,7 +996,7 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {ov.holdings
+                      {filteredHoldings
                         .slice()
                         .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
                         .map((h, i) => (
