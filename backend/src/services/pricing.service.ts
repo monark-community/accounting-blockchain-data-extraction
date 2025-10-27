@@ -112,3 +112,29 @@ export async function getPricesFor(
 
   return final;
 }
+
+export async function getNativePriceUsd(
+  network: EvmNetwork
+): Promise<number | null> {
+  // Map networks to a single Coingecko ID
+  const cgMap: Record<EvmNetwork, string> = {
+    mainnet: "coingecko:ethereum",
+    optimism: "coingecko:ethereum", // ETH on L2
+    base: "coingecko:ethereum", // ETH on L2
+    "arbitrum-one": "coingecko:ethereum", // ETH on L2
+    bsc: "coingecko:binancecoin",
+    avalanche: "coingecko:avalanche-2",
+    polygon: "coingecko:polygon-ecosystem-token", // POL (Polygon PoS migrated; adjust if you still use MATIC)
+    unichain: "coingecko:ethereum", // until a dedicated native ID is published
+  };
+
+  const id = cgMap[network];
+  if (!id) return null;
+
+  const url = `https://coins.llama.fi/prices/current/${id}`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const json = await res.json();
+  const price = json?.coins?.[id]?.price;
+  return typeof price === "number" ? price : null;
+}

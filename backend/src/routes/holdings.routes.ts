@@ -15,8 +15,19 @@ router.get("/:address", async (req, res) => {
     const { address } = req.params;
     const networks = parseNetworks(req.query.networks as string | undefined);
     const withDelta24h = (req.query.withDelta24h ?? "true") !== "false";
+    const minUsd = Number(req.query.minUsd ?? "0");
+    const includeZero = (req.query.includeZero ?? "false") === "true";
 
-    const payload = await getHoldingsOverview(address, networks, withDelta24h);
+    // NEW: spamFilter mode
+    const spamFilter = String(
+      req.query.spamFilter ?? process.env.SPAM_FILTER_MODE ?? "soft"
+    ).toLowerCase() as "off" | "soft" | "hard";
+
+    const payload = await getHoldingsOverview(address, networks, withDelta24h, {
+      minUsd,
+      includeZero,
+      spamFilter,
+    });
     res.json(payload);
   } catch (err: any) {
     console.error("[GET /api/holdings/:address] error:", err);
