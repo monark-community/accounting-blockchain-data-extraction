@@ -101,11 +101,14 @@ const Dashboard = () => {
       address
     )}?networks=${encodeURIComponent(
       networks
-    )}&withDelta24h=false&minUsd=0&includeZero=true&spamFilter=hard`;
+    )}&withDelta24h=true&minUsd=0&includeZero=true&spamFilter=hard&_ts=${Date.now()}`;
 
-    fetch(url)
+    fetch(url, { cache: "no-store" })
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
-      .then((data: OverviewResponse) => setOv(data))
+      .then((data: OverviewResponse) => {
+        console.log("[FE] holdings overview kpis =", data.kpis); // sanity log
+        setOv(data);
+      })
       .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
       .finally(() => setLoadingOv(false));
   }, [address, networks, userWallet, isConnected]);
@@ -330,65 +333,10 @@ const Dashboard = () => {
                   <DollarSign className="w-12 h-12 text-orange-500" />
                 </div>
               </Card>
-
-              {/* 
-              
-              TO DO : Metrics below require real data, so hiding for now, do after the MVP (demo) is done
-
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-slate-600 text-sm font-medium">
-                      Unrealized P&L
-                    </p>
-                    <CurrencyDisplay
-                      amount={12500}
-                      currency={userPreferences.currency}
-                      variant="large"
-                    />
-                  </div>
-                  <BarChart3 className="w-12 h-12 text-purple-500" />
-                </div>
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-slate-600 text-sm font-medium">
-                      Tax Liability
-                    </p>
-                    <CurrencyDisplay
-                      amount={3200}
-                      currency={userPreferences.currency}
-                      variant="large"
-                    />
-                  </div>
-                  <DollarSign className="w-12 h-12 text-orange-500" />
-                </div>
-              </Card> */}
             </div>
 
             {/* Charts */}
             <div className="grid lg:grid-cols-2 gap-6">
-              {/* <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  Portfolio Performance
-                </h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={portfolioData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </Card> */}
-
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-semibold text-slate-800">
@@ -611,93 +559,6 @@ const Dashboard = () => {
             </Card>
 
             <Card className="p-6 bg-white shadow-sm mt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-slate-800">
-                  All Holdings
-                </h3>
-                {/* optional: filters dropdown later */}
-              </div>
-
-              {loadingOv ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-6 w-full" />
-                  <Skeleton className="h-6 w-full" />
-                  <Skeleton className="h-6 w-full" />
-                </div>
-              ) : !ov || ov.holdings.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No holdings to display.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-slate-500">
-                        <th className="px-2 py-2">Asset</th>
-                        <th className="px-2 py-2">Chain</th>
-                        <th className="px-2 py-2 text-right">Qty</th>
-                        <th className="px-2 py-2 text-right">Price</th>
-                        <th className="px-2 py-2 text-right">Value</th>
-                        <th className="px-2 py-2 text-right">24h Δ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ov.holdings
-                        .slice()
-                        .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
-                        .map((h, i) => (
-                          <tr
-                            key={`${h.contract ?? h.symbol ?? i}`}
-                            className="border-t"
-                          >
-                            <td className="px-2 py-2 font-medium text-slate-800">
-                              {h.symbol || "(unknown)"}
-                            </td>
-                            <td className="px-2 py-2">
-                              <span
-                                className={`px-2 py-0.5 text-xs rounded ${
-                                  chainBadgeClass[(h as any).chain] ||
-                                  "bg-slate-100 text-slate-700"
-                                }`}
-                              >
-                                {CHAIN_LABEL[(h as any).chain] ??
-                                  (h as any).chain}
-                              </span>
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              {parseFloat(h.qty).toLocaleString()}
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              {fmtUSD(h.priceUsd || 0)}
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              {fmtUSD(h.valueUsd || 0)}
-                            </td>
-                            <td
-                              className={`px-2 py-2 text-right ${
-                                (h.delta24hUsd ?? 0) >= 0
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {h.delta24hUsd == null
-                                ? "—"
-                                : `${h.delta24hUsd >= 0 ? "+" : ""}${fmtUSD(
-                                    Math.abs(h.delta24hUsd)
-                                  )}`}
-                              {h.delta24hPct == null
-                                ? ""
-                                : ` (${h.delta24hPct.toFixed(2)}%)`}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-
-            <Card className="p-6 bg-white shadow-sm mt-6">
               <h3 className="text-lg font-semibold text-slate-800 mb-4">
                 Top Movers (24h)
               </h3>
@@ -783,6 +644,93 @@ const Dashboard = () => {
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </Card>
+
+            <Card className="p-6 bg-white shadow-sm mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  All Holdings
+                </h3>
+                {/* optional: filters dropdown later */}
+              </div>
+
+              {loadingOv ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                  <Skeleton className="h-6 w-full" />
+                </div>
+              ) : !ov || ov.holdings.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No holdings to display.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-slate-500">
+                        <th className="px-2 py-2">Asset</th>
+                        <th className="px-2 py-2">Chain</th>
+                        <th className="px-2 py-2 text-right">Qty</th>
+                        <th className="px-2 py-2 text-right">Price</th>
+                        <th className="px-2 py-2 text-right">Value</th>
+                        <th className="px-2 py-2 text-right">24h Δ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ov.holdings
+                        .slice()
+                        .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
+                        .map((h, i) => (
+                          <tr
+                            key={`${h.contract ?? h.symbol ?? i}`}
+                            className="border-t"
+                          >
+                            <td className="px-2 py-2 font-medium text-slate-800">
+                              {h.symbol || "(unknown)"}
+                            </td>
+                            <td className="px-2 py-2">
+                              <span
+                                className={`px-2 py-0.5 text-xs rounded ${
+                                  chainBadgeClass[(h as any).chain] ||
+                                  "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {CHAIN_LABEL[(h as any).chain] ??
+                                  (h as any).chain}
+                              </span>
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {parseFloat(h.qty).toLocaleString()}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {fmtUSD(h.priceUsd || 0)}
+                            </td>
+                            <td className="px-2 py-2 text-right">
+                              {fmtUSD(h.valueUsd || 0)}
+                            </td>
+                            <td
+                              className={`px-2 py-2 text-right ${
+                                (h.delta24hUsd ?? 0) >= 0
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {h.delta24hUsd == null
+                                ? "—"
+                                : `${h.delta24hUsd >= 0 ? "+" : ""}${fmtUSD(
+                                    Math.abs(h.delta24hUsd)
+                                  )}`}
+                              {h.delta24hPct == null
+                                ? ""
+                                : ` (${h.delta24hPct.toFixed(2)}%)`}
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </Card>

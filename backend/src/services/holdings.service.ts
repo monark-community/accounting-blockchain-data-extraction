@@ -1,12 +1,14 @@
 // src/services/holdings.service.ts
 import fetch from "node-fetch";
 import { EVM_NETWORKS, type EvmNetwork } from "../config/networks";
-import { getDelta24hQtyByContract } from "./delta24h.service";
+import { getDelta24hValueByContract, getPrevQtyMap } from "./delta24h.service";
 import { SPAM_FILTER_MODE, scoreSpam, cleanSymbol } from "../config/filters";
 import {
   getPricesFor,
   NATIVE_SENTINEL,
   getNativePriceUsd,
+  normalizeContractKey,
+  getPricesAtTimestamp,
 } from "./pricing.service";
 
 const TOKEN_API_BASE =
@@ -135,6 +137,14 @@ export async function getHoldingsOverview(
     byNet.get(r.network)!.push(r);
   }
 
+  const contractsByNet = new Map<EvmNetwork, string[]>();
+  for (const [net, list] of byNet) {
+    const erc20s = list
+      .map((x) => x.contract.toLowerCase())
+      .filter((c) => c !== NATIVE_SENTINEL);
+    contractsByNet.set(net, Array.from(new Set(erc20s)));
+  }
+
   const priceMap = new Map<string, number>(); // `${net}:${contract}`
   for (const [net, list] of byNet) {
     const erc20s = list
@@ -153,11 +163,28 @@ export async function getHoldingsOverview(
   }
 
   // 3) Optional 24h delta (qty change only — value uses current price)
-  const deltaMaps = new Map<string, { deltaQty: number; prevQty: number }>(); // `${net}:${contract}`
+  const prevQtyByNet = new Map<
+    EvmNetwork,
+    Map<string, { prevQty: number; decimals: number }>
+  >();
+  const price24ByNet = new Map<EvmNetwork, Map<string, number>>();
   if (withDelta24h) {
+    const t24 = Math.floor((Date.now() - 24 * 3600 * 1000) / 1000);
+
     for (const net of networks) {
-      const dm = await getDelta24hQtyByContract(net, address);
-      dm.forEach((v, k) => deltaMaps.set(k, v));
+      // prev qty map from historical (may be missing many tokens; that's fine)
+      const prevMap = await getPrevQtyMap(net, address);
+      prevQtyByNet.set(net, prevMap); // keys like "__native__" or contract lower
+
+      const contracts = contractsByNet.get(net) ?? [];
+      // ask 24h prices for all current contracts; include native
+      const p24 = await getPricesAtTimestamp(
+        net,
+        contracts,
+        t24,
+        /*includeNative*/ true
+      );
+      price24ByNet.set(net, p24);
     }
   }
 
@@ -169,32 +196,71 @@ export async function getHoldingsOverview(
   })[] = rows
     .map((r) => {
       const qty = toFloat(r.amount, r.decimals);
-      const isNative =
-        (r.contract?.toLowerCase?.() ?? NATIVE_SENTINEL) === NATIVE_SENTINEL;
-      const key = `${r.network}:${(
-        r.contract ?? NATIVE_SENTINEL
-      ).toLowerCase()}`;
+
+      // ETH debug log (optional)
+      if (r.symbol === "ETH" && r.network === "mainnet") {
+        const key = `${r.network}:${normalizeContractKey(r.contract)}`;
+        console.log("ETH mainnet key for delta lookup =", key);
+      }
+
+      // Normalize once for everything below
+      // ONE normalized key for everything below
+      const kContract = normalizeContractKey(r.contract); // returns "__native__" for native
+      const key = `${r.network}:${kContract}`; // <-- matches delta & price maps
+      const isNative = kContract === NATIVE_SENTINEL;
 
       const displaySymbol = cleanSymbol(r.symbol);
 
+      // pick the right price source
       let priceUsd =
         (typeof r.price_usd === "number" ? r.price_usd : undefined) ??
         (isNative
           ? nativePriceMap.get(r.network) ?? 0
           : priceMap.get(key) ?? 0);
 
-      const valueUsd = qty * (priceUsd || 0);
+      const qtyNow = toFloat(r.amount, r.decimals);
+      const valueUsd = qtyNow * (priceUsd || 0);
 
-      let delta24hUsd: number | null = null;
-      let delta24hPct: number | null = null;
-      const d = deltaMaps.get(key);
-      if (d) {
-        delta24hUsd = d.deltaQty * (priceUsd || 0);
-        const prevVal = d.prevQty * (priceUsd || 0);
+      let delta24hUsd = 0;
+      let delta24hPct: number | null = 0;
+      // attach delta values from map
+      if (withDelta24h) {
+        const p24Map = price24ByNet.get(r.network) ?? new Map<string, number>();
+        const prevMap =
+          prevQtyByNet.get(r.network) ??
+          new Map<string, { prevQty: number; decimals: number }>();
+
+        // key for lookups inside the per-network maps:
+        const contractKey = normalizeContractKey(r.contract); // '__native__' or actual address lower
+        const key24 = isNative ? `${r.network}:${NATIVE_SENTINEL}` : key;
+
+        const price24 = p24Map.get(key24) ?? 0;
+        const prevQty = prevMap.get(contractKey)?.prevQty ?? qtyNow; // fallback: assume same qty
+
+        const valueNow = qtyNow * (priceUsd || 0);
+        const value24 = prevQty * (price24 || 0);
+        delta24hUsd = valueNow - value24;
         delta24hPct =
-          prevVal > 0 ? (delta24hUsd / prevVal) * 100 : valueUsd > 0 ? 100 : 0;
+          value24 > 0
+            ? (delta24hUsd / value24) * 100
+            : valueNow > 0
+            ? 100
+            : null;
+
+        if (!p24Map.has(key24) && valueNow > 0) {
+          console.log("[Δ24h miss:price24]", {
+            key24,
+            symbol: r.symbol,
+            isNative,
+          });
+        }
+        if (!prevMap.has(contractKey)) {
+          // benign: just means we assumed qtyPrev = qtyNow
+          // console.log("[Δ24h miss:prevQty]", { network: r.network, contractKey, symbol: r.symbol });
+        }
       }
 
+      // spam filtering
       const spamEval = scoreSpam(displaySymbol);
 
       const row: PricedHolding & { isSpam?: boolean; spamReasons?: string[] } =
