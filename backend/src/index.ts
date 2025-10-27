@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes";
 import walletRoutes from "./routes/wallet.routes";
 import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
+import holdingsRouter from "./routes/holdings.routes";
 import portfolioRoutes from "./routes/portfolio.routes";
 import txsRouter from "./routes/txs.routes";
 
@@ -17,19 +18,15 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET!));
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, service: "backend", time: new Date().toISOString() });
-});
-
 app.use("/api/health", healthRouter);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/wallets", walletRoutes);
 app.use("/api/mfa", mfaRoutes);
-
 app.use("/api/portfolio", portfolioRoutes);
+app.use("/api/holdings", holdingsRouter);
 
-app.use("/api/portfolio", txsRouter);
+// app.use("/api/portfolio", txsRouter);
 
 const PORT = process.env.PORT ?? "8080";
 app.listen(PORT, () => {
