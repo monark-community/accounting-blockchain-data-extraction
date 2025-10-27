@@ -35,6 +35,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { Tooltip } from "recharts";
+import { useWallets } from "@/hooks/use-wallets";
 
 type PricedHolding = {
   contract: string | null;
@@ -83,6 +84,7 @@ const Dashboard = () => {
     userWallet,
     isConnected,
   } = useWallet();
+  const { wallets: userWallets } = useWallets();
   const router = useRouter();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
@@ -94,6 +96,7 @@ const Dashboard = () => {
   const [loadingOv, setLoadingOv] = useState(false);
   const [errorOv, setErrorOv] = useState<string | null>(null);
   const [showChange, setShowChange] = useState(false);
+  const [selectedWallet, setSelectedWallet] = useState<string>("");
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -103,12 +106,19 @@ const Dashboard = () => {
     setUrlReady(true);
   }, []);
 
-  // Use URL address if available, otherwise use connected wallet address
+  // Use URL address if available, otherwise use selected wallet, otherwise use connected wallet address
   const address = useMemo(
     () =>
-      urlAddress ? urlAddress : isConnected && userWallet ? userWallet : "",
-    [urlAddress, isConnected, userWallet]
+      urlAddress ? urlAddress : selectedWallet || (isConnected && userWallet ? userWallet : ""),
+    [urlAddress, selectedWallet, isConnected, userWallet]
   );
+
+  // Auto-select first wallet when userWallets are loaded and no wallet is selected
+  useEffect(() => {
+    if (userWallets.length > 0 && !selectedWallet && !urlAddress) {
+      setSelectedWallet(userWallets[0].address);
+    }
+  }, [userWallets, selectedWallet, urlAddress]);
 
   // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
@@ -182,12 +192,29 @@ const Dashboard = () => {
 
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">
-            Portfolio Dashboard
-          </h1>
-          <p className="text-slate-600">
-            Track your crypto assets and tax obligations
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-800 mb-2">
+                Portfolio Dashboard
+              </h1>
+              <p className="text-slate-600">
+                Track your crypto assets and tax obligations
+              </p>
+            </div>
+            {userWallets.length > 0 && (
+              <select
+                value={selectedWallet}
+                onChange={(e) => setSelectedWallet(e.target.value)}
+                className="px-4 py-2 border border-slate-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {userWallets.map((wallet) => (
+                  <option key={wallet.address} value={wallet.address}>
+                    {wallet.name} ({wallet.address.slice(0, 6)}...{wallet.address.slice(-4)})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
