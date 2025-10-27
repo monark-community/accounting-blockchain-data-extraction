@@ -2,13 +2,42 @@
 import fetch from "node-fetch";
 import type { EvmNetwork } from "../config/networks";
 
-export const NATIVE_SENTINEL = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+export const NATIVE_SENTINEL = "__native__";
 
 const ENABLE_DEXSCREENER =
   (process.env.ENABLE_DEXSCREENER ?? "false") === "true";
 const ENABLE_DEFI_LLAMA = (process.env.ENABLE_DEFI_LLAMA ?? "false") === "true";
 
 type PriceMap = Map<string, number>; // key: `${network}:${contractLower}`
+
+const llamaChainMap: Record<EvmNetwork, string | null> = {
+  mainnet: "ethereum",
+  bsc: "bsc",
+  polygon: "polygon",
+  optimism: "optimism",
+  base: "base",
+  "arbitrum-one": "arbitrum",
+  avalanche: "avax",
+  unichain: null,
+};
+
+const nativeToLlamaId: Record<EvmNetwork, string | null> = {
+  mainnet: "coingecko:ethereum",
+  optimism: "coingecko:ethereum",
+  base: "coingecko:ethereum",
+  "arbitrum-one": "coingecko:ethereum",
+  bsc: "coingecko:binancecoin",
+  avalanche: "coingecko:avalanche-2",
+  polygon: "coingecko:polygon-ecosystem-token", // POL
+  unichain: "coingecko:ethereum",
+};
+
+export function normalizeContractKey(c?: string | null): string {
+  if (!c) return NATIVE_SENTINEL;
+  return /^0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee$/i.test(c)
+    ? NATIVE_SENTINEL
+    : c.toLowerCase();
+}
 
 // --- DexScreener fallback ---
 async function fetchDexScreenerPrices(
@@ -64,16 +93,6 @@ async function fetchDefiLlamaPrices(
   const map: PriceMap = new Map();
   if (!ENABLE_DEFI_LLAMA || !contracts.length) return map;
 
-  const llamaChainMap: Record<EvmNetwork, string | null> = {
-    mainnet: "ethereum",
-    bsc: "bsc",
-    polygon: "polygon",
-    optimism: "optimism",
-    base: "base",
-    "arbitrum-one": "arbitrum",
-    avalanche: "avax",
-    unichain: null,
-  };
   const chain = llamaChainMap[network];
   if (!chain) return map;
 
@@ -137,4 +156,44 @@ export async function getNativePriceUsd(
   const json = await res.json();
   const price = json?.coins?.[id]?.price;
   return typeof price === "number" ? price : null;
+}
+
+// Batch historical prices at a UNIX timestamp (seconds)
+export async function getPricesAtTimestamp(
+  network: EvmNetwork,
+  contracts: string[],
+  timestampSec: number,
+  includeNative = false
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  const chain = llamaChainMap[network];
+  if (!chain) return map;
+
+  const keys: string[] = contracts.map((c) => `${chain}:${c.toLowerCase()}`);
+  if (includeNative) {
+    const id = nativeToLlamaId[network];
+    if (id) keys.push(id);
+  }
+  if (!keys.length) return map;
+
+  const url = `https://coins.llama.fi/prices/historical/${timestampSec}/${keys.join(
+    ","
+  )}`;
+  const res = await fetch(url);
+  if (!res.ok) return map;
+  const json = await res.json();
+  const coins = json?.coins ?? {};
+
+  for (const [kk, v] of Object.entries<any>(coins)) {
+    if (kk.startsWith("coingecko:")) {
+      // native
+      const price = Number(v.price);
+      if (Number.isFinite(price)) map.set(`${network}:__native__`, price);
+    } else {
+      const addr = kk.split(":")[1]; // chain:0x...
+      const price = Number(v.price);
+      if (Number.isFinite(price)) map.set(`${network}:${addr}`, price);
+    }
+  }
+  return map;
 }
