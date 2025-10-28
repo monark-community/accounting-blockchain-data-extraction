@@ -28,7 +28,7 @@ router.get("/status-by-address", async (req, res) => {
 
     // Find user by wallet address
     const { rows } = await pool.query(
-      `SELECT id, mfa_enabled FROM users WHERE wallet_address = $1`,
+      `SELECT mfa_enabled FROM users WHERE wallet_address = $1`,
       [address]
     );
 
