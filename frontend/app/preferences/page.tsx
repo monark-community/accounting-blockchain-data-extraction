@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const Preferences = () => {
-  const { userPreferences, updatePreferences, exportWallets, importWallets, disconnectWallet } = useWallet();
+  const { userPreferences, updatePreferences, exportWallets, importWallets, disconnectWallet, refreshUserName } = useWallet();
   const { toast } = useToast();
   const router = useRouter();
   const [importData, setImportData] = useState("");
@@ -37,6 +37,10 @@ const Preferences = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
+  const [userName, setUserName] = useState("");
+  const [newUserName, setNewUserName] = useState("");
+  const [isLoadingName, setIsLoadingName] = useState(true);
+  const [isUpdatingName, setIsUpdatingName] = useState(false);
 
   const currencies = [
     { value: 'CAD', label: 'Canadian Dollar (CAD)' },
@@ -105,10 +109,85 @@ const Preferences = () => {
     }
   };
 
-  // Check MFA status on mount
+  // Check MFA status and load user name on mount
   useEffect(() => {
     checkMFAStatus();
+    loadUserName();
   }, []);
+
+  const loadUserName = async () => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUserName(data.name || "");
+        setNewUserName(data.name || "");
+      }
+    } catch (error) {
+      console.error('Failed to load user name:', error);
+    } finally {
+      setIsLoadingName(false);
+    }
+  };
+
+  const handleUpdateName = async () => {
+    if (!newUserName.trim()) {
+      toast({
+        title: "Invalid name",
+        description: "Name cannot be empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newUserName.trim() === userName) {
+      toast({
+        title: "No changes",
+        description: "Name is the same as the current name.",
+      });
+      return;
+    }
+
+    setIsUpdatingName(true);
+    try {
+      const response = await fetch('/api/auth/name', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ name: newUserName.trim() }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUserName(data.name);
+        // Refresh the user name in the context to update the navbar
+        await refreshUserName();
+        toast({
+          title: "Name updated",
+          description: "Your name has been successfully updated.",
+        });
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Update failed",
+          description: error.error || "Failed to update name. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Update failed",
+        description: "Network error. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingName(false);
+    }
+  };
 
   const checkMFAStatus = async () => {
     try {
@@ -328,6 +407,32 @@ const Preferences = () => {
                 <CardTitle>General Settings</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
+                {/* User Name Section */}
+                <div className="space-y-2">
+                  <Label htmlFor="user-name">Display Name</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="user-name"
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      placeholder={isLoadingName ? "Loading..." : "Enter your name"}
+                      disabled={isLoadingName || isUpdatingName}
+                      className="flex-1"
+                    />
+                    <Button 
+                      onClick={handleUpdateName}
+                      disabled={isLoadingName || isUpdatingName || newUserName.trim() === userName}
+                      className="flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" />
+                      {isUpdatingName ? "Saving..." : "Save"}
+                    </Button>
+                  </div>
+                  <p className="text-sm text-slate-500">
+                    This is the name displayed on your account.
+                  </p>
+                </div>
+
                 <div className="grid md:grid-cols-3 gap-4">
                   <div>
                     <Label htmlFor="currency">Preferred Currency</Label>

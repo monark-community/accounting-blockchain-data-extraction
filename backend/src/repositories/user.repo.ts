@@ -68,6 +68,28 @@ export async function findOrCreateUserByWallet(
 }
 
 /**
+ * Update user name
+ * @param walletAddress - The wallet address of the user
+ * @param name - The new name for the user
+ * @returns Updated user or null if user not found
+ */
+export async function updateUserName(walletAddress: string, name: string): Promise<UserRow | null> {
+  if (!name || name.trim().length === 0) {
+    throw new Error('Name cannot be empty');
+  }
+
+  const { rows } = await pool.query<UserRow>(
+    `UPDATE users 
+     SET name = $1, updated_at = NOW()
+     WHERE wallet_address = $2
+     RETURNING wallet_address, name, created_at, updated_at`,
+    [name.trim(), walletAddress.toLowerCase()]
+  );
+  
+  return rows[0] ?? null;
+}
+
+/**
  * Delete user account and all related data
  * This will also delete all related wallets in user_wallets table due to CASCADE constraint
  * @param walletAddress - The main wallet address of the user to delete
