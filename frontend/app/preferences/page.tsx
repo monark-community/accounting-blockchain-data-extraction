@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { ArrowLeft, Save, Download, Upload, Shield, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Save, Download, Upload, Shield, CheckCircle2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,16 @@ import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { MFASetupDialog } from "@/components/MFASetupDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const Preferences = () => {
   const { userPreferences, updatePreferences, exportWallets, importWallets } = useWallet();
@@ -24,6 +34,9 @@ const Preferences = () => {
   const [showMFADisable, setShowMFADisable] = useState(false);
   const [loadingMFA, setLoadingMFA] = useState(true);
   const [disablingMFA, setDisablingMFA] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const currencies = [
     { value: 'CAD', label: 'Canadian Dollar (CAD)' },
@@ -149,6 +162,59 @@ const Preferences = () => {
         description: "Network error. Please try again.",
         variant: "destructive",
       });
+    }
+  };
+
+  /**
+   * Handle account deletion
+   * Validates that user typed "DELETE" to confirm, calls the deletion API,
+   * shows success message, and redirects to home page
+   */
+  const handleDeleteAccount = async () => {
+    // Validate confirmation text
+    if (deleteConfirmation !== "DELETE") {
+      toast({
+        title: "Invalid confirmation",
+        description: "Please type DELETE to confirm account deletion.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      // Call the account deletion API endpoint
+      const response = await fetch('/api/auth/account', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Account Deleted",
+          description: "Your account has been successfully deleted.",
+        });
+        
+        // Redirect to home page after a short delay to show the success message
+        setTimeout(() => {
+          router.push('/');
+        }, 2000);
+      } else {
+        const error = await response.json();
+        toast({
+          title: "Deletion Failed",
+          description: error.error || "Failed to delete account. Please try again.",
+          variant: "destructive",
+        });
+        setIsDeleting(false);
+      }
+    } catch (error) {
+      toast({
+        title: "Deletion Failed",
+        description: "Network error. Please try again.",
+        variant: "destructive",
+      });
+      setIsDeleting(false);
     }
   };
 
@@ -344,6 +410,40 @@ const Preferences = () => {
                 </div>
               </CardContent>
         </Card>
+
+            {/* Account Deletion */}
+            <Card className="border-red-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-red-700">
+                  <Trash2 className="w-5 h-5" />
+                  Delete Account
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                  <h4 className="font-semibold text-red-900 mb-2">Warning: This action cannot be undone</h4>
+                  <p className="text-sm text-red-800 mb-2">
+                    Deleting your account will permanently remove:
+                  </p>
+                  <ul className="text-sm text-red-800 list-disc list-inside space-y-1">
+                    <li>Your user account and profile information</li>
+                    <li>All connected wallets and their data</li>
+                    <li>All preferences and settings</li>
+                  </ul>
+                  <p className="text-sm text-red-800 mt-3 font-semibold">
+                    Please make sure you have exported your data before proceeding.
+                  </p>
+                </div>
+                <Button 
+                  onClick={() => setShowDeleteDialog(true)} 
+                  variant="destructive"
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete My Account
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
@@ -354,6 +454,56 @@ const Preferences = () => {
         onClose={() => setShowMFASetup(false)}
         onComplete={handleMFASetupComplete}
       />
+
+      {/* Delete Account Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-700">Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <div className="font-semibold">
+                  This action cannot be undone. This will permanently delete your account and remove all associated data.
+                </div>
+                <div className="text-sm">
+                  To confirm, please type <span className="font-mono font-bold bg-slate-100 px-2 py-1 rounded">DELETE</span> in the box below:
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="delete-confirmation">Type DELETE to confirm</Label>
+              <Input
+                id="delete-confirmation"
+                value={deleteConfirmation}
+                onChange={(e) => setDeleteConfirmation(e.target.value)}
+                placeholder="DELETE"
+                className="font-mono"
+                disabled={isDeleting}
+              />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel 
+                onClick={() => {
+                  setDeleteConfirmation("");
+                  setShowDeleteDialog(false);
+                }}
+                disabled={isDeleting}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirmation !== "DELETE" || isDeleting}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+              >
+                {isDeleting ? "Deleting..." : "Yes, Delete My Account"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
