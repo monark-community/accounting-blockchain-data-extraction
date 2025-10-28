@@ -17,13 +17,16 @@ import { mainnet, polygon, bsc, avalanche, arbitrum, optimism, goerli, sepolia, 
 
 const ManageWallets = () => {
   const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance } = useWallet();
-  const { wallets: userWallets, loading: walletsLoading, addWallet: addUserWallet, removeWallet: removeUserWallet } = useWallets();
+  const { wallets: userWallets, loading: walletsLoading, addWallet: addUserWallet, removeWallet: removeUserWallet, updateWallet } = useWallets();
   const { toast } = useToast();
   const router = useRouter();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState("");
   const [newWalletName, setNewWalletName] = useState("");
   const [newWalletNetwork, setNewWalletNetwork] = useState("ethereum");
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingWallet, setEditingWallet] = useState<{ address: string; name: string } | null>(null);
+  const [editWalletName, setEditWalletName] = useState("");
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [availableNetworks, setAvailableNetworks] = useState<(typeof networks[0] & { balance?: number; isPopular?: boolean })[]>([]);
   const [isDetectingNetworks, setIsDetectingNetworks] = useState(false);
@@ -243,6 +246,44 @@ const ManageWallets = () => {
     }
   };
 
+  const handleEditWallet = (address: string, name: string) => {
+    setEditingWallet({ address, name });
+    setEditWalletName(name);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateWallet = async () => {
+    if (!editingWallet || !editWalletName.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Please provide a wallet name.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await updateWallet(editingWallet.address, editWalletName.trim());
+      toast({
+        title: "Wallet updated",
+        description: `Wallet name has been updated to "${editWalletName.trim()}".`,
+      });
+
+      setEditingWallet(null);
+      setEditWalletName("");
+      setIsEditDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Error updating wallet",
+        description: error.message || "Failed to update wallet",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Check if wallet name has changed
+  const hasNameChanged = editingWallet && editWalletName.trim() !== editingWallet.name;
+
   const getNetworkBadgeColor = (network: string) => {
     const colors: Record<string, string> = {
       ethereum: 'bg-blue-100 text-blue-800',
@@ -324,6 +365,52 @@ const ManageWallets = () => {
                       Add Wallet
                     </Button>
                     <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* Edit Wallet Dialog */}
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit Wallet Name</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="edit-wallet-name">Wallet Name</Label>
+                    <Input
+                      id="edit-wallet-name"
+                      placeholder="e.g., Trading Wallet"
+                      value={editWalletName}
+                      onChange={(e) => setEditWalletName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleUpdateWallet();
+                        }
+                      }}
+                    />
+                    {editingWallet && (
+                      <p className="text-xs text-slate-500 mt-1 font-mono">
+                        {editingWallet.address}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-4">
+                    <Button 
+                      onClick={handleUpdateWallet} 
+                      className="flex-1"
+                      disabled={!hasNameChanged || !editWalletName.trim()}
+                    >
+                      Update Wallet
+                    </Button>
+                    <Button variant="outline" onClick={() => {
+                      setIsEditDialogOpen(false);
+                      setEditingWallet(null);
+                      setEditWalletName("");
+                    }}>
                       Cancel
                     </Button>
                   </div>
@@ -444,7 +531,12 @@ const ManageWallets = () => {
                       >
                         <RefreshCw className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleEditWallet(wallet.address, wallet.name)}
+                        title="Edit Wallet Name"
+                      >
                         <Edit2 className="w-4 h-4" />
                       </Button>
                       <Button

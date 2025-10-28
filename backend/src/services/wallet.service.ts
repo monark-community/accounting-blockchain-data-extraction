@@ -3,6 +3,7 @@ import {
   createUserWallet,
   deleteUserWallet,
   findWalletByAddressAndMain,
+  updateUserWalletName,
 } from "../repositories/wallet.repo";
 
 /**
@@ -89,5 +90,33 @@ export async function removeWalletFromUser(
  */
 export async function getUserWallet(mainAddress: string, address: string) {
   return await findWalletByAddressAndMain(mainAddress, address);
+}
+
+/**
+ * Update wallet name
+ */
+export async function updateWalletName(
+  mainAddress: string,
+  address: string,
+  name: string
+) {
+  // Validate name
+  if (!name || name.trim().length === 0) {
+    throw new Error("Wallet name cannot be empty");
+  }
+
+  // Validate address format
+  if (!isValidAddress(address)) {
+    throw new Error("Invalid wallet address format");
+  }
+
+  // Update the wallet name
+  const updated = await updateUserWalletName(mainAddress, address, name.trim());
+
+  if (!updated) {
+    throw new Error("Wallet not found or does not belong to you");
+  }
+
+  return updated;
 }
 

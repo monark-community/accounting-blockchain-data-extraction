@@ -75,3 +75,19 @@ export async function deleteUserWallet(mainAddress: string, address: string): Pr
   return rowCount > 0;
 }
 
+// Mettre à jour le nom d'un portefeuille
+export async function updateUserWalletName(
+  mainAddress: string,
+  address: string,
+  name: string
+): Promise<UserWalletRow | null> {
+  const { rows } = await pool.query<UserWalletRow>(
+    `UPDATE user_wallets 
+     SET name = $3, updated_at = NOW() 
+     WHERE main_wallet_address = $1 AND address = $2
+     RETURNING main_wallet_address, address, name, chain_id, is_active, created_at, updated_at`,
+    [mainAddress.toLowerCase(), address.toLowerCase(), name]
+  );
+  return rows[0] ?? null;
+}
+

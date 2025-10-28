@@ -4,6 +4,7 @@ import {
   getUserWallets,
   addWalletToUser,
   removeWalletFromUser,
+  updateWalletName,
 } from "../services/wallet.service";
 
 const router = Router();
@@ -73,6 +74,34 @@ router.delete("/:address", async (req, res) => {
     return res.json({ success: true, message: "Wallet removed successfully" });
   } catch (error: any) {
     console.error("[/wallets DELETE] error:", error);
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/wallets/:address
+ * Update a wallet's name
+ * Body: { name }
+ */
+router.patch("/:address", async (req, res) => {
+  try {
+    const mainAddress = (req as any).user.wallet_address;
+    const { address } = req.params;
+    const { name } = req.body;
+
+    if (!address) {
+      return res.status(400).json({ error: "address is required" });
+    }
+
+    if (!name) {
+      return res.status(400).json({ error: "name is required" });
+    }
+
+    const wallet = await updateWalletName(mainAddress, address, name);
+
+    return res.json({ wallet });
+  } catch (error: any) {
+    console.error("[/wallets PATCH] error:", error);
     return res.status(400).json({ error: error.message });
   }
 });

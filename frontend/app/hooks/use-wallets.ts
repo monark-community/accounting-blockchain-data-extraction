@@ -90,6 +90,33 @@ export function useWallets() {
     }
   };
 
+  const updateWallet = async (address: string, name: string) => {
+    try {
+      const response = await fetch(`/api/wallets/${encodeURIComponent(address)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ name }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update wallet');
+      }
+
+      const data = await response.json();
+      
+      // Refresh wallets list
+      await fetchWallets();
+      
+      return data.wallet;
+    } catch (err: any) {
+      throw err;
+    }
+  };
+
   return {
     wallets,
     loading,
@@ -97,6 +124,7 @@ export function useWallets() {
     refetch: fetchWallets,
     addWallet,
     removeWallet,
+    updateWallet,
   };
 }
 
