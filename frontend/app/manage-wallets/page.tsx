@@ -468,35 +468,47 @@ const ManageWallets = () => {
                                              network.label.toLowerCase() === currentNetwork?.toLowerCase();
                       
                       return (
-                        <Button
+                        <button
                           key={network.value}
-                          variant={isCurrentNetwork ? "default" : "outline"}
-                          size="sm"
                           onClick={() => handleSwitchNetwork(network.chainId)}
                           disabled={isSwitchingNetwork}
-                          className={`flex flex-col items-center gap-1 min-w-[120px] ${
-                            network.type === 'testnet' ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : ''
-                          } ${network.isPopular && !network.balance ? 'border-blue-300 text-blue-700 hover:bg-blue-50' : ''}`}
+                          className={`
+                            relative flex flex-col items-start justify-between gap-2 px-4 py-3 rounded-lg border-2 transition-all duration-200 min-w-[140px] text-left
+                            ${isCurrentNetwork 
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
+                              : 'bg-white border-slate-200 text-slate-700 hover:border-blue-400 hover:shadow-sm'
+                            }
+                            ${isSwitchingNetwork ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                            ${network.type === 'testnet' && !isCurrentNetwork ? 'border-orange-200 bg-orange-50' : ''}
+                          `}
                         >
-                          <span className="font-medium flex items-center gap-1">
-                            {isSwitchingNetwork ? "Switching..." : network.label}
-                            {network.type === 'testnet' && (
-                              <span className="text-xs bg-orange-100 text-orange-600 px-1 rounded">TEST</span>
-                            )}
-                            {network.isPopular && !network.balance && (
-                              <span className="text-xs bg-blue-100 text-blue-600 px-1 rounded">POPULAR</span>
-                            )}
-                          </span>
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="font-semibold text-sm truncate">
+                              {isSwitchingNetwork ? "Switching..." : network.label}
+                            </span>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {network.type === 'testnet' && (
+                                <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                  TEST
+                                </span>
+                              )}
+                              {network.isPopular && !network.balance && !isCurrentNetwork && (
+                                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                  Popular
+                                </span>
+                              )}
+                            </div>
+                          </div>
                           {network.balance ? (
-                            <span className="text-xs opacity-80">
+                            <span className={`text-xs font-medium ${isCurrentNetwork ? 'text-blue-100' : 'text-slate-500'}`}>
                               {network.balance.toFixed(4)} {network.type === 'testnet' ? 'Test ETH' : 'ETH'}
                             </span>
-                          ) : network.isPopular ? (
-                            <span className="text-xs opacity-60 text-blue-600">
-                              Add to wallet
+                          ) : network.isPopular && !isCurrentNetwork ? (
+                            <span className="text-xs text-slate-400">
+                              Click to add to wallet
                             </span>
                           ) : null}
-                        </Button>
+                        </button>
                       );
                     })
                   ) : (
