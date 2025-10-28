@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const Preferences = () => {
-  const { userPreferences, updatePreferences, exportWallets, importWallets } = useWallet();
+  const { userPreferences, updatePreferences, exportWallets, importWallets, disconnectWallet } = useWallet();
   const { toast } = useToast();
   const router = useRouter();
   const [importData, setImportData] = useState("");
@@ -168,7 +168,7 @@ const Preferences = () => {
   /**
    * Handle account deletion
    * Validates that user typed "DELETE" to confirm, calls the deletion API,
-   * shows success message, and redirects to home page
+   * cleans up session and wallet connections, then redirects to home page
    */
   const handleDeleteAccount = async () => {
     // Validate confirmation text
@@ -195,10 +195,41 @@ const Preferences = () => {
           description: "Your account has been successfully deleted.",
         });
         
+        // Clean up session and wallet connections
+        try {
+          // Call logout endpoint to ensure cookie is cleared
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include',
+          });
+        } catch (error) {
+          console.error('Logout cleanup error:', error);
+        }
+
+        // Disconnect wallet connections (Web3Auth and MetaMask)
+        try {
+          await disconnectWallet();
+        } catch (error) {
+          console.error('Wallet disconnect error:', error);
+        }
+
+        // Manually clear any remaining session cookies
+        document.cookie.split(";").forEach((c) => {
+          const eqPos = c.indexOf("=");
+          const name = eqPos > -1 ? c.substr(0, eqPos).trim() : c.trim();
+          // Clear cookies that might be related to session
+          if (name.includes("ll_session") || name.includes("session")) {
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname}`;
+          }
+        });
+
         // Redirect to home page after a short delay to show the success message
         setTimeout(() => {
           router.push('/');
-        }, 2000);
+          // Force a page reload to ensure all state is reset
+          window.location.href = '/';
+        }, 1500);
       } else {
         const error = await response.json();
         toast({
