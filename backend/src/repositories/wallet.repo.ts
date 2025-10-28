@@ -18,7 +18,7 @@ export async function findUserWalletsByMainAddress(
     `SELECT main_wallet_address, address, name, chain_id, is_active, created_at, updated_at 
      FROM user_wallets 
      WHERE main_wallet_address = $1 AND is_active = TRUE 
-     ORDER BY created_at DESC`,
+     ORDER BY created_at ASC`,
     [mainAddress.toLowerCase()]
   );
   return rows;
