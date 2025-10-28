@@ -16,7 +16,7 @@ import Navbar from "@/components/Navbar";
 import { mainnet, polygon, bsc, avalanche, arbitrum, optimism, goerli, sepolia, polygonMumbai } from 'wagmi/chains';
 
 const ManageWallets = () => {
-  const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance } = useWallet();
+  const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance, isConnected } = useWallet();
   const { wallets: userWallets, loading: walletsLoading, addWallet: addUserWallet, removeWallet: removeUserWallet, updateWallet } = useWallets();
   const { toast } = useToast();
   const router = useRouter();
@@ -63,13 +63,20 @@ const ManageWallets = () => {
         const networksWithFunds = [];
         const currentAccount = window.ethereum.selectedAddress;
         
-        if (!currentAccount) {
+        if (!currentAccount && !isConnected) {
           toast({
             title: "No Account Selected",
             description: "Please connect your wallet first to check network balances.",
             variant: "destructive",
           });
-          setAvailableNetworks([]);
+          setAvailableNetworks(popularNetworks);
+          setIsDetectingNetworks(false);
+          return;
+        }
+        
+        // If connected via Web3Auth but no MetaMask account, just show popular networks
+        if (!currentAccount && isConnected) {
+          setAvailableNetworks(popularNetworks);
           setIsDetectingNetworks(false);
           return;
         }
