@@ -113,12 +113,28 @@ const Dashboard = () => {
     [urlAddress, selectedWallet, isConnected, userWallet]
   );
 
-  // Auto-select first wallet when userWallets are loaded and no wallet is selected
-  useEffect(() => {
-    if (userWallets.length > 0 && !selectedWallet && !urlAddress) {
-      setSelectedWallet(userWallets[0].address);
+  // Combine main wallet + secondary wallets
+  const allWallets = useMemo(() => {
+    const wallets = [];
+    // Add main wallet if connected
+    if (userWallet && isConnected) {
+      wallets.push({
+        address: userWallet,
+        name: connectedWallets.find(w => w.address === userWallet)?.name || 'Main Wallet',
+        isMain: true
+      });
     }
-  }, [userWallets, selectedWallet, urlAddress]);
+    // Add secondary wallets
+    wallets.push(...userWallets.map(w => ({ ...w, isMain: false })));
+    return wallets;
+  }, [userWallet, isConnected, connectedWallets, userWallets]);
+
+  // Auto-select first wallet (main wallet) when wallets are loaded
+  useEffect(() => {
+    if (allWallets.length > 0 && !selectedWallet && !urlAddress) {
+      setSelectedWallet(allWallets[0].address);
+    }
+  }, [allWallets, selectedWallet, urlAddress]);
 
   // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
@@ -201,15 +217,15 @@ const Dashboard = () => {
                 Track your crypto assets and tax obligations
               </p>
             </div>
-            {userWallets.length > 0 && (
+            {allWallets.length > 1 && (
               <select
                 value={selectedWallet}
                 onChange={(e) => setSelectedWallet(e.target.value)}
                 className="px-4 py-2 border border-slate-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {userWallets.map((wallet) => (
+                {allWallets.map((wallet) => (
                   <option key={wallet.address} value={wallet.address}>
-                    {wallet.name} ({wallet.address.slice(0, 6)}...{wallet.address.slice(-4)})
+                    {wallet.isMain ? '⭐ ' : ''}{wallet.name} ({wallet.address.slice(0, 6)}...{wallet.address.slice(-4)})
                   </option>
                 ))}
               </select>
@@ -438,7 +454,7 @@ const Dashboard = () => {
                         : "text-red-600";
                     return (
                       <div
-                        key={h.contract ?? h.symbol ?? `holding-${index}`}
+                        key={`${h.contract ?? 'native'}-${h.symbol ?? 'unknown'}-${index}`}
                         className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
