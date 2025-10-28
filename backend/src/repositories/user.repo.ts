@@ -41,3 +41,19 @@ export async function findOrCreateUserByWallet(
   return rows[0];
 }
 
+/**
+ * Delete user account and all related data
+ * This will also delete all related wallets in user_wallets table due to CASCADE constraint
+ * @param walletAddress - The main wallet address of the user to delete
+ * @returns true if user was deleted, false if user not found
+ */
+export async function deleteUserAccount(walletAddress: string): Promise<boolean> {
+  const { rowCount } = await pool.query(
+    `DELETE FROM users WHERE wallet_address = $1`,
+    [walletAddress.toLowerCase()]
+  );
+  
+  // Note: user_wallets will be automatically deleted due to ON DELETE CASCADE
+  return rowCount > 0;
+}
+

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import cookieParser from "cookie-parser";
-import { findOrCreateUserByWallet, findUserByWalletAddress } from "../repositories/user.repo";
+import { findOrCreateUserByWallet, findUserByWalletAddress, deleteUserAccount } from "../repositories/user.repo";
 import { signSession } from "../utils/jwt";
 import { requireAuth } from "../middleware/session";
 
@@ -81,6 +81,43 @@ router.get("/me", requireAuth, async (req, res) => {
       name: user.name 
     });
   } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * DELETE /api/auth/account
+ * Delete user account and all related data
+ * Requires authentication (requireAuth middleware)
+ * Deletes the user from the users table and automatically deletes all related wallets
+ * from user_wallets table due to CASCADE constraint
+ * Clears the session cookie after successful deletion
+ */
+router.delete("/account", requireAuth, async (req, res) => {
+  try {
+    const walletAddress = (req as any).user.wallet_address;
+    
+    // Delete user account (cascade will delete user_wallets)
+    const deleted = await deleteUserAccount(walletAddress);
+    
+    if (!deleted) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    // Clear session cookie after successful deletion
+    res.clearCookie(SESSION_NAME, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      signed: true,
+      sameSite: "lax",
+    });
+    
+    return res.json({ 
+      success: true, 
+      message: "Account deleted successfully" 
+    });
+  } catch (error: any) {
+    console.error("[auth] delete account error:", error);
     return res.status(500).json({ error: error.message });
   }
 });
