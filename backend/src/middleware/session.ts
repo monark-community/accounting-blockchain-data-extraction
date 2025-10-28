@@ -20,6 +20,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   const token =
     (req as any).signedCookies?.[SESSION_NAME] || req.cookies?.[SESSION_NAME];
+  
   if (!token) return res.status(401).json({ error: "Unauthorized" });
   try {
     const { userId } = verifySession(token);
