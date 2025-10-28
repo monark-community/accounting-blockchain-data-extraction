@@ -466,11 +466,7 @@ const ManageWallets = () => {
             <Card className="p-12 text-center">
               <Wallet className="w-16 h-16 text-slate-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-slate-600 mb-2">No wallets connected</h3>
-              <p className="text-slate-500 mb-6">Add your first wallet to start tracking transactions</p>
-              <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2">
-                <Plus className="w-4 h-4" />
-                Add Your First Wallet
-              </Button>
+              <p className="text-slate-500">Add your first wallet to start tracking transactions using the button above</p>
             </Card>
           )}
         </div>
