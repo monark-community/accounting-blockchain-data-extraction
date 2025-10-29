@@ -444,55 +444,6 @@ const Dashboard = () => {
             {/* Charts */}
             <div className="grid lg:grid-cols-2 gap-6">
               <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-semibold text-slate-800">
-                    Allocation by Chain
-                  </h3>
-                </div>
-
-                {loadingOv ? (
-                  <div className="space-y-4">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-[300px] w-full" />
-                  </div>
-                ) : !ov ? (
-                  <div className="text-sm text-slate-500">
-                    Load an address to see allocation by chain.
-                  </div>
-                ) : chainBreakdown.length === 0 ? (
-                  <div className="text-sm text-slate-500">
-                    No priced tokens to display.
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={chainBreakdown}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <Tooltip
-                        formatter={(
-                          value: unknown,
-                          _name: string,
-                          entry: { payload?: { pct: number; usd: number } }
-                        ) => {
-                          if (entry?.payload) {
-                            const row = entry.payload;
-                            return [
-                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
-                              "Allocation",
-                            ];
-                          }
-                          return [value, "Allocation"];
-                        }}
-                        labelFormatter={(label) => String(label)}
-                      />
-                      <Bar dataKey="pct" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   Asset Allocation
                 </h3>
@@ -574,6 +525,55 @@ const Dashboard = () => {
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold text-slate-800">
+                    Allocation by Chain
+                  </h3>
+                </div>
+
+                {loadingOv ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-[300px] w-full" />
+                  </div>
+                ) : !ov ? (
+                  <div className="text-sm text-slate-500">
+                    Load an address to see allocation by chain.
+                  </div>
+                ) : chainBreakdown.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No priced tokens to display.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={chainBreakdown}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" />
+                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                      <Tooltip
+                        formatter={(
+                          value: unknown,
+                          _name: string,
+                          entry: { payload?: { pct: number; usd: number } }
+                        ) => {
+                          if (entry?.payload) {
+                            const row = entry.payload;
+                            return [
+                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
+                              "Allocation",
+                            ];
+                          }
+                          return [value, "Allocation"];
+                        }}
+                        labelFormatter={(label) => String(label)}
+                      />
+                      <Bar dataKey="pct" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   24h P&L by Chain
                 </h3>
@@ -606,27 +606,92 @@ const Dashboard = () => {
                 )}
               </Card>
 
-              <Card className="p-6 bg-white shadow-sm">
+              <Card className="p-6 bg-white shadow-sm lg:col-span-2">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  Holdings Treemap
+                  Performance Heatmap
                 </h3>
-                {loadingOv || !ov ? (
+                {loadingOv ? (
                   <Skeleton className="h-[300px] w-full" />
-                ) : treemapData.length === 0 ? (
+                ) : !ov ? (
                   <div className="text-sm text-slate-500">
-                    No priced holdings.
+                    Load an address to see performance metrics.
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <Treemap
-                      data={treemapData}
-                      dataKey="size"
-                      nameKey="name"
-                      aspectRatio={4 / 3}
-                      stroke="#fff"
-                      fill="#8884d8"
-                    />
-                  </ResponsiveContainer>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-6 gap-2">
+                      {ov.holdings
+                        .filter((h) => (h.valueUsd || 0) > minUsdFilter)
+                        .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
+                        .slice(0, 12)
+                        .map((h) => (
+                          <div
+                            key={h.contract || h.symbol}
+                            className={`p-4 rounded-lg ${
+                              !h.delta24hPct
+                                ? "bg-slate-100"
+                                : h.delta24hPct > 5
+                                ? "bg-green-500"
+                                : h.delta24hPct > 2
+                                ? "bg-green-300"
+                                : h.delta24hPct > 0
+                                ? "bg-green-100"
+                                : h.delta24hPct > -2
+                                ? "bg-red-100"
+                                : h.delta24hPct > -5
+                                ? "bg-red-300"
+                                : "bg-red-500"
+                            }`}
+                          >
+                            <div className="text-center">
+                              <p className="font-medium text-sm mb-1">
+                                {h.symbol}
+                              </p>
+                              <p
+                                className={`text-xs ${
+                                  !h.delta24hPct
+                                    ? "text-slate-600"
+                                    : h.delta24hPct > 0
+                                    ? "text-green-800"
+                                    : "text-red-800"
+                                }`}
+                              >
+                                {h.delta24hPct?.toFixed(1)}%
+                              </p>
+                              <p className="text-xs text-slate-600 mt-1">
+                                {fmtUSD(h.valueUsd || 0)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+
+                    <div className="flex justify-center gap-4 text-xs text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-red-500 rounded"></span>
+                        <span>{"< -5%"}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-red-300 rounded"></span>
+                        <span>-5% to -2%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-red-100 rounded"></span>
+                        <span>-2% to 0%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-green-100 rounded"></span>
+                        <span>0% to 2%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-green-300 rounded"></span>
+                        <span>2% to 5%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 bg-green-500 rounded"></span>
+                        <span>{"> 5%"}</span>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </Card>
             </div>
