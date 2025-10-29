@@ -8,8 +8,8 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
     const token =
       (req as any).signedCookies?.[SESSION_NAME] || req.cookies?.[SESSION_NAME];
     if (token) {
-      const { userId } = verifySession(token);
-      (req as any).user = { id: userId };
+      const { userId } = verifySession(token); // userId contient maintenant wallet_address
+      (req as any).user = { wallet_address: userId };
     }
   } catch {
     /* ignore invalid token */
@@ -23,8 +23,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   
   if (!token) return res.status(401).json({ error: "Unauthorized" });
   try {
-    const { userId } = verifySession(token);
-    (req as any).user = { id: userId };
+    const { userId } = verifySession(token); // userId contient maintenant wallet_address
+    (req as any).user = { wallet_address: userId };
     next();
   } catch {
     return res.status(401).json({ error: "Unauthorized" });

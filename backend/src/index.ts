@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import mfaRoutes from "./routes/mfa.routes";
+import authRoutes from "./routes/auth.routes";
+import walletRoutes from "./routes/wallet.routes";
 import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
 import portfolioRoutes from "./routes/portfolio.routes";
@@ -21,6 +23,8 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/health", healthRouter);
 
+app.use("/api/auth", authRoutes);
+app.use("/api/wallets", walletRoutes);
 app.use("/api/mfa", mfaRoutes);
 
 app.use("/api/portfolio", portfolioRoutes);

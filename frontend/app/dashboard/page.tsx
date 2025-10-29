@@ -4,12 +4,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   TrendingUp,
   TrendingDown,
   Wallet,
   BarChart3,
   PieChart,
   DollarSign,
+  Crown,
 } from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
@@ -35,6 +43,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { Tooltip } from "recharts";
+import { useWallets } from "@/hooks/use-wallets";
 
 type PricedHolding = {
   contract: string | null;
@@ -83,6 +92,7 @@ const Dashboard = () => {
     userWallet,
     isConnected,
   } = useWallet();
+  const { wallets: userWallets } = useWallets();
   const router = useRouter();
   const [accountingMethod, setAccountingMethod] =
     useState<AccountingMethod>("FIFO");
@@ -94,6 +104,7 @@ const Dashboard = () => {
   const [loadingOv, setLoadingOv] = useState(false);
   const [errorOv, setErrorOv] = useState<string | null>(null);
   const [showChange, setShowChange] = useState(false);
+  const [selectedWallet, setSelectedWallet] = useState<string>("");
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -103,12 +114,53 @@ const Dashboard = () => {
     setUrlReady(true);
   }, []);
 
-  // Use URL address if available, otherwise use connected wallet address
+  // Use URL address if available, otherwise use selected wallet, otherwise use connected wallet address
   const address = useMemo(
     () =>
-      urlAddress ? urlAddress : isConnected && userWallet ? userWallet : "",
-    [urlAddress, isConnected, userWallet]
+      urlAddress ? urlAddress : selectedWallet || (isConnected && userWallet ? userWallet : ""),
+    [urlAddress, selectedWallet, isConnected, userWallet]
   );
+
+  // Combine main wallet + secondary wallets
+  const allWallets = useMemo(() => {
+    const wallets = [];
+    // Add main wallet if connected
+    if (userWallet && isConnected) {
+      wallets.push({
+        address: userWallet,
+        name: connectedWallets.find(w => w.address === userWallet)?.name || 'Main Wallet',
+        isMain: true
+      });
+    }
+    // Add secondary wallets
+    wallets.push(...userWallets.map(w => ({ ...w, isMain: false })));
+    return wallets;
+  }, [userWallet, isConnected, connectedWallets, userWallets]);
+
+  // Calculate width based on longest wallet name
+  const maxWalletWidth = useMemo(() => {
+    if (allWallets.length === 0) return 280;
+    const longestName = allWallets.reduce((longest, wallet) => 
+      wallet.name.length > longest.length ? wallet.name : longest, 
+      allWallets[0].name
+    );
+    // Account for: checkmark space (32px) + crown icon (16px) + gap (8px) + name + address format "(0x...10...8)" (~28 chars) + padding (40px left + 16px right) + arrow (32px)
+    const checkmarkSpace = 32; // space for checkmark in dropdown
+    const iconSpace = 16 + 8; // crown + gap
+    const addressChars = 28; // "(0x12345678...12345678)"
+    const padding = 40 + 16; // left (pl-10) + right (pr-4) padding
+    const arrowSpace = 32;
+    // Rough estimation: ~8px per character for font-medium, ~6px for monospace
+    const estimatedWidth = checkmarkSpace + iconSpace + (longestName.length * 8) + (addressChars * 6) + padding + arrowSpace;
+    return Math.max(280, estimatedWidth);
+  }, [allWallets]);
+
+  // Auto-select first wallet (main wallet) when wallets are loaded
+  useEffect(() => {
+    if (allWallets.length > 0 && !selectedWallet && !urlAddress) {
+      setSelectedWallet(allWallets[0].address);
+    }
+  }, [allWallets, selectedWallet, urlAddress]);
 
   // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
@@ -182,12 +234,63 @@ const Dashboard = () => {
 
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-800 mb-2">
-            Portfolio Dashboard
-          </h1>
-          <p className="text-slate-600">
-            Track your crypto assets and tax obligations
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-800 mb-2">
+                Portfolio Dashboard
+              </h1>
+              <p className="text-slate-600">
+                Track your crypto assets and tax obligations
+              </p>
+            </div>
+            {allWallets.length > 1 && (
+              <div className="relative inline-block">
+                <Select value={selectedWallet} onValueChange={setSelectedWallet}>
+                  <SelectTrigger 
+                    className="h-12 pl-10 pr-4 border-2 border-slate-200 rounded-xl bg-white shadow-md hover:border-blue-400 focus:ring-2 focus:ring-blue-500 transition-all duration-200 text-slate-800 font-medium"
+                    style={{ width: `${maxWalletWidth}px` }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {(() => {
+                        const selected = allWallets.find(w => w.address === selectedWallet);
+                        if (!selected) return null;
+                        return (
+                          <>
+                            {selected.isMain && (
+                              <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                            )}
+                            <span className="font-medium">{selected.name}</span>
+                            <span className="text-slate-500 font-mono text-sm">
+                              ({selected.address.slice(0, 10)}...{selected.address.slice(-8)})
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-2 shadow-lg w-[var(--radix-select-trigger-width)]">
+                    {allWallets.map((wallet) => (
+                      <SelectItem 
+                        key={wallet.address} 
+                        value={wallet.address}
+                        className="py-3 pl-10 pr-4 text-slate-800 font-medium cursor-pointer hover:bg-blue-50 focus:bg-blue-50"
+                      >
+                        <div className="flex items-center gap-2">
+                          {wallet.isMain && (
+                            <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                          )}
+                          <span className="font-medium">{wallet.name}</span>
+                          <span className="text-slate-500 font-mono text-sm">
+                            ({wallet.address.slice(0, 10)}...{wallet.address.slice(-8)})
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
@@ -411,7 +514,7 @@ const Dashboard = () => {
                         : "text-red-600";
                     return (
                       <div
-                        key={h.contract ?? h.symbol ?? `holding-${index}`}
+                        key={`${h.contract ?? 'native'}-${h.symbol ?? 'unknown'}-${index}`}
                         className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">

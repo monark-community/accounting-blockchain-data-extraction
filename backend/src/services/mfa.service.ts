@@ -38,7 +38,7 @@ export async function setupMFA(userId: string, email: string): Promise<MFASetupR
      SET mfa_secret = $1, 
          mfa_backup_codes = $2,
          updated_at = NOW()
-     WHERE id = $3`,
+     WHERE wallet_address = $3`,
     [secret, backupCodes, userId]
   );
 
@@ -57,7 +57,7 @@ export async function verifyMFA(userId: string, code: string): Promise<MFAVerifi
   const { rows } = await pool.query(
     `SELECT mfa_secret, mfa_backup_codes, mfa_enabled
      FROM users 
-     WHERE id = $1`,
+     WHERE wallet_address = $1`,
     [userId]
   );
 
@@ -87,13 +87,13 @@ export async function verifyMFA(userId: string, code: string): Promise<MFAVerifi
 
   if (backupCodeIndex !== -1) {
     // Remove the used backup code
-    const updatedBackupCodes = backupCodes.filter((_, index) => index !== backupCodeIndex);
+    const updatedBackupCodes = backupCodes.filter((_code: string, index: number) => index !== backupCodeIndex);
     
     await pool.query(
       `UPDATE users 
        SET mfa_backup_codes = $1, 
            updated_at = NOW()
-       WHERE id = $2`,
+       WHERE wallet_address = $2`,
       [updatedBackupCodes, userId]
     );
 
@@ -111,7 +111,7 @@ export async function enableMFA(userId: string): Promise<void> {
     `UPDATE users 
      SET mfa_enabled = TRUE,
          updated_at = NOW()
-     WHERE id = $1`,
+     WHERE wallet_address = $1`,
     [userId]
   );
 }
@@ -126,7 +126,7 @@ export async function disableMFA(userId: string): Promise<void> {
          mfa_secret = NULL,
          mfa_backup_codes = NULL,
          updated_at = NOW()
-     WHERE id = $1`,
+     WHERE wallet_address = $1`,
     [userId]
   );
 }
@@ -136,7 +136,7 @@ export async function disableMFA(userId: string): Promise<void> {
  */
 export async function isMFAEnabled(userId: string): Promise<boolean> {
   const { rows } = await pool.query(
-    `SELECT mfa_enabled FROM users WHERE id = $1`,
+    `SELECT mfa_enabled FROM users WHERE wallet_address = $1`,
     [userId]
   );
 
@@ -148,7 +148,7 @@ export async function isMFAEnabled(userId: string): Promise<boolean> {
  */
 export async function getBackupCodes(userId: string): Promise<string[]> {
   const { rows } = await pool.query(
-    `SELECT mfa_backup_codes FROM users WHERE id = $1`,
+    `SELECT mfa_backup_codes FROM users WHERE wallet_address = $1`,
     [userId]
   );
 
@@ -165,7 +165,7 @@ export async function regenerateBackupCodes(userId: string): Promise<string[]> {
     `UPDATE users 
      SET mfa_backup_codes = $1,
          updated_at = NOW()
-     WHERE id = $2`,
+     WHERE wallet_address = $2`,
     [backupCodes, userId]
   );
 

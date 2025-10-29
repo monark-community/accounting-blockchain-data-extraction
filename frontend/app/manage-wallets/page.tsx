@@ -10,18 +10,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/contexts/WalletContext";
+import { useWallets } from "@/hooks/use-wallets";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { mainnet, polygon, bsc, avalanche, arbitrum, optimism, goerli, sepolia, polygonMumbai } from 'wagmi/chains';
 
 const ManageWallets = () => {
-  const { connectedWallets, addWallet, removeWallet, switchNetwork, currentNetwork, getWalletBalance } = useWallet();
+  const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance, isConnected } = useWallet();
+  const { wallets: userWallets, loading: walletsLoading, addWallet: addUserWallet, removeWallet: removeUserWallet, updateWallet } = useWallets();
   const { toast } = useToast();
   const router = useRouter();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newWalletAddress, setNewWalletAddress] = useState("");
   const [newWalletName, setNewWalletName] = useState("");
   const [newWalletNetwork, setNewWalletNetwork] = useState("ethereum");
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingWallet, setEditingWallet] = useState<{ address: string; name: string } | null>(null);
+  const [editWalletName, setEditWalletName] = useState("");
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [availableNetworks, setAvailableNetworks] = useState<(typeof networks[0] & { balance?: number; isPopular?: boolean })[]>([]);
   const [isDetectingNetworks, setIsDetectingNetworks] = useState(false);
@@ -58,13 +63,20 @@ const ManageWallets = () => {
         const networksWithFunds = [];
         const currentAccount = window.ethereum.selectedAddress;
         
-        if (!currentAccount) {
+        if (!currentAccount && !isConnected) {
           toast({
             title: "No Account Selected",
             description: "Please connect your wallet first to check network balances.",
             variant: "destructive",
           });
-          setAvailableNetworks([]);
+          setAvailableNetworks(popularNetworks);
+          setIsDetectingNetworks(false);
+          return;
+        }
+        
+        // If connected via Web3Auth but no MetaMask account, just show popular networks
+        if (!currentAccount && isConnected) {
+          setAvailableNetworks(popularNetworks);
           setIsDetectingNetworks(false);
           return;
         }
@@ -192,7 +204,7 @@ const ManageWallets = () => {
     }
   };
 
-  const handleAddWallet = () => {
+  const handleAddWallet = async () => {
     if (!newWalletAddress.trim() || !newWalletName.trim()) {
       toast({
         title: "Missing information",
@@ -202,30 +214,82 @@ const ManageWallets = () => {
       return;
     }
 
-    addWallet({
-      address: newWalletAddress,
-      name: newWalletName,
-      network: newWalletNetwork
-    });
+    try {
+      // Get chainId from network value
+      const networkConfig = networks.find(n => n.value === newWalletNetwork);
+      await addUserWallet(newWalletAddress, newWalletName, networkConfig?.chainId || 1);
 
-    toast({
-      title: "Wallet added",
-      description: `${newWalletName} has been added successfully.`,
-    });
+      toast({
+        title: "Wallet added",
+        description: `${newWalletName} has been added successfully.`,
+      });
 
-    setNewWalletAddress("");
-    setNewWalletName("");
-    setNewWalletNetwork("ethereum");
-    setIsAddDialogOpen(false);
+      setNewWalletAddress("");
+      setNewWalletName("");
+      setNewWalletNetwork("ethereum");
+      setIsAddDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Error adding wallet",
+        description: error.message || "Failed to add wallet",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleRemoveWallet = (id: string, name: string) => {
-    removeWallet(id);
-    toast({
-      title: "Wallet removed",
-      description: `${name} has been removed from your account.`,
-    });
+  const handleRemoveWallet = async (address: string, name: string) => {
+    try {
+      await removeUserWallet(address);
+      toast({
+        title: "Wallet removed",
+        description: `${name} has been removed from your account.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error removing wallet",
+        description: error.message || "Failed to remove wallet",
+        variant: "destructive",
+      });
+    }
   };
+
+  const handleEditWallet = (address: string, name: string) => {
+    setEditingWallet({ address, name });
+    setEditWalletName(name);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateWallet = async () => {
+    if (!editingWallet || !editWalletName.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Please provide a wallet name.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await updateWallet(editingWallet.address, editWalletName.trim());
+      toast({
+        title: "Wallet updated",
+        description: `Wallet name has been updated to "${editWalletName.trim()}".`,
+      });
+
+      setEditingWallet(null);
+      setEditWalletName("");
+      setIsEditDialogOpen(false);
+    } catch (error: any) {
+      toast({
+        title: "Error updating wallet",
+        description: error.message || "Failed to update wallet",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Check if wallet name has changed
+  const hasNameChanged = editingWallet && editWalletName.trim() !== editingWallet.name;
 
   const getNetworkBadgeColor = (network: string) => {
     const colors: Record<string, string> = {
@@ -314,6 +378,52 @@ const ManageWallets = () => {
                 </div>
               </DialogContent>
             </Dialog>
+
+            {/* Edit Wallet Dialog */}
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Edit Wallet Name</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="edit-wallet-name">Wallet Name</Label>
+                    <Input
+                      id="edit-wallet-name"
+                      placeholder="e.g., Trading Wallet"
+                      value={editWalletName}
+                      onChange={(e) => setEditWalletName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleUpdateWallet();
+                        }
+                      }}
+                    />
+                    {editingWallet && (
+                      <p className="text-xs text-slate-500 mt-1 font-mono">
+                        {editingWallet.address}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-2 pt-4">
+                    <Button 
+                      onClick={handleUpdateWallet} 
+                      className="flex-1"
+                      disabled={!hasNameChanged || !editWalletName.trim()}
+                    >
+                      Update Wallet
+                    </Button>
+                    <Button variant="outline" onClick={() => {
+                      setIsEditDialogOpen(false);
+                      setEditingWallet(null);
+                      setEditWalletName("");
+                    }}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
 
           {/* Network Switching Section */}
@@ -358,35 +468,47 @@ const ManageWallets = () => {
                                              network.label.toLowerCase() === currentNetwork?.toLowerCase();
                       
                       return (
-                        <Button
+                        <button
                           key={network.value}
-                          variant={isCurrentNetwork ? "default" : "outline"}
-                          size="sm"
                           onClick={() => handleSwitchNetwork(network.chainId)}
                           disabled={isSwitchingNetwork}
-                          className={`flex flex-col items-center gap-1 min-w-[120px] ${
-                            network.type === 'testnet' ? 'border-orange-300 text-orange-700 hover:bg-orange-50' : ''
-                          } ${network.isPopular && !network.balance ? 'border-blue-300 text-blue-700 hover:bg-blue-50' : ''}`}
+                          className={`
+                            relative flex flex-col items-start justify-between gap-2 px-4 py-3 rounded-lg border-2 transition-all duration-200 min-w-[140px] text-left
+                            ${isCurrentNetwork 
+                              ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
+                              : 'bg-white border-slate-200 text-slate-700 hover:border-blue-400 hover:shadow-sm'
+                            }
+                            ${isSwitchingNetwork ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                            ${network.type === 'testnet' && !isCurrentNetwork ? 'border-orange-200 bg-orange-50' : ''}
+                          `}
                         >
-                          <span className="font-medium flex items-center gap-1">
-                            {isSwitchingNetwork ? "Switching..." : network.label}
-                            {network.type === 'testnet' && (
-                              <span className="text-xs bg-orange-100 text-orange-600 px-1 rounded">TEST</span>
-                            )}
-                            {network.isPopular && !network.balance && (
-                              <span className="text-xs bg-blue-100 text-blue-600 px-1 rounded">POPULAR</span>
-                            )}
-                          </span>
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="font-semibold text-sm truncate">
+                              {isSwitchingNetwork ? "Switching..." : network.label}
+                            </span>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {network.type === 'testnet' && (
+                                <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                  TEST
+                                </span>
+                              )}
+                              {network.isPopular && !network.balance && !isCurrentNetwork && (
+                                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                  Popular
+                                </span>
+                              )}
+                            </div>
+                          </div>
                           {network.balance ? (
-                            <span className="text-xs opacity-80">
+                            <span className={`text-xs font-medium ${isCurrentNetwork ? 'text-blue-100' : 'text-slate-500'}`}>
                               {network.balance.toFixed(4)} {network.type === 'testnet' ? 'Test ETH' : 'ETH'}
                             </span>
-                          ) : network.isPopular ? (
-                            <span className="text-xs opacity-60 text-blue-600">
-                              Add to wallet
+                          ) : network.isPopular && !isCurrentNetwork ? (
+                            <span className="text-xs text-slate-400">
+                              Click to add to wallet
                             </span>
                           ) : null}
-                        </Button>
+                        </button>
                       );
                     })
                   ) : (
@@ -401,8 +523,8 @@ const ManageWallets = () => {
           </Card>
 
           <div className="grid gap-4">
-            {connectedWallets.map((wallet) => (
-              <Card key={wallet.id} className="hover:shadow-md transition-shadow">
+            {userWallets.map((wallet) => (
+              <Card key={wallet.address} className="hover:shadow-md transition-shadow">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -413,14 +535,9 @@ const ManageWallets = () => {
                         <h3 className="font-semibold text-lg">{wallet.name}</h3>
                         <p className="text-slate-600 font-mono text-sm">{wallet.address}</p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getNetworkBadgeColor(wallet.network)}`}>
-                          {wallet.network}
+                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getNetworkBadgeColor('ethereum')}`}>
+                          Chain ID: {wallet.chain_id}
                         </span>
-                          {wallet.balance && (
-                            <span className="text-green-600 text-xs font-medium">
-                              {parseFloat(wallet.balance).toFixed(4)} ETH
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -433,13 +550,18 @@ const ManageWallets = () => {
                       >
                         <RefreshCw className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleEditWallet(wallet.address, wallet.name)}
+                        title="Edit Wallet Name"
+                      >
                         <Edit2 className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleRemoveWallet(wallet.id, wallet.name)}
+                        onClick={() => handleRemoveWallet(wallet.address, wallet.name)}
                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -451,15 +573,11 @@ const ManageWallets = () => {
             ))}
           </div>
 
-          {connectedWallets.length === 0 && (
+          {!walletsLoading && userWallets.length === 0 && (
             <Card className="p-12 text-center">
               <Wallet className="w-16 h-16 text-slate-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-slate-600 mb-2">No wallets connected</h3>
-              <p className="text-slate-500 mb-6">Add your first wallet to start tracking transactions</p>
-              <Button onClick={() => setIsAddDialogOpen(true)} className="flex items-center gap-2">
-                <Plus className="w-4 h-4" />
-                Add Your First Wallet
-              </Button>
+              <p className="text-slate-500">Add your first wallet to start tracking transactions using the button above</p>
             </Card>
           )}
         </div>

@@ -9,7 +9,7 @@ import {
   getBackupCodes,
   regenerateBackupCodes,
 } from "../services/mfa.service";
-import { findUserById } from "../repositories/user.repo";
+import { findUserByWalletAddress } from "../repositories/user.repo";
 import { pool } from "../db/pool";
 
 const router = Router();
@@ -28,7 +28,7 @@ router.get("/status-by-address", async (req, res) => {
 
     // Find user by wallet address
     const { rows } = await pool.query(
-      `SELECT id, mfa_enabled FROM users WHERE wallet_address = $1`,
+      `SELECT mfa_enabled FROM users WHERE wallet_address = $1`,
       [address]
     );
 
@@ -60,7 +60,7 @@ router.post("/verify-by-address", async (req, res) => {
 
     // Find user by wallet address
     const { rows } = await pool.query(
-      `SELECT id FROM users WHERE wallet_address = $1`,
+      `SELECT wallet_address FROM users WHERE wallet_address = $1`,
       [address]
     );
 
@@ -68,8 +68,8 @@ router.post("/verify-by-address", async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const userId = rows[0].id;
-    const result = await verifyMFA(userId, code);
+    const walletAddress = rows[0].wallet_address;
+    const result = await verifyMFA(walletAddress, code);
 
     if (!result.success) {
       return res.status(400).json({ error: "Invalid code" });
@@ -90,8 +90,8 @@ router.use(requireAuth);
  */
 router.get("/status", async (req, res) => {
   try {
-    const userId = (req as any).user.id;
-    const enabled = await isMFAEnabled(userId);
+    const walletAddress = (req as any).user.wallet_address;
+    const enabled = await isMFAEnabled(walletAddress);
     return res.json({ enabled });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
@@ -104,14 +104,14 @@ router.get("/status", async (req, res) => {
  */
 router.post("/setup", async (req, res) => {
   try {
-    const userId = (req as any).user.id;
-    const user = await findUserById(userId);
+    const walletAddress = (req as any).user.wallet_address;
+    const user = await findUserByWalletAddress(walletAddress);
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    const result = await setupMFA(userId, user.email);
+    const result = await setupMFA(walletAddress, user.name);
 
     return res.json({
       secret: result.secret,
@@ -129,14 +129,14 @@ router.post("/setup", async (req, res) => {
  */
 router.post("/verify", async (req, res) => {
   try {
-    const userId = (req as any).user.id;
+    const walletAddress = (req as any).user.wallet_address;
     const { code } = req.body;
 
     if (!code || typeof code !== 'string') {
       return res.status(400).json({ error: "Code is required" });
     }
 
-    const result = await verifyMFA(userId, code);
+    const result = await verifyMFA(walletAddress, code);
 
     if (!result.success) {
       return res.status(400).json({ error: "Invalid code" });
@@ -154,8 +154,8 @@ router.post("/verify", async (req, res) => {
  */
 router.post("/enable", async (req, res) => {
   try {
-    const userId = (req as any).user.id;
-    await enableMFA(userId);
+    const walletAddress = (req as any).user.wallet_address;
+    await enableMFA(walletAddress);
     return res.json({ success: true, message: "MFA enabled successfully" });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
@@ -168,8 +168,8 @@ router.post("/enable", async (req, res) => {
  */
 router.post("/disable", async (req, res) => {
   try {
-    const userId = (req as any).user.id;
-    await disableMFA(userId);
+    const walletAddress = (req as any).user.wallet_address;
+    await disableMFA(walletAddress);
     return res.json({ success: true, message: "MFA disabled successfully" });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
@@ -182,8 +182,8 @@ router.post("/disable", async (req, res) => {
  */
 router.get("/backup-codes", async (req, res) => {
   try {
-    const userId = (req as any).user.id;
-    const codes = await getBackupCodes(userId);
+    const walletAddress = (req as any).user.wallet_address;
+    const codes = await getBackupCodes(walletAddress);
     return res.json({ backupCodes: codes });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });
@@ -196,8 +196,8 @@ router.get("/backup-codes", async (req, res) => {
  */
 router.post("/regenerate-backup-codes", async (req, res) => {
   try {
-    const userId = (req as any).user.id;
-    const codes = await regenerateBackupCodes(userId);
+    const walletAddress = (req as any).user.wallet_address;
+    const codes = await regenerateBackupCodes(walletAddress);
     return res.json({ backupCodes: codes });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });

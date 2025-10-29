@@ -1,19 +1,43 @@
 import { pool } from "../db/pool";
 
 export type UserRow = {
-  id: string;
+  wallet_address: string;
   name: string;
-  email: string;
   created_at: string;
   updated_at: string;
 };
 
-// Only keep findUserById for MFA functionality
-export async function findUserById(id: string): Promise<UserRow | null> {
+// Find user by wallet address
+export async function findUserByWalletAddress(address: string): Promise<UserRow | null> {
   const { rows } = await pool.query<UserRow>(
-    `SELECT id, name, email, created_at, updated_at FROM users WHERE id = $1 LIMIT 1`,
-    [id]
+    `SELECT wallet_address, name, created_at, updated_at 
+     FROM users WHERE wallet_address = $1 LIMIT 1`,
+    [address.toLowerCase()]
   );
   return rows[0] ?? null;
+}
+
+// Find or create user by wallet address (for Web3Auth and MetaMask login)
+export async function findOrCreateUserByWallet(
+  address: string,
+  userInfo?: { name?: string }
+): Promise<UserRow> {
+  // Try to find existing user by wallet_address
+  const existing = await findUserByWalletAddress(address);
+  if (existing) {
+    return existing;
+  }
+
+  // Create new user
+  const name = userInfo?.name || `User ${address.slice(0, 6)}`;
+  
+  const { rows } = await pool.query<UserRow>(
+    `INSERT INTO users (wallet_address, name)
+     VALUES ($1, $2)
+     RETURNING wallet_address, name, created_at, updated_at`,
+    [address.toLowerCase(), name]
+  );
+  
+  return rows[0];
 }
 
