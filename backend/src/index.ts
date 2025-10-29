@@ -4,7 +4,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
 import holdingsRouter from "./routes/holdings.routes";
-./routes/txsOLD.routes
+
 const app = express();
 app.use(cors());
 app.use(express.json());
