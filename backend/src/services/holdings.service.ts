@@ -247,13 +247,13 @@ export async function getHoldingsOverview(
             ? 100
             : null;
 
-        if (!p24Map.has(key24) && valueNow > 0) {
-          console.log("[Δ24h miss:price24]", {
-            key24,
-            symbol: r.symbol,
-            isNative,
-          });
-        }
+        // if (!p24Map.has(key24) && valueNow > 0) {
+        //   console.log("[Δ24h miss:price24]", {
+        //     key24,
+        //     symbol: r.symbol,
+        //     isNative,
+        //   });
+        // }
         if (!prevMap.has(contractKey)) {
           // benign: just means we assumed qtyPrev = qtyNow
           // console.log("[Δ24h miss:prevQty]", { network: r.network, contractKey, symbol: r.symbol });
