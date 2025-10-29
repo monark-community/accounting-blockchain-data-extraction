@@ -10,16 +10,21 @@ export type UserWalletRow = {
   updated_at: string;
 };
 
-// Trouver tous les portefeuilles actifs d'un utilisateur
+// Trouver tous les portefeuilles secondaires actifs d'un utilisateur
+// Note: Le wallet principal n'est PAS dans cette table, il est dans users
+// On exclut explicitement le wallet principal si jamais il y était par erreur
 export async function findUserWalletsByMainAddress(
   mainAddress: string
 ): Promise<UserWalletRow[]> {
+  const normalizedMainAddress = mainAddress.toLowerCase();
   const { rows } = await pool.query<UserWalletRow>(
     `SELECT main_wallet_address, address, name, chain_id, is_active, created_at, updated_at 
      FROM user_wallets 
-     WHERE main_wallet_address = $1 AND is_active = TRUE 
+     WHERE main_wallet_address = $1 
+       AND is_active = TRUE 
+       AND address != $1
      ORDER BY created_at ASC`,
-    [mainAddress.toLowerCase()]
+    [normalizedMainAddress]
   );
   return rows;
 }

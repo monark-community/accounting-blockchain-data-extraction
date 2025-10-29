@@ -121,21 +121,17 @@ const Dashboard = () => {
     [urlAddress, selectedWallet, isConnected, userWallet]
   );
 
-  // Combine main wallet + secondary wallets
+  // Get all wallets from backend (main wallet from users table + secondary wallets from user_wallets table)
   const allWallets = useMemo(() => {
-    const wallets = [];
-    // Add main wallet if connected
-    if (userWallet && isConnected) {
-      wallets.push({
-        address: userWallet,
-        name: connectedWallets.find(w => w.address === userWallet)?.name || 'Main Wallet',
-        isMain: true
-      });
-    }
-    // Add secondary wallets
-    wallets.push(...userWallets.map(w => ({ ...w, isMain: false })));
-    return wallets;
-  }, [userWallet, isConnected, connectedWallets, userWallets]);
+    // userWallets already contains:
+    // 1. Main wallet (from users table) with up-to-date name
+    // 2. Secondary wallets (from user_wallets table)
+    // Just identify which is the main wallet
+    return userWallets.map(w => ({
+      ...w,
+      isMain: w.address.toLowerCase() === userWallet?.toLowerCase()
+    }));
+  }, [userWallet, userWallets]);
 
   // Calculate width based on longest wallet name
   const maxWalletWidth = useMemo(() => {

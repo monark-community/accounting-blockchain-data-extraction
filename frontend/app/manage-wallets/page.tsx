@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { ArrowLeft, Plus, Trash2, Edit2, Wallet, RefreshCw } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Edit2, Wallet, RefreshCw, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import Navbar from "@/components/Navbar";
 import { mainnet, polygon, bsc, avalanche, arbitrum, optimism, goerli, sepolia, polygonMumbai } from 'wagmi/chains';
 
 const ManageWallets = () => {
-  const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance, isConnected } = useWallet();
+  const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance, isConnected, userWallet } = useWallet();
   const { wallets: userWallets, loading: walletsLoading, addWallet: addUserWallet, removeWallet: removeUserWallet, updateWallet } = useWallets();
   const { toast } = useToast();
   const router = useRouter();
@@ -532,7 +532,12 @@ const ManageWallets = () => {
                         <Wallet className="w-6 h-6 text-white" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-lg">{wallet.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-lg">{wallet.name}</h3>
+                          {wallet.address.toLowerCase() === userWallet?.toLowerCase() && (
+                            <Crown className="w-4 h-4 text-amber-500" title="Main Wallet" />
+                          )}
+                        </div>
                         <p className="text-slate-600 font-mono text-sm">{wallet.address}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getNetworkBadgeColor('ethereum')}`}>
@@ -550,22 +555,26 @@ const ManageWallets = () => {
                       >
                         <RefreshCw className="w-4 h-4" />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => handleEditWallet(wallet.address, wallet.name)}
-                        title="Edit Wallet Name"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveWallet(wallet.address, wallet.name)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {wallet.address.toLowerCase() !== userWallet?.toLowerCase() && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleEditWallet(wallet.address, wallet.name)}
+                          title="Edit Wallet Name"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                      {wallet.address.toLowerCase() !== userWallet?.toLowerCase() && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveWallet(wallet.address, wallet.name)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

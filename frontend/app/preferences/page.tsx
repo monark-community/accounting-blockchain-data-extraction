@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/contexts/WalletContext";
+import { useWallets } from "@/hooks/use-wallets";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { MFASetupDialog } from "@/components/MFASetupDialog";
@@ -26,6 +27,7 @@ import {
 
 const Preferences = () => {
   const { userPreferences, updatePreferences, exportWallets, importWallets, disconnectWallet, refreshUserName } = useWallet();
+  const { refetch: refetchWallets } = useWallets();
   const { toast } = useToast();
   const router = useRouter();
   const [importData, setImportData] = useState("");
@@ -166,6 +168,8 @@ const Preferences = () => {
         setUserName(data.name);
         // Refresh the user name in the context to update the navbar
         await refreshUserName();
+        // Refresh wallets list to update the main wallet name
+        await refetchWallets();
         toast({
           title: "Name updated",
           description: "Your name has been successfully updated.",
