@@ -162,10 +162,10 @@ export default function AllTransactionsTab() {
 
       const url = `/api/portfolio/txs/${encodeURIComponent(address)}?${qs}`;
       // console.log("Fetching from URL:", url);
-      
+
       const res = await fetch(url);
       // console.log("Response status:", res.status);
-      
+
       if (!res.ok) {
         let msg = "Failed to load transactions";
         try {
