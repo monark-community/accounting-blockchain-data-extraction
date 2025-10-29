@@ -8,8 +8,6 @@ import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
 import holdingsRouter from "./routes/holdings.routes";
 import portfolioRoutes from "./routes/portfolio.routes";
-import txsRouter from "./routes/txs.routes";
-
 const app = express();
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
@@ -25,8 +23,6 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/mfa", mfaRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/holdings", holdingsRouter);
-
-// app.use("/api/portfolio", txsRouter);
 
 const PORT = process.env.PORT ?? "8080";
 app.listen(PORT, () => {
