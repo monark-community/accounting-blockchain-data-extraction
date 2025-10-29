@@ -51,6 +51,11 @@ function toNumberFromBase(
   decimals?: number | null
 ): number {
   if (!amountRaw) return 0;
+  // If the source already gave a human-readable number (contains a dot or exponent), trust it.
+  if (/[.\deE+-]/.test(amountRaw) && !/^\d+$/.test(amountRaw)) {
+    const n = Number(amountRaw);
+    return Number.isFinite(n) ? n : 0;
+  }
   const d = typeof decimals === "number" ? decimals : 18;
   if (d <= 0) return Number(amountRaw);
   // Avoid BigInt math gymnastics here; UI-level precision is ok for Step 1.
