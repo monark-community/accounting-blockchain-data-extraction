@@ -1,10 +1,4 @@
 // src/services/tx.sources.fallback.ts
-/**
- * Pinax (JSON-RPC) enrichments & gap-fills.
- * - Batch eth_getTransactionReceipt for status/gas/logs
- * - We’ll expand with eth_getLogs later if/when needed for classification.
- */
-
 import type { EvmNetwork } from "../config/networks";
 
 type JsonRpc = { jsonrpc: "2.0"; id: number; method: string; params: any[] };

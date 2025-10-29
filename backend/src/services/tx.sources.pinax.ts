@@ -1,10 +1,4 @@
 // src/services/tx.sources.pinax.ts
-/**
- * Token API (The Graph) fetchers per network & address.
- * - Outbound + inbound for fungible/native transfers
- * - NFT transfers
- * - Returns RAW rows; normalization happens in tx.normalize.ts
- */
 
 import { parseNetworks, type EvmNetwork } from "../config/networks";
 import type { PageParams } from "../types/transactions";
