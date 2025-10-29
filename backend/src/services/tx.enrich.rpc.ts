@@ -1,4 +1,4 @@
-// src/services/tx.sources.fallback.ts
+// src/services/tx.enrich.rpc.ts
 import type { EvmNetwork } from "../config/networks";
 
 type JsonRpc = { jsonrpc: "2.0"; id: number; method: string; params: any[] };
@@ -17,15 +17,13 @@ function hexToNumber(hex?: string): number {
 /** Resolve per-network RPC URL from env. Fallback to PINAX_RPC_URL if provided. */
 function rpcUrlFor(network: EvmNetwork): string {
   // Example env names: PINAX_RPC_URL_MAINNET, PINAX_RPC_URL_ARBITRUM_ONE, etc.
-  const envKey = `PINAX_RPC_URL_${network
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "_")}`;
+  const envKey = `RPC_URL_${network.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
   const perNet = process.env[envKey];
-  const generic = process.env.PINAX_RPC_URL;
+  const generic = process.env.RPC_URL_MAINNET;
   if (perNet) return perNet;
   if (generic) return generic;
   throw new Error(
-    `No RPC URL configured for ${network} (set ${envKey} or PINAX_RPC_URL)`
+    `No RPC URL configured for ${network} (set ${envKey} or RPC_URL_MAINNET)`
   );
 }
 
