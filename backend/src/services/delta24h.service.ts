@@ -163,7 +163,7 @@ export async function getDelta24hValueByContract(
     //     qtyNow * priceNow,
     //     qtyNow * priceNow - qtyPrev * price24
     //   );
-    }
+    // }
 
     out.set(`${network}:${key}`, { deltaUsd, deltaPct });
   }
