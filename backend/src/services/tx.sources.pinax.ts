@@ -6,6 +6,7 @@ import type {
   TokenApiTransfer,
   TokenApiNftTransfer,
 } from "./../services/tx.normalize";
+import { fetchWithRetry } from "../utils/http";
 
 const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL?.replace(/\/+$/, "") ??
@@ -42,37 +43,38 @@ export async function fetchFungibleTransfersPage(
     limit: p.limit,
     // we’ll rely on server-side ordering by block/timestamp/log
   };
-
-  const [outRes, inRes] = await Promise.all([
-    fetch(`${base}?${qs({ ...common, from_address: p.address })}`, {
-      headers: tokenApiHeaders(),
-    }),
-    fetch(`${base}?${qs({ ...common, to_address: p.address })}`, {
-      headers: tokenApiHeaders(),
-    }),
-  ]);
-
-  if (!outRes.ok)
-    throw new Error(
-      `TokenAPI transfers (from) ${p.network} p${p.page}: ${outRes.status}`
+  let outRows: TokenApiTransfer[] = [];
+  try {
+    const r = await fetchWithRetry(
+      `${base}?${qs({ ...common, from_address: p.address })}`,
+      { headers: tokenApiHeaders() }
     );
-  if (!inRes.ok)
-    throw new Error(
-      `TokenAPI transfers (to) ${p.network} p${p.page}: ${inRes.status}`
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    outRows = Array.isArray(j) ? j : j?.data ?? [];
+  } catch {
+    // if outbound fails (e.g., 504), we continue with inbound results
+  }
+
+  // inbound
+  let inRows: TokenApiTransfer[] = [];
+  try {
+    const r = await fetchWithRetry(
+      `${base}?${qs({ ...common, to_address: p.address })}`,
+      { headers: tokenApiHeaders() }
     );
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    inRows = Array.isArray(j) ? j : j?.data ?? [];
+  } catch {
+    // if inbound fails, we still return outbound results
+  }
 
-  const outJson = await outRes.json();
-  const inJson = await inRes.json();
-
-  // Expect shape: { data: TokenApiTransfer[] } ; tolerate bare arrays too.
-  const outRows: TokenApiTransfer[] = Array.isArray(outJson)
-    ? outJson
-    : outJson?.data ?? [];
-  const inRows: TokenApiTransfer[] = Array.isArray(inJson)
-    ? inJson
-    : inJson?.data ?? [];
-
-  // Union; we’ll sort after normalization.
+  if (!outRows.length && !inRows.length) {
+    throw new Error(
+      `TokenAPI transfers page failed for ${p.network} (try adding from/to or a smaller limit)`
+    );
+  }
   return [...outRows, ...inRows];
 }
 

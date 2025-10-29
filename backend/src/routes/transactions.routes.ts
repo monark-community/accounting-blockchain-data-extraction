@@ -35,8 +35,14 @@ router.get("/:address", async (req, res) => {
       limit: req.query.limit ? Number(req.query.limit) : undefined,
     });
 
+    const gasMeta = (legs as any)._gasUsdByTx as
+      | Record<string, number>
+      | undefined;
+    if (gasMeta) delete (legs as any)._gasUsdByTx;
+
     res.json({
       data: legs,
+      meta: { gasUsdByTx: gasMeta ?? {} },
       page: Number(req.query.page ?? 1),
       limit: Number(req.query.limit ?? 100),
     });
