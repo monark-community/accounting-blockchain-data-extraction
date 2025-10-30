@@ -13,7 +13,6 @@ import { parseNetworks, type EvmNetwork } from "../config/networks";
 import type { NormalizedLegRow, PageParams } from "../types/transactions";
 import { quoteTokenUsdAtTs, quoteNativeUsdAtTs } from "./tx.pricing";
 import { classifyLegs } from "./tx.classify";
-import { applyLegFilters, type SpamMode } from "../utils/tx.filters";
 
 type ListParams = {
   address: `0x${string}`;
@@ -118,12 +117,20 @@ export async function listTransactionLegs(
       if (typeof px === "number") l.amountUsdAtTx = l.amount * px;
     }
 
-    // 5) per-tx gas USD (using first leg's timestamp for that tx)
-    const gasUsdByTx: Record<string, number> = {};
-    const nativeUsdCache: Record<number, number | undefined> = {}; // ts -> price
+    // 4b) Step 3 — Classify legs per transaction (swap, transfer, nft_buy/sell, …)
+    const byTx = new Map<string, NormalizedLegRow[]>();
+    for (const leg of legs) {
+      if (!byTx.has(leg.txHash)) byTx.set(leg.txHash, []);
+      byTx.get(leg.txHash)!.push(leg);
+    }
+    for (const txLegs of byTx.values()) {
+      classifyLegs(txLegs);
+    }
 
+    // 5) per-tx gas USD … (keep your existing gas code below)
+    const gasUsdByTx: Record<string, number> = {};
+    const nativeUsdCache: Record<number, number | undefined> = {};
     for (const [txHash, rc] of Object.entries(receipts)) {
-      // find a representative timestamp from legs for this tx (same network)
       const sampleLeg = legs.find((x) => x.txHash === txHash);
       if (!sampleLeg) continue;
       const ts = sampleLeg.timestamp;
@@ -134,14 +141,11 @@ export async function listTransactionLegs(
         nativeUsdCache[ts] = px;
       }
       if (typeof px === "number") {
-        // gasUsed * effectiveGasPrice are in wei; convert to ETH and then USD
         const ethSpent = (rc.gasUsed * rc.effectiveGasPrice) / 1e18;
         gasUsdByTx[txHash] = ethSpent * px;
       }
     }
-
-    // Attach on the array (we’ll return in the route; lightweight for now)
-    // We keep it as a property on the returned chunk to bubble up.
+    // Attach meta on this chunk
     (legs as any)._gasUsdByTx = gasUsdByTx;
 
     return legs;
