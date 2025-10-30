@@ -27,6 +27,7 @@ import {
   Cell,
   Legend,
   Treemap,
+  Tooltip as RechartsTooltip,
 } from "recharts";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
@@ -39,7 +40,8 @@ import {
 } from "@/utils/capitalGains";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
-import { Tooltip } from "recharts";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { OverviewResponse, PricedHolding } from "@/lib/portfolioTypes";
 import {
   fmtUSD,
@@ -71,6 +73,7 @@ const Dashboard = () => {
   const [showChange, setShowChange] = useState(false);
   const [minUsdFilter, setMinUsdFilter] = useState(5);
   const [hideStables, setHideStables] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -78,6 +81,10 @@ const Dashboard = () => {
     const sp = new URLSearchParams(window.location.search);
     setUrlAddress(sp.get("address") || "");
     setUrlReady(true);
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   // Use URL address if available, otherwise use connected wallet address
@@ -369,29 +376,120 @@ const Dashboard = () => {
                   )}
                 </div>
                 {quality && (
-                  <div className="flex flex-wrap gap-2">
-                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
-                      Vol (24h proxy): {quality.volProxy.toFixed(2)}%
-                    </span>
-                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
-                      Blue-chip: {quality.bluechipShare.toFixed(1)}%
-                    </span>
-                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
-                      Chains ≥2%: {quality.chainSpread}
-                    </span>
-                  </div>
+                  mounted ? (
+                    <div className="flex flex-wrap gap-2">
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-xs text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-help">
+                            <span>Vol (24h proxy): {quality.volProxy.toFixed(2)}%</span>
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80">
+                          <p className="text-sm font-medium mb-2">Volatility (24h proxy)</p>
+                          <p className="text-xs text-slate-600 mb-2">Valeur absolue du P&L 24h divisée par la valeur totale du portefeuille. Plus élevé = plus volatil.</p>
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                            <p className="text-xs text-slate-700 font-mono">|Δ24h USD| / TVL × 100%</p>
+                            <p className="text-xs text-slate-500 mt-2">Où Δ24h = variation absolue en USD sur 24h, TVL = valeur totale du portefeuille.</p>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-xs text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-help">
+                            <span>Blue-chip: {quality.bluechipShare.toFixed(1)}%</span>
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80">
+                          <p className="text-sm font-medium mb-2">Blue-chip share</p>
+                          <p className="text-xs text-slate-600 mb-2">Part du portefeuille détenue en ETH, WETH, BTC ou WBTC.</p>
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                            <p className="text-xs text-slate-700 font-mono">(Σ valeur ETH/WETH/BTC/WBTC) / TVL × 100%</p>
+                            <p className="text-xs text-slate-500 mt-2">Somme des valeurs USD de tous les tokens ETH, WETH, BTC, WBTC divisée par la valeur totale.</p>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-xs text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-help">
+                            <span>Chains ≥2%: {quality.chainSpread}</span>
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                          </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80">
+                          <p className="text-sm font-medium mb-2">Chain breadth</p>
+                          <p className="text-xs text-slate-600 mb-2">Nombre de chaînes représentant au moins 2% de la valeur du portefeuille.</p>
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-mono text-slate-500 mb-1">Calcul:</p>
+                            <p className="text-xs text-slate-700 font-mono">count(chains où valeur_chaîne / TVL ≥ 0.02)</p>
+                            <p className="text-xs text-slate-500 mt-2">Indicateur de diversification multi-chaînes. Plus élevé = meilleure répartition.</p>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <span className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">Vol (24h proxy): {quality.volProxy.toFixed(2)}%</span>
+                      <span className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">Blue-chip: {quality.bluechipShare.toFixed(1)}%</span>
+                      <span className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">Chains ≥2%: {quality.chainSpread}</span>
+                    </div>
+                  )
                 )}
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <p className="text-slate-600 text-sm font-medium">
-                      Diversification (HHI)
-                    </p>
+                    {mounted ? (
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <p className="text-slate-600 text-sm font-medium cursor-help">Diversification (HHI)</p>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80">
+                          <p className="text-sm font-medium mb-2">Herfindahl–Hirschman Index (HHI)</p>
+                          <p className="text-xs text-slate-600 mb-3">Mesure de concentration calculée sur les poids des actifs dans le portefeuille. Plus faible = meilleure diversification.</p>
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                            <p className="text-xs text-slate-700 font-mono mb-2">HHI = Σ(w_i)² × 100</p>
+                            <p className="text-xs text-slate-600 mb-2">Où w_i = poids en pourcentage de l'actif i divisé par 100.</p>
+                          </div>
+                          <div className="mt-3 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-medium text-slate-700 mb-1">Interprétation:</p>
+                            <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
+                              <li>&lt; 15 : Bien diversifié (plusieurs actifs équilibrés)</li>
+                              <li>15-25 : Modérément concentré (quelques actifs dominants)</li>
+                              <li>&gt; 25 : Très concentré (risque élevé de concentration)</li>
+                            </ul>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    ) : (
+                      <p className="text-slate-600 text-sm font-medium">Diversification (HHI)</p>
+                    )}
                     {loadingOv ? (
                       <div className="mt-2">
                         <Skeleton className="h-8 w-28" />
+                      </div>
+                    ) : mounted ? (
+                      <div className="mt-2">
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <p className="text-xl font-semibold text-slate-800 cursor-help">
+                              {concentration.hhi.toFixed(1)}
+                            </p>
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-72">
+                            <p className="text-xs font-medium text-slate-700 mb-1">Valeur HHI actuelle</p>
+                            <p className="text-xs text-slate-600 mb-2">Index de concentration calculé sur {ov?.allocation?.length || 0} actifs dans le portefeuille.</p>
+                            <p className="text-xs text-slate-500 italic">Survolez le titre pour plus de détails sur le calcul.</p>
+                          </HoverCardContent>
+                        </HoverCard>
+                        <p className="text-xs text-slate-500">
+                          {concentration.label}
+                        </p>
                       </div>
                     ) : (
                       <div className="mt-2">
@@ -407,23 +505,100 @@ const Dashboard = () => {
                   <BarChart3 className="w-12 h-12 text-purple-500" />
                 </div>
                 {!loadingOv && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    Eff. assets: {concentrationExtras.effN.toFixed(1)} • Top-1:{" "}
-                    {concentrationExtras.top1.toFixed(1)}% • Top-3:{" "}
-                    {concentrationExtras.top3.toFixed(1)}%
-                  </p>
+                  mounted ? (
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <p className="text-xs text-slate-500 mt-1 cursor-help">
+                          Eff. assets: {concentrationExtras.effN.toFixed(1)} • Top-1: {concentrationExtras.top1.toFixed(1)}% • Top-3: {concentrationExtras.top3.toFixed(1)}%
+                        </p>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-80">
+                        <p className="text-sm font-medium mb-2">Détails de concentration</p>
+                        <div className="text-xs text-slate-600 mb-3 space-y-2">
+                          <div>
+                            <p className="font-medium text-slate-700 mb-0.5">Eff. assets (actifs effectifs):</p>
+                            <p>Nombre effectif d'actifs équivalents ≈ 1/∑w². Indique combien d'actifs équilibrés composent le portefeuille.</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-700 mb-0.5">Top-1:</p>
+                            <p>Poids en pourcentage du plus grand actif du portefeuille.</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-700 mb-0.5">Top-3:</p>
+                            <p>Somme cumulée des poids des 3 plus grandes positions.</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 pt-2 border-t border-slate-200">
+                          <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                          <p className="text-xs text-slate-700 font-mono mb-2">Eff. assets = 1 / Σ(w_i)²</p>
+                          <p className="text-xs text-slate-600">Où w_i = poids normalisé (poids % / 100). Si tous les actifs sont égaux, Eff. assets = nombre d'actifs.</p>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  ) : (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Eff. assets: {concentrationExtras.effN.toFixed(1)} • Top-1: {concentrationExtras.top1.toFixed(1)}% • Top-3: {concentrationExtras.top3.toFixed(1)}%
+                    </p>
+                  )
                 )}
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <p className="text-slate-600 text-sm font-medium">
-                      Stablecoin Share
-                    </p>
+                    {mounted ? (
+                      <HoverCard>
+                        <HoverCardTrigger asChild>
+                          <p className="text-slate-600 text-sm font-medium cursor-help">Stablecoin Share</p>
+                        </HoverCardTrigger>
+                        <HoverCardContent className="w-80">
+                          <p className="text-sm font-medium mb-2">Stablecoin exposure</p>
+                          <p className="text-xs text-slate-600 mb-3">Pourcentage de la valeur totale du portefeuille détenue en stablecoins. Indicateur de risque de change et de liquidité.</p>
+                          <div className="mt-2 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                            <p className="text-xs text-slate-700 font-mono mb-2">Stablecoin Share = (Σ valeur_stablecoins_USD) / TVL × 100%</p>
+                            <p className="text-xs text-slate-600 mb-2">Où TVL = valeur totale du portefeuille en USD.</p>
+                          </div>
+                          <div className="mt-3 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-medium text-slate-700 mb-1">Tokens détectés:</p>
+                            <p className="text-xs text-slate-600">USDT, USDC, DAI, FRAX, TUSD, USDD, LUSD, GUSD, PYUSD et variantes.</p>
+                          </div>
+                          <div className="mt-3 pt-2 border-t border-slate-200">
+                            <p className="text-xs font-medium text-slate-700 mb-1">Interprétation:</p>
+                            <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
+                              <li>0-20% : Faible exposition (portefeuille volatile)</li>
+                              <li>20-50% : Exposition modérée (équilibre risque/stable)</li>
+                              <li>&gt; 50% : Forte exposition (portefeuille défensif)</li>
+                            </ul>
+                          </div>
+                        </HoverCardContent>
+                      </HoverCard>
+                    ) : (
+                      <p className="text-slate-600 text-sm font-medium">Stablecoin Share</p>
+                    )}
                     {loadingOv ? (
                       <div className="mt-2">
                         <Skeleton className="h-8 w-24" />
+                      </div>
+                    ) : mounted ? (
+                      <div className="mt-2">
+                        <HoverCard>
+                          <HoverCardTrigger asChild>
+                            <p className="text-xl font-semibold text-slate-800 cursor-help">
+                              {concentration.stableSharePct.toFixed(1)}%
+                            </p>
+                          </HoverCardTrigger>
+                          <HoverCardContent className="w-72">
+                            <p className="text-xs font-medium text-slate-700 mb-1">Exposition stablecoin actuelle</p>
+                            <p className="text-xs text-slate-600 mb-2">
+                              {concentration.stableSharePct.toFixed(1)}% du portefeuille est détenu en stablecoins.
+                            </p>
+                            <p className="text-xs text-slate-500 italic">Survolez le titre pour plus de détails sur le calcul.</p>
+                          </HoverCardContent>
+                        </HoverCard>
+                        <p className="text-xs text-slate-500">
+                          Of total portfolio
+                        </p>
                       </div>
                     ) : (
                       <div className="mt-2">
@@ -467,7 +642,7 @@ const Dashboard = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <Tooltip
+                      <RechartsTooltip
                         formatter={(
                           value: unknown,
                           _name: string,
@@ -550,7 +725,7 @@ const Dashboard = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="label" />
                       <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <Tooltip
+                      <RechartsTooltip
                         formatter={(
                           value: unknown,
                           _name: string,
@@ -587,7 +762,7 @@ const Dashboard = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="label" />
                       <YAxis tickFormatter={(v) => fmtUSD(v)} />
-                      <Tooltip
+                      <RechartsTooltip
                         formatter={(v: any, _n: any, e: any) => [
                           fmtUSD(v),
                           "24h Δ",
