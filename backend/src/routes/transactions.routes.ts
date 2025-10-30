@@ -20,12 +20,12 @@ router.get("/:address", async (req, res) => {
     const raw = String(req.params.address ?? "");
     const ok = /^0x[0-9a-f]{40}$/i.test(raw); // <-- case-insensitive
     // TEMP LOG: remove later
-    console.log(
-      "[/transactions] addr raw='%s' len=%d regexOk=%s",
-      raw,
-      raw.length,
-      ok
-    );
+    // console.log(
+    //   "[/transactions] addr raw='%s' len=%d regexOk=%s",
+    //   raw,
+    //   raw.length,
+    //   ok
+    // );
 
     if (!ok) return res.status(400).json({ error: "Invalid address" });
 
@@ -79,12 +79,12 @@ router.get("/summary/:address", async (req, res) => {
     const raw = String(req.params.address ?? "");
     const ok = /^0x[0-9a-f]{40}$/i.test(raw); // <-- case-insensitive
     // TEMP LOG: remove later
-    console.log(
-      "[/transactions] addr raw='%s' len=%d regexOk=%s",
-      raw,
-      raw.length,
-      ok
-    );
+    // console.log(
+    //   "[/transactions] addr raw='%s' len=%d regexOk=%s",
+    //   raw,
+    //   raw.length,
+    //   ok
+    // );
 
     if (!ok) return res.status(400).json({ error: "Invalid address" });
 
