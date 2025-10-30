@@ -91,9 +91,21 @@ export function classifyLegs(legs: TxLegs): void {
 
   // fallbacks: if something still unclassified with value
   for (const l of legs) {
-    if (!l.class) {
-      if (l.direction === "in") l.class = "income";
-      else l.class = "expense";
+    if (l.class) continue;
+
+    // If it's an NFT without a fungible counter-leg, call it an NFT transfer
+    if (l.kind === "erc721" || l.kind === "erc1155") {
+      l.class = l.direction === "in" ? "nft_transfer_in" : "nft_transfer_out";
+      continue;
     }
+
+    // For fungible with no counter-leg, default to simple transfer
+    if (l.kind === "native" || l.kind === "erc20") {
+      l.class = l.direction === "in" ? "transfer_in" : "transfer_out";
+      continue;
+    }
+
+    // Truly last resort: income/expense (very rare after rules above)
+    l.class = l.direction === "in" ? "income" : "expense";
   }
 }

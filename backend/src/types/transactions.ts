@@ -13,6 +13,8 @@ export type TxClass =
   | "swap_out"
   | "nft_buy"
   | "nft_sell"
+  | "nft_transfer_in"
+  | "nft_transfer_out"
   | "income" // airdrops, mints to you with no obvious consideration
   | "expense"; // donations, tips, outflows w/o clear counter-leg
 
