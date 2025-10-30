@@ -1,9 +1,20 @@
-//src/types/transactions.ts
+// backend/src/types/transactions.ts
 import type { EvmNetwork } from "../config/networks";
 
 export type TxKind = "native" | "erc20" | "erc721" | "erc1155";
-export type Direction = "in" | "out";
+export type LegDirection = "in" | "out";
 export type TxStatus = "success" | "reverted" | "unknown";
+
+export type TxClass =
+  | "gas"
+  | "transfer_in"
+  | "transfer_out"
+  | "swap_in"
+  | "swap_out"
+  | "nft_buy"
+  | "nft_sell"
+  | "income" // airdrops, mints to you with no obvious consideration
+  | "expense"; // donations, tips, outflows w/o clear counter-leg
 
 /** Canonical per-leg row (a single tx can yield many legs). */
 export interface NormalizedLegRow {
@@ -14,7 +25,7 @@ export interface NormalizedLegRow {
 
   from: `0x${string}`;
   to: `0x${string}`;
-  direction: Direction;
+  direction: LegDirection;
 
   kind: TxKind;
   asset: {
@@ -31,6 +42,8 @@ export interface NormalizedLegRow {
   status: TxStatus; // filled from receipt when available
   logIndex?: number; // ordering inside tx if provided by source
   source: "tokenapi-transfers" | "tokenapi-nft" | "rpc";
+
+  class?: TxClass;
 }
 
 /** Inputs to fetch a single “page window” for one network. */

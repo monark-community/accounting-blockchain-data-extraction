@@ -1,18 +1,19 @@
+// backend/src/utils/alchemy.ts
 import { Alchemy, Network } from "alchemy-sdk";
 
 // Map chain IDs to Alchemy networks
 const CHAIN_ID_TO_NETWORK: Record<number, Network> = {
-  1: Network.ETH_MAINNET,        // Ethereum Mainnet
-  11155111: Network.ETH_SEPOLIA,  // Sepolia Testnet
-  5: Network.ETH_GOERLI,         // Goerli Testnet (deprecated but still supported)
-  137: Network.MATIC_MAINNET,    // Polygon Mainnet
-  80001: Network.MATIC_MUMBAI,   // Polygon Mumbai Testnet
-  42161: Network.ARB_MAINNET,    // Arbitrum Mainnet
-  421614: Network.ARB_SEPOLIA,   // Arbitrum Sepolia Testnet
-  10: Network.OPT_MAINNET,       // Optimism Mainnet
+  1: Network.ETH_MAINNET, // Ethereum Mainnet
+  11155111: Network.ETH_SEPOLIA, // Sepolia Testnet
+  5: Network.ETH_GOERLI, // Goerli Testnet (deprecated but still supported)
+  137: Network.MATIC_MAINNET, // Polygon Mainnet
+  80001: Network.MATIC_MUMBAI, // Polygon Mumbai Testnet
+  42161: Network.ARB_MAINNET, // Arbitrum Mainnet
+  421614: Network.ARB_SEPOLIA, // Arbitrum Sepolia Testnet
+  10: Network.OPT_MAINNET, // Optimism Mainnet
   11155420: Network.OPT_SEPOLIA, // Optimism Sepolia Testnet
-  56: Network.BSC_MAINNET,       // BSC Mainnet
-  97: Network.BSC_TESTNET,       // BSC Testnet
+  56: Network.BSC_MAINNET, // BSC Mainnet
+  97: Network.BSC_TESTNET, // BSC Testnet
   43114: Network.AVALANCHE_MAINNET, // Avalanche Mainnet
   43113: Network.AVALANCHE_TESTNET, // Avalanche Testnet
 };

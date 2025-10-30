@@ -1,3 +1,5 @@
+// backend/src/config/filters.ts
+
 export type SpamMode = "off" | "soft" | "hard";
 
 export const SPAM_FILTER_MODE: SpamMode = (process.env.SPAM_FILTER_MODE ??

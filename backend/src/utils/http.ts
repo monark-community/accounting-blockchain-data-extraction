@@ -1,4 +1,4 @@
-// src/utils/http.ts
+// backend/src/utils/http.ts
 export async function fetchWithRetry(
   url: string,
   opts: RequestInit = {},
