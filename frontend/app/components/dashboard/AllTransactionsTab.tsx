@@ -63,27 +63,54 @@ const typeIcon = (t: TxType) =>
   ) : null;
 
 const explorerBase = (network?: string) => {
-  switch (network) {
+  switch ((network || "").toLowerCase()) {
     case "mainnet":
     case "ethereum":
       return "https://etherscan.io";
     case "sepolia":
     case "eth-sepolia":
       return "https://sepolia.etherscan.io";
-    default:
-      return "https://etherscan.io";
+    case "base":
+      return "https://basescan.org";
+    case "polygon":
+      return "https://polygonscan.com";
+    case "bsc":
+      return "https://bscscan.com";
+    case "optimism":
+      return "https://optimistic.etherscan.io";
+    case "arbitrum-one":
+      return "https://arbiscan.io";
+    case "avalanche":
+      return "https://snowtrace.io";
+    case "unichain":
+      return "https://uniscan.xyz";
   }
 };
 const etherscanTxUrl = (hash: string, network?: string) =>
   `${explorerBase(network)}/tx/${hash}`;
 const networkLabel = (network?: string) => {
-  switch (network) {
+  switch ((network || "").toLowerCase()) {
     case "mainnet":
     case "ethereum":
       return "Ethereum";
     case "sepolia":
     case "eth-sepolia":
       return "Sepolia";
+    case "base":
+      return "Base";
+    case "polygon":
+      return "Polygon";
+    case "bsc":
+      return "BSC";
+    case "optimism":
+      return "Optimism";
+      s;
+    case "arbitrum-one":
+      return "Arbitrum";
+    case "avalanche":
+      return "Avalanche";
+    case "unichain":
+      return "Unichain";
     default:
       return network || "Unknown";
   }
@@ -149,7 +176,8 @@ export default function AllTransactionsTab() {
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const { rows, hasNext } = await fetchTransactions(address, {
-        networks: "mainnet", // TODO: wire your networks multi-select
+        // networks: (omitted) → backend default = all supported EVM networks
+        networks: "mainnet",
         page: p,
         limit: PAGE_SIZE,
         minUsd: 0,
