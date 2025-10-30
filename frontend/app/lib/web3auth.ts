@@ -44,6 +44,9 @@ export const web3authConfig = {
     web3AuthNetwork: "sapphire_devnet" as const,
     chainConfig: chainConfig,
     privateKeyProvider: privateKeyProvider, // ← Also add to main config
+    mfaSettings: {
+      mfaLevel: 'optional' as const, // Users can enable 2FA if they want
+    },
   },
   adapters: [openloginAdapter] as any,
 };
