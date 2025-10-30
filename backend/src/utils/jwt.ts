@@ -1,3 +1,4 @@
+// backend/src/utils/jwt.ts
 import jwt from "jsonwebtoken";
 
 const SESSION_SECRET = process.env.SESSION_SECRET!;

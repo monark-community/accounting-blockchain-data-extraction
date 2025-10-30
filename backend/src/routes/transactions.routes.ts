@@ -1,7 +1,9 @@
-// src/routes/transactions.routes.ts
+// backend/src/routes/transactions.routes.ts
+
 import { Router } from "express";
 import { listTransactionLegs } from "../services/transactions.service";
 import { parseNetworks } from "../config/networks";
+import { applyLegFilters } from "../utils/tx.filters";
 
 const router = Router();
 

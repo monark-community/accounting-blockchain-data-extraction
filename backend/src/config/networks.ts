@@ -1,4 +1,5 @@
-// src/config/networks.ts
+// backend/src/config/networks.ts
+
 export type EvmNetwork =
   | "mainnet"
   | "bsc"

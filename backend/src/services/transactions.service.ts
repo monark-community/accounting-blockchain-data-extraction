@@ -1,4 +1,5 @@
-// src/services/transactions.service.ts
+// backend/src/services/transactions.service.ts
+
 import {
   fetchFungibleTransfersPage,
   fetchNftTransfersPage,
@@ -11,6 +12,8 @@ import { fetchReceiptsBatch } from "./tx.enrich.rpc";
 import { parseNetworks, type EvmNetwork } from "../config/networks";
 import type { NormalizedLegRow, PageParams } from "../types/transactions";
 import { quoteTokenUsdAtTs, quoteNativeUsdAtTs } from "./tx.pricing";
+import { classifyLegs } from "./tx.classify";
+import { applyLegFilters, type SpamMode } from "../utils/tx.filters";
 
 type ListParams = {
   address: `0x${string}`;

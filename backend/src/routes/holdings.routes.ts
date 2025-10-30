@@ -1,4 +1,5 @@
-// src/routes/holdings.routes.ts
+// backend/src/routes/holdings.routes.ts
+
 import { Router } from "express";
 import { getHoldingsOverview } from "../services/holdings.service";
 import { parseNetworks } from "../config/networks";
