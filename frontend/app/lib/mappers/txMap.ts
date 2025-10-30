@@ -4,23 +4,41 @@ import type { NormalizedLegRow, TxRow } from "@/lib/types/transactions";
 function mapClassToUiType(
   cls?: string | null,
   direction?: "in" | "out"
-): TxRow["type"] {
-  if (!cls) {
-    // Default by direction
-    return direction === "in" ? "income" : "expense";
-  }
-  if (cls.startsWith("swap_")) return "swap";
-  if (cls === "gas") return "gas"; // (we currently expose gas via meta only)
+): "income" | "expense" | "swap" | "gas" {
+  const c = (cls ?? "").toLowerCase();
+
+  // 1) EXPENSE buckets
   if (
-    cls.startsWith("transfer_") ||
-    cls.startsWith("nft_transfer_") ||
-    cls === "income"
-  )
-    return "income";
-  if (cls === "expense" || cls.startsWith("nft_sell") || cls === "transfer_out")
+    c === "expense" ||
+    c === "transfer_out" ||
+    c === "nft_transfer_out" ||
+    c === "nft_sell"
+  ) {
     return "expense";
-  // fallback by direction
-  return direction === "in" ? "income" : "expense";
+  }
+
+  // 2) SWAPS
+  if (c === "swap_in" || c === "swap_out") {
+    return "swap";
+  }
+
+  // 3) INCOME buckets
+  if (
+    c === "income" ||
+    c === "transfer_in" ||
+    c === "nft_transfer_in" ||
+    c === "nft_buy"
+  ) {
+    return "income";
+  }
+
+  // 4) GAS (if you ever tag it as a class later)
+  if (c === "gas") {
+    return "gas";
+  }
+
+  // 5) Fallback by direction if class is missing/unknown
+  return direction === "out" ? "expense" : "income";
 }
 
 export function mapLegToTxRow(
