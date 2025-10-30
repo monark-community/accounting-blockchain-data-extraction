@@ -26,6 +26,7 @@ export interface NormalizedLegRow {
 
   amountRaw: string; // base units as string
   amount: number; // human units (lossy ok for UI; accounting will re-use amountRaw)
+  amountUsdAtTx?: number; // optional USD value at tx time
 
   status: TxStatus; // filled from receipt when available
   logIndex?: number; // ordering inside tx if provided by source
