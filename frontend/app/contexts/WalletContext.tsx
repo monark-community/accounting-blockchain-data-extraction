@@ -4,6 +4,7 @@ import React, {
   ReactNode,
   useState,
   useEffect,
+  useCallback,
 } from "react";
 import {
   useAccount,
@@ -61,6 +62,7 @@ interface WalletContextType {
   getWalletName: (walletId: string) => string;
   switchNetwork: (chainId: number) => void;
   getWalletBalance: (address: string) => Promise<string>;
+  refreshUserName: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -88,6 +90,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const { switchChain } = useSwitchChain();
   const chainId = useChainId();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [userName, setUserName] = useState<string>("");
 
   // Web3Auth integration
   const web3auth = useWeb3Auth();
@@ -233,12 +236,35 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     });
   }
 
+  // Function to load user name from API
+  const refreshUserName = useCallback(async () => {
+    if (!primaryIsConnected) {
+      setUserName("");
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUserName(data.name || "");
+      }
+    } catch (error) {
+      console.error('Failed to load user name:', error);
+      setUserName("");
+    }
+  }, [primaryIsConnected]);
+
   const userWallet = primaryAddress;
+  
+  // Calculate userAlias: priority order: API userName > ENS name > Web3Auth name/email > wallet address
   const userAlias =
+    userName ||
     ensName ||
     (web3AuthUserInfo as any)?.name ||
     (web3AuthUserInfo as any)?.email ||
-    "" ||
     (primaryAddress
       ? `Wallet ${primaryAddress.slice(0, 6)}...${primaryAddress.slice(-4)}`
       : "");
@@ -457,6 +483,15 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     return "0";
   };
 
+  // Load user name when connected
+  useEffect(() => {
+    if (primaryIsConnected && primaryAddress) {
+      refreshUserName();
+    } else {
+      setUserName("");
+    }
+  }, [primaryIsConnected, primaryAddress, refreshUserName]);
+
   // Reset isLoggingOut when disconnect completes
   useEffect(() => {
     if (!isConnected && isLoggingOut) {
@@ -494,6 +529,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         getWalletName,
         switchNetwork: switchNetworkHandler,
         getWalletBalance,
+        refreshUserName,
       }}
     >
       {children}

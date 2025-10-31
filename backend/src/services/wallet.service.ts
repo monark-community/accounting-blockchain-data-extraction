@@ -5,6 +5,7 @@ import {
   findWalletByAddressAndMain,
   updateUserWalletName,
 } from "../repositories/wallet.repo";
+import { findUserByWalletAddress } from "../repositories/user.repo";
 
 /**
  * Validate Ethereum address format
@@ -25,9 +26,32 @@ export function isValidChainId(chainId: number): boolean {
 
 /**
  * Get all wallets for a user
+ * - Main wallet (address + name) from users table
+ * - Secondary wallets (address + name) from user_wallets table
  */
 export async function getUserWallets(mainAddress: string) {
-  return await findUserWalletsByMainAddress(mainAddress);
+  const allWallets = [];
+  
+  // 1. Get main wallet from users table (address + name)
+  const mainUser = await findUserByWalletAddress(mainAddress);
+  if (mainUser) {
+    allWallets.push({
+      main_wallet_address: mainUser.wallet_address,
+      address: mainUser.wallet_address,
+      name: mainUser.name, // Name comes from users table
+      chain_id: 1, // Default to Ethereum mainnet
+      is_active: true,
+      created_at: mainUser.created_at,
+      updated_at: mainUser.updated_at,
+    });
+  }
+  
+  // 2. Get secondary wallets from user_wallets table (address + name)
+  // The query already excludes the main wallet if it exists in user_wallets
+  const secondaryWallets = await findUserWalletsByMainAddress(mainAddress);
+  allWallets.push(...secondaryWallets);
+  
+  return allWallets;
 }
 
 /**
