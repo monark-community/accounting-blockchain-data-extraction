@@ -104,7 +104,6 @@ const networkLabel = (network?: string) => {
       return "BSC";
     case "optimism":
       return "Optimism";
-      s;
     case "arbitrum-one":
       return "Arbitrum";
     case "avalanche":
@@ -132,13 +131,22 @@ function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
 
 const PAGE_SIZE = 20;
 
-export default function AllTransactionsTab() {
-  // Address from URL
-  const [address, setAddress] = useState<string>("");
+interface AllTransactionsTabProps {
+  address?: string;
+}
+
+export default function AllTransactionsTab({ address: propAddress }: AllTransactionsTabProps) {
+  // Use prop address if provided, otherwise read from URL
+  const [address, setAddress] = useState<string>(propAddress || "");
+  
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    setAddress(urlParams.get("address") || "");
-  }, []);
+    if (propAddress) {
+      setAddress(propAddress);
+    } else {
+      const urlParams = new URLSearchParams(window.location.search);
+      setAddress(urlParams.get("address") || "");
+    }
+  }, [propAddress]);
 
   // Server data & pagination
   const [rows, setRows] = useState<TxRow[]>([]);

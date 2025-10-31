@@ -1118,7 +1118,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="all-transactions">
-            <AllTransactionsTab />
+            <AllTransactionsTab address={address} />
           </TabsContent>
         </Tabs>
       </main>
