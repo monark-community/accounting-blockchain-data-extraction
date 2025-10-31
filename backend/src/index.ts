@@ -7,7 +7,6 @@ import walletRoutes from "./routes/wallet.routes";
 import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
 import holdingsRouter from "./routes/holdings.routes";
-import portfolioRoutes from "./routes/portfolio.routes";
 import transactionsRouter from "./routes/transactions.routes";
 const app = express();
 app.use(cors({
@@ -21,7 +20,6 @@ app.use("/api/health", healthRouter); // → /api/health/ping
 app.use("/api/auth", authRoutes);
 app.use("/api/wallets", walletRoutes);
 app.use("/api/mfa", mfaRoutes);
-app.use("/api/portfolio", portfolioRoutes);
 app.use("/api/holdings", holdingsRouter); // → /api/holdings/:address
 app.use("/api/transactions", transactionsRouter); // → /api/transactions/:address
 
