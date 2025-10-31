@@ -104,7 +104,6 @@ const networkLabel = (network?: string) => {
       return "BSC";
     case "optimism":
       return "Optimism";
-      s;
     case "arbitrum-one":
       return "Arbitrum";
     case "avalanche":
@@ -406,6 +405,34 @@ export default function AllTransactionsTab() {
                   </button>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  if (!address) return;
+                  try {
+                    const qs = new URLSearchParams({ address, networks: "mainnet" });
+                    const url = `/api/reports/financial?${qs.toString()}`;
+                    const res = await fetch(url);
+                    if (!res.ok) {
+                      const msg = await res.text();
+                      throw new Error(msg || "Failed to generate report");
+                    }
+                    const blob = await res.blob();
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `financial_report_${address.slice(0, 6)}_${Date.now()}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                  } catch (e) {
+                    console.error(e);
+                  }
+                }}
+              >
+                Financial Report
+              </Button>
 
               <div className="hidden sm:flex items-center gap-1">
                 <Button

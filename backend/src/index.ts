@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
 import holdingsRouter from "./routes/holdings.routes";
 import transactionsRouter from "./routes/transactions.routes";
+import reportsRouter from "./routes/reports.routes";
 
 const app = express();
 app.use(
@@ -26,6 +27,7 @@ app.use("/api/mfa", mfaRoutes);
 app.use("/api/health", healthRouter); // → /api/health/ping
 app.use("/api/holdings", holdingsRouter); // → /api/holdings/:address
 app.use("/api/transactions", transactionsRouter); // → /api/transactions/:address
+app.use("/api/reports", reportsRouter); // → /api/reports/financial
 
 const PORT = process.env.PORT ?? "8080";
 app.listen(PORT, () => {
