@@ -135,6 +135,13 @@ const Dashboard = () => {
     }
   }, [allWallets, selectedWallet, urlAddress]);
 
+  // Reset selectedWallet when user disconnects
+  useEffect(() => {
+    if (!isConnected) {
+      setSelectedWallet("");
+    }
+  }, [isConnected]);
+
   // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
     if (!urlReady) return;
@@ -359,7 +366,7 @@ const Dashboard = () => {
                 Track your crypto assets and tax obligations
               </p>
             </div>
-            {allWallets.length > 1 && (
+            {isConnected && allWallets.length > 1 && (
               <div className="relative inline-block">
                 <Select value={selectedWallet} onValueChange={setSelectedWallet}>
                   <SelectTrigger 
