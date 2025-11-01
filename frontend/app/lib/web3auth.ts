@@ -44,6 +44,7 @@ export const web3authConfig = {
     web3AuthNetwork: "sapphire_devnet" as const,
     chainConfig: chainConfig,
     privateKeyProvider: privateKeyProvider, // ← Also add to main config
+    storageType: "session" as const, // Use sessionStorage instead of localStorage - session clears when tab/browser closes
     mfaSettings: {
       mfaLevel: 'optional' as const, // Users can enable 2FA if they want
     },
