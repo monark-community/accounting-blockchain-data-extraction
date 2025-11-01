@@ -1,0 +1,64 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+skinparam ParticipantPadding 10
+title Solution — Vue globale (haut niveau)
+
+actor "Utilisateur" as User
+
+node "Frontend\n(Next.js)" as FE
+node "API Backend\n(Express/TS)" as API
+database "DB\n(PostgreSQL)" as DB
+
+cloud "OAuth Provider" as OAUTH
+cloud "Wallet (MetaMask/Wagmi/Viem)" as WALLET
+cloud "Blockchain Data" as CHAIN {
+  [The Graph]
+  [Alchemy (RPC)]
+}
+cloud "Prix & Marchés" as PRICES {
+  [Dexscreener]
+  [Autres sources prix]
+}
+
+folder "Services métier" as SVC {
+  [Ingestion]
+  [Normalisation]
+  [Classification]
+  [Reporting/Export]
+}
+
+rectangle "Exports\n(CSV / JSON)" as EXPORTS
+
+' --- Relations principales ---
+User --> FE : UI Web
+FE --> API : REST (HTTPS, JWT/cookie)
+
+' Auth & liaisons d’adresses
+FE --> WALLET : Signature (nonces)
+FE --> OAUTH : OAuth/OIDC (redirect/callback)
+FE --> API : /auth/wallet, /auth/oauth, /profile/wallets
+
+' API <-> Services
+API --> SVC : Orchestration des flows
+
+' Ingestion & données externes
+SVC --> CHAIN : Tx & events (GraphQL/JSON-RPC)
+SVC --> PRICES : Prix tokens
+
+' Persistance
+SVC --> DB : UPSERT (idempotent)
+
+' Lecture pour UI
+API --> DB : Lecture holdings/txs
+API --> FE : Holdings, Transactions, KPIs
+
+' Export
+FE --> API : /exports (CSV/JSON)
+API --> SVC : Génération fichiers
+SVC --> EXPORTS : Fichiers générés
+API --> FE : Lien de téléchargement
+
+@enduml

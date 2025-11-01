@@ -1,73 +1,89 @@
-# Welcome to your Lovable project
+## Environment — Docker Quickstart
 
-## Project info
+### Frontend (Vite/React)
 
-**URL**: https://lovable.dev/projects/380676ba-5964-4030-b779-e1187f5abe3f
+**Dev (hot reload on save)**
 
-## How can I edit this code?
+```powershell
+# Build dev image (once)
+cd frontend
+docker build -t ledgerlift-frontend:dev --target dev .
 
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/380676ba-5964-4030-b779-e1187f5abe3f) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+# Run Vite with your source mounted (HMR)
+docker rm -f frontend-dev 2>$null
+docker run --name frontend-dev `
+  -p 3000:5173 `
+  -e CHOKIDAR_USEPOLLING=true `
+  --mount type=bind,source="$((Get-Location).Path)",target=/app `
+  -v /app/node_modules `
+  ledgerlift-frontend:dev
+# Open http://localhost:3000
 ```
 
-**Edit a file directly in GitHub**
+**Prod (static build served by Nginx)**
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+```powershell
+cd frontend
+docker build -t ledgerlift-frontend:prod --target prod .
+docker rm -f frontend 2>$null
+docker run --name frontend -p 3000:80 `
+  -e BACKEND_URL=http://host.docker.internal:8080 `
+  ledgerlift-frontend:prod
+# Open http://localhost:3000
+```
 
-**Use GitHub Codespaces**
+> The prod container serves `/dist` via Nginx and proxies `/api/*` to `BACKEND_URL`.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
+### Backend (Express + TypeScript)
 
-This project is built with:
+**Dev (hot reload via ts-node-dev)**
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```powershell
+cd backend
+docker build -t ledgerlift-backend:dev --target dev .
+docker rm -f backend-dev 2>$null
+docker run --name backend-dev -p 8080:8080 `
+  --mount type=bind,source="$((Get-Location).Path)",target=/app `
+  -v /app/node_modules `
+  -e PORT=8080 `
+  ledgerlift-backend:dev
+# Test: curl http://localhost:8080/api/health
+```
 
-## How can I deploy this project?
+**Prod (compiled TypeScript)**
 
-Simply open [Lovable](https://lovable.dev/projects/380676ba-5964-4030-b779-e1187f5abe3f) and click on Share -> Publish.
+```powershell
+cd backend
+docker build -t ledgerlift-backend:prod --target prod .
+docker rm -f backend 2>$null
+docker run --name backend -p 8080:8080 `
+  -e NODE_ENV=production -e PORT=8080 `
+  ledgerlift-backend:prod
+# Test: curl http://localhost:8080/api/health
+```
 
-## Can I connect a custom domain to my Lovable project?
+---
 
-Yes, you can!
+## Docker Compose (orchestration) — Quickstart
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### Dev (hot reload)
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+```powershell
+docker compose --profile dev up --build
+# Open http://localhost:3000
+```
+
+### Prod (built, Nginx)
+
+```powershell
+docker compose --profile prod up --build -d
+# Open http://localhost:3000
+```
+
+### Notes
+
+- Frontend dev maps **localhost:3000 → Vite:5173** (HMR on save).
+- Frontend prod proxies `/api/*` to `http://backend:8080` inside the compose network.
+- Backend health: `GET http://localhost:8080/api/health`.

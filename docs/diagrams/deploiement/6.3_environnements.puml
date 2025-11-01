@@ -1,0 +1,37 @@
+@startuml
+title 6.3 — Environnements (Dev / Test-Démo / Prod)
+
+package "Développement (local)" #EEF7FF {
+  node "Frontend (Next.js)\nMode dev" as FE_DEV
+  node "API / portfolios (Docker)" as API_DEV
+  database "DB (PostgreSQL)\nDocker local" as DB_DEV
+  cloud "The Graph / RPC\n(testnets)" as G_DEV
+
+  FE_DEV --> API_DEV : HTTP(S) local
+  API_DEV --> DB_DEV : Loopback/LAN
+  API_DEV --> G_DEV  : HTTPS/RPC
+}
+
+package "Test / Démo" #FFF6E5 {
+  node "Frontend (Next.js)\nVercel Preview" as FE_QA
+  node "API / portfolios (VM + Docker)" as API_QA
+  database "DB (PostgreSQL)\nVM/Docker" as DB_QA
+  cloud "The Graph / RPC\n(testnets + jeux Monark)" as G_QA
+
+  FE_QA --> API_QA : HTTPS
+  API_QA --> DB_QA : LAN/VPC
+  API_QA --> G_QA  : HTTPS/RPC
+}
+
+package "Production (projet)" #EAF7EA {
+  node "Frontend (Next.js)\nVercel Prod" as FE_PROD
+  node "API / portfolios (VM + Docker)\n~2 vCPU • 2–4 GB" as API_PROD
+  database "DB (PostgreSQL)\n10–50 GB" as DB_PROD
+  cloud "The Graph / RPC" as G_PROD
+
+  FE_PROD --> API_PROD : HTTPS + CORS
+  API_PROD --> DB_PROD : LAN/VPC
+  API_PROD --> G_PROD  : HTTPS/RPC
+}
+@enduml
+

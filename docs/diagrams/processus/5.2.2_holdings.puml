@@ -1,0 +1,38 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+skinparam ParticipantPadding 10
+title 5.2.2 — Consulter les holdings d’un wallet (lecture simple)
+
+actor User
+participant "Frontend (Next.js)" as Front
+participant "API /portfolio/holdings" as API
+database "DB (PostgreSQL)" as DB
+
+User -> Front: Ouvre « Holdings » pour une adresse
+note over Front
+  Objectif: lister les actifs (quantité, valeur USD)
+end note
+
+Front -> API: GET /api/portfolio/holdings/:address
+API -> API: Valider l’adresse
+API -> DB: SELECT holdings(address)\n-- (quantité, symbol, decimals, valueUsd,…)
+DB --> API: rows
+API --> Front: 200 { holdings }
+
+note over Front
+  Affiche la liste (tri éventuel côté Front)
+  (Si rien en cache, la synchro 5.2.2\npeut avoir été lancée juste avant)
+end note
+
+== Erreurs ==
+alt Adresse invalide
+  API --> Front: 400 { error: BadRequest }
+else Aucune donnée en base
+  API --> Front: 404 { error: NotFound }
+else Erreur interne
+  API --> Front: 500 { error: InternalError }
+end
+@enduml

@@ -1,0 +1,68 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+skinparam ParticipantPadding 10
+title 5.2.4 — Parcourir les transactions d’un wallet (filtrer & paginer)
+
+actor User
+participant "Frontend (Next.js)" as Front
+participant "API /portfolio/txs" as API
+database "DB (PostgreSQL)" as DB
+
+== Ouverture de la page ==
+User -> Front: Ouvre « Transactions »
+alt Utilisateur connecté (multi-adresses)
+  User -> Front: Sélectionne une adresse liée
+else View-only
+  note over Front
+    Adresse déjà saisie/connue (mode lecture seule)
+  end note
+end
+
+== Requête d'une page de résultats ==
+note over Front
+  Objectif: afficher une page de 20 transactions
+  (page=1 par défaut) avec les filtres en cours
+end note
+Front -> API: GET /api/portfolio/txs/:address?\nkind=all&type=&page=1&limit=20&from=&to=&network=&minUsd=&maxUsd
+API -> API: Valider adresse + paramètres (page=1, limit=20)
+API -> DB: SELECT transactions filtrées\nORDER BY block_time DESC\nLIMIT 20 OFFSET (page-1)*20
+DB --> API: rows + totalCount
+API --> Front: 200 { items, page:1, pageSize:20, totalPages }
+
+note over Front
+  Le tableau montre 20 lignes (page 1/N).
+  Les colonnes sont triées côté Front (affichage).
+end note
+
+== Navigation par pages ==
+User -> Front: Va à la page 2
+note over Front
+  Demander « la page suivante » = page=2, même filtres
+end note
+Front -> API: GET /api/portfolio/txs/:address?...&page=2&limit=20
+API -> DB: SELECT ... LIMIT 20 OFFSET 20
+DB --> API: rows
+API --> Front: 200 { items, page:2, pageSize:20, totalPages }
+
+== Modification des filtres ==
+User -> Front: Change filtres (ex. type=expense, période)
+note over Front
+  Repart de la page 1 avec les nouveaux filtres
+end note
+Front -> API: GET /api/portfolio/txs/:address?type=expense&from=2025-01-01&to=2025-12-31&network=ethereum&page=1&limit=20
+API -> DB: SELECT filtré (index date/type/réseau)
+DB --> API: rows + totalCount
+API --> Front: 200 { items, page:1, pageSize:20, totalPages }
+
+== Erreurs possibles ==
+alt Adresse invalide
+  API --> Front: 400 { error: BadRequest }
+else Aucune donnée pour l'adresse
+  API --> Front: 404 { error: NotFound }
+else Erreur interne
+  API --> Front: 500 { error: InternalError }
+end
+@enduml

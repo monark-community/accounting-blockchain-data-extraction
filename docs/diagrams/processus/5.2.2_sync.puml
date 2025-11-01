@@ -1,0 +1,89 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+skinparam shadowing false
+skinparam ArrowThickness 1
+skinparam ParticipantPadding 10
+title 5.2.2 — Synchronisation de l’historique (async job + polling)
+
+actor User
+participant "Frontend (Next.js)" as Front
+participant "API (Express/TS)" as API
+participant "Ingestion Service\n(The Graph + RPC)" as Ing
+participant "Normalization Service" as Norm
+participant "Classification Service" as Class
+database "DB (PostgreSQL)" as DB
+participant "The Graph / RPC" as Up
+
+== Déclenchement ==
+User -> Front: Clique "Sync" sur une adresse
+alt Adresse liée au profil (utilisateur connecté)
+  Front -> API: POST /api/profile/wallets/{address}/sync
+else View-only (adresse saisie, pas de compte)
+  Front -> API: POST /api/wallets/{address}/sync
+end
+API -> API: createJob(address, chainId)
+API --> Front: 202 { jobId, status: "PENDING" }
+
+== Polling statut ==
+loop Toutes les X s jusqu'à DONE/ERROR
+  alt Profil
+    Front -> API: GET /api/profile/wallets/{address}/sync/status?jobId=...
+  else View-only
+    Front -> API: GET /api/wallets/{address}/sync/status?jobId=...
+  end
+  API --> Front: { status: RUNNING | DONE | ERROR, progress% }
+end
+
+== Exécution du job (backend) ==
+... parallèle au polling ...
+API -> Ing: startSync(address, fromCursor?)
+
+loop Tant que page disponible
+  Ing -> Up: fetchPage(cursor)
+  Up --> Ing: events/logs (txs, transfers, swaps...)
+
+  Ing -> Norm: normalize(page)
+  Norm --> Ing: normalized(events)
+
+  Ing -> Class: classify(normalized)
+  Class --> Ing: classified(events)
+
+  Ing -> DB: UPSERT classified (tx_hash+log_index+chain_id)
+  DB --> Ing: OK
+
+  Ing -> API: updateJobProgress(jobId, cursor, pct)
+end
+
+Ing --> API: done(jobId)
+API -> API: mark job DONE
+
+== Rafraîchissement des vues ==
+alt Profil
+  Front -> API: GET /api/portfolio/overview/{address}?minUsd=...
+  API -> DB: SELECT overview/holdings(address)
+  DB --> API: rows
+  API --> Front: 200 { kpis, holdings, allocation, topHoldings }
+
+  Front -> API: GET /api/portfolio/holdings/{address}
+  API -> DB: SELECT holdings(address)
+  DB --> API: rows
+  API --> Front: 200 { holdings }
+
+  Front -> API: GET /api/portfolio/txs/{address}?kind=...&type=...&cursor=...&limit=...
+  API -> DB: SELECT txs(address, filters, pagination)
+  DB --> API: page
+  API --> Front: 200 { items, nextCursor }
+
+else View-only
+  Front -> API: GET /api/portfolio/overview/{address}
+  ... (mêmes lectures en mode anonyme) ...
+end
+
+note over Front
+Affichage final:
+- Overview: KPIs, top holdings
+- Holdings: liste détaillée
+- Transactions: filtres (type, dates, réseau...), pagination
+end note
+@enduml

@@ -1,0 +1,27 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+title Intervenants (acteurs internes / externes)
+
+actor "Utilisateurs finaux\n(Individus / Entreprises / Gouvernements)" as Users
+actor "Cadre réglementaire\n(Fiscalité / Audit)" as Reg
+actor "Équipe de développement" as Dev
+actor "Polytechnique Montréal" as Poly
+
+rectangle "Systèmes externes" {
+  rectangle "Blockchain\n(The Graph / RPC)" as BC
+  rectangle "Providers prix\n(Dexscreener)" as PRICES
+  rectangle "OAuth Providers" as OAUTH
+}
+
+rectangle "Solution LedgerLift" as LL
+
+' Relations
+Users --> LL
+Reg --> LL
+Dev --> LL
+Poly --> Dev
+LL --> BC
+LL --> PRICES
+LL --> OAUTH
+@enduml

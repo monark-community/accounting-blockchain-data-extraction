@@ -1,0 +1,130 @@
+# ---------- DEV STACK (hot reload) ----------
+services:
+  backend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./backend
+      target: dev
+    container_name: backend-dev
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8080:8080"
+    environment:
+      NODE_ENV: development
+      PORT: 8080
+      DATABASE_URL: postgres://ledgerlift:ledgerlift@db:5432/ledgerlift
+      SESSION_SECRET: "prod-change-me-rotate-regularly"
+      SESSION_NAME: "ll_session"
+      SESSION_TTL_SECONDS: "604800"
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: frontend-dev
+    ports:
+      - "3000:3000"
+    working_dir: /app
+    env_file:
+      - ./frontend/.env
+    environment:
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend-dev:
+        condition: service_started
+    command: sh -c "npm run dev -- -p 3000 -H 0.0.0.0"
+
+  # ---------- PROD STACK (Nginx build + Node runtime) ----------
+  backend:
+    profiles: ["prod"]
+    build:
+      context: ./backend
+      target: prod
+    container_name: backend
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATABASE_URL: postgres://ledgerlift:ledgerlift@db:5432/ledgerlift
+      SESSION_SECRET: "prod-change-me-rotate-regularly"
+      SESSION_NAME: "ll_session"
+      SESSION_TTL_SECONDS: "604800"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  frontend:
+    profiles: ["prod"]
+    build:
+      context: ./frontend
+      target: prod
+    container_name: frontend
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: 1
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------- POSTGRES (shared by dev & prod) ----------
+  db:
+    image: postgres:16-alpine
+    container_name: ledgerlift-db
+    environment:
+      POSTGRES_DB: ledgerlift
+      POSTGRES_USER: ledgerlift
+      POSTGRES_PASSWORD: ledgerlift
+    ports:
+      - "5432:5432" # optional, handy if you want to connect from host tools
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d # auto-run *.sql on first boot
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pg_data:

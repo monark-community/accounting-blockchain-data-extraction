@@ -1,0 +1,21 @@
+@startuml
+skinparam theme plain
+skinparam monochrome true
+title Pipeline de données (haut niveau)
+
+cloud "APIs externes\n(The Graph / RPC / Dexscreener)" as EXT
+rectangle "Ingestion\n(Appels API)" as ING
+rectangle "Normalisation\n(Unités / Métadonnées / Prix)" as NORM
+rectangle "Classification\n(Type: income / expense / swap / gas)" as CLASS
+database "Stockage léger\n(PostgreSQL)" as DB
+rectangle "Consommation\n(Frontend + Exports CSV/JSON)" as FE
+
+EXT --> ING
+ING --> NORM
+NORM --> CLASS
+CLASS --> FE
+
+' Écritures/lectures minimales (pas de stockage de toutes les transactions)
+CLASS --> DB : upsert profils/adresses\n+ caches (overview/holdings) [optionnel]
+FE --> DB : profils / adresses / préférences
+@enduml
