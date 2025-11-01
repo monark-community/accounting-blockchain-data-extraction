@@ -1,11 +1,6 @@
-// --- File: src/components/dashboard/AllTransactionsTab.tsx
-// Assumes backend route: GET /api/portfolio/txs/:address?kind=all&limit=20&cursor=...
-// Reads the wallet address from the URL (e.g., /dashboard?address=vitalik.eth)
-
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +13,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Eye,
   ExternalLink,
   RefreshCw,
@@ -26,47 +27,11 @@ import {
   Repeat,
   Fuel,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
-// --- Types aligned with backend JSON shape
-export type TxType = "income" | "expense" | "swap" | "gas";
-export type Direction = "in" | "out";
+import type { TxRow, TxType } from "@/lib/types/transactions";
+import { fetchTransactions } from "@/lib/api/transactions";
 
-export interface TxRow {
-  ts: string; // ISO timestamp
-  blockNumber: number;
-  hash: string;
-  network: string; // e.g. "eth-mainnet"
-  wallet?: string; // may be present in feed wrapper; not required for row
-  direction: Direction;
-  type: TxType;
-  asset: { symbol: string; contract: string | null; decimals: number };
-  qty: string; // decimal string
-  priceUsdAtTs: number | null;
-  usdAtTs: number | null;
-  counterparty?: { address: string; label: string | null };
-  fee?: null | {
-    asset: "ETH";
-    qty: string;
-    priceUsdAtTs: number | null;
-    usdAtTs: number | null;
-  };
-  isApprox?: boolean;
-}
-
-export interface TxFeed {
-  network: "eth-mainnet";
-  wallet: { input: string; address: string; ens: string | null };
-  window: { from: string | null; to: string | null };
-  page: { limit: number; cursor: string | null; nextCursor: string | null };
-  items: TxRow[];
-}
-
+// --- UI helpers
 const fmtUSD = (n: number | null | undefined) =>
   n == null
     ? "—"
@@ -75,14 +40,10 @@ const fmtUSD = (n: number | null | undefined) =>
         currency: "USD",
         maximumFractionDigits: 2,
       });
-
-const fmtQty = (qty: string, dir: Direction) => {
-  const sign = dir === "in" ? "+" : "-";
-  return `${sign}${qty}`;
-};
-
-const shortAddr = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—");
-
+const fmtQty = (qty: string, dir: "in" | "out") =>
+  `${dir === "in" ? "+" : "-"}${qty}`;
+const shortAddr = (a?: string | null) =>
+  a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—";
 const typeColor = (t: TxType) =>
   ({
     income: "text-green-600",
@@ -90,47 +51,117 @@ const typeColor = (t: TxType) =>
     swap: "text-blue-600",
     gas: "text-amber-600",
   }[t]);
+const typeIcon = (t: TxType) =>
+  t === "income" ? (
+    <TrendingUp className="w-4 h-4" />
+  ) : t === "expense" ? (
+    <TrendingDown className="w-4 h-4" />
+  ) : t === "swap" ? (
+    <Repeat className="w-4 h-4" />
+  ) : t === "gas" ? (
+    <Fuel className="w-4 h-4" />
+  ) : null;
 
-const typeIcon = (t: TxType) => {
-  switch (t) {
-    case "income":
-      return <TrendingUp className="w-4 h-4" />;
-    case "expense":
-      return <TrendingDown className="w-4 h-4" />;
-    case "swap":
-      return <Repeat className="w-4 h-4" />;
-    case "gas":
-      return <Fuel className="w-4 h-4" />;
+const explorerBase = (network?: string) => {
+  switch ((network || "").toLowerCase()) {
+    case "mainnet":
+    case "ethereum":
+      return "https://etherscan.io";
+    case "sepolia":
+    case "eth-sepolia":
+      return "https://sepolia.etherscan.io";
+    case "base":
+      return "https://basescan.org";
+    case "polygon":
+      return "https://polygonscan.com";
+    case "bsc":
+      return "https://bscscan.com";
+    case "optimism":
+      return "https://optimistic.etherscan.io";
+    case "arbitrum-one":
+      return "https://arbiscan.io";
+    case "avalanche":
+      return "https://snowtrace.io";
+    case "unichain":
+      return "https://uniscan.xyz";
+  }
+};
+const etherscanTxUrl = (hash: string, network?: string) =>
+  `${explorerBase(network)}/tx/${hash}`;
+const networkLabel = (network?: string) => {
+  switch ((network || "").toLowerCase()) {
+    case "mainnet":
+    case "ethereum":
+      return "Ethereum";
+    case "sepolia":
+    case "eth-sepolia":
+      return "Sepolia";
+    case "base":
+      return "Base";
+    case "polygon":
+      return "Polygon";
+    case "bsc":
+      return "BSC";
+    case "optimism":
+      return "Optimism";
+    case "arbitrum-one":
+      return "Arbitrum";
+    case "avalanche":
+      return "Avalanche";
+    case "unichain":
+      return "Unichain";
     default:
-      return null;
+      return network || "Unknown";
   }
 };
 
-export default function AllTransactionsTab() {
-  const [address, setAddress] = useState<string>("");
+// Map UI chip → backend class= param
+function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
+  if (!Array.isArray(selected) || (selected as any)[0] === "all") return null;
+  const set = new Set<TxType>(selected as TxType[]);
+  const classes: string[] = [];
+  if (set.has("swap")) classes.push("swap_in", "swap_out");
+  if (set.has("income"))
+    classes.push("transfer_in", "nft_transfer_in", "nft_buy", "income");
+  if (set.has("expense"))
+    classes.push("transfer_out", "nft_transfer_out", "nft_sell", "expense");
+  // NOTE: "gas" isn’t a leg row today; we show fees per tx in the row. Leaving out.
+  return classes.length ? classes.join(",") : null;
+}
 
-  // Get address from URL params on client side to avoid hydration issues
+const PAGE_SIZE = 20;
+
+interface AllTransactionsTabProps {
+  address?: string;
+}
+
+export default function AllTransactionsTab({ address: propAddress }: AllTransactionsTabProps) {
+  // Use prop address if provided, otherwise read from URL
+  const [address, setAddress] = useState<string>(propAddress || "");
+  
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const addressParam = urlParams.get("address") || "";
-    setAddress(addressParam);
-  }, []);
-  const PAGE_SIZE = 20; // keep in sync with ?limit
-  const [totalCount, setTotalCount] = useState<number | null>(null); // optional; backend may return null
-  const [viewPage, setViewPage] = useState(1); // 1-based page window for the visible slice
+    if (propAddress) {
+      setAddress(propAddress);
+    } else {
+      const urlParams = new URLSearchParams(window.location.search);
+      setAddress(urlParams.get("address") || "");
+    }
+  }, [propAddress]);
 
-  // server data
-  const [items, setItems] = useState<TxRow[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  // Server data & pagination
+  const [rows, setRows] = useState<TxRow[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasNext, setHasNext] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // MVP filter: transaction type only
+  // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
     "all",
   ] as any);
 
+  // Visible columns
   const visibleColumnsInit = {
     type: true,
     date: true,
@@ -145,162 +176,62 @@ export default function AllTransactionsTab() {
     Record<keyof typeof visibleColumnsInit, boolean>
   >({ ...visibleColumnsInit });
 
-  const loadPage = async (append: boolean) => {
-    if (!address) {
-      // console.log("No address provided to loadPage");
-      return;
-    }
-    // console.log("Loading transactions for address:", address);
+  // Load current page
+  async function load(p: number) {
+    if (!address) return;
     setLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams();
-      qs.set("kind", "all");
-      qs.set("limit", String(PAGE_SIZE));
-      if (serverType) qs.set("type", serverType);
-      if (append && nextCursor) qs.set("cursor", nextCursor);
-
-      const url = `/api/portfolio/txs/${encodeURIComponent(address)}?${qs}`;
-      // console.log("Fetching from URL:", url);
-      
-      const res = await fetch(url);
-      // console.log("Response status:", res.status);
-      
-      if (!res.ok) {
-        let msg = "Failed to load transactions";
-        try {
-          const j = await res.json();
-          msg = j?.error?.message || msg;
-        } catch {}
-        // console.error("API error:", msg);
-        throw new Error(msg);
-      }
-      const data = (await res.json()) as TxFeed;
-      // console.log("Received data:", data);
-      const pageItems = data?.items || [];
-      setItems((prev) => (append ? [...prev, ...pageItems] : pageItems));
-      setNextCursor(data?.page?.nextCursor || null);
-      if ((data as any)?.page?.total != null) {
-        setTotalCount((data as any).page.total);
-      }
+      const classParam = uiTypesToClassParam(selectedTypes);
+      const { rows, hasNext } = await fetchTransactions(address, {
+        // networks: (omitted) → backend default = all supported EVM networks
+        networks: "mainnet",
+        page: p,
+        limit: PAGE_SIZE,
+        minUsd: 0,
+        spamFilter: "soft",
+        ...(classParam ? { class: classParam } : {}),
+      });
+      setRows(rows);
+      setHasNext(hasNext);
     } catch (e: any) {
-      // console.error("Error loading transactions:", e);
       setError(e?.message || "Failed to load transactions");
+      setRows([]);
+      setHasNext(false);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const filtered = useMemo(() => {
-    if (!items?.length) return [] as TxRow[];
-    const types = Array.isArray(selectedTypes) ? selectedTypes : ["all"];
-    if ((types as any)[0] === "all") return items;
-    return items.filter((r) => (types as TxType[]).includes(r.type));
-  }, [items, selectedTypes]);
-
-  // Rows currently visible in the table (matches what's rendered)
-  const visibleRows: TxRow[] = filtered;
-
-  // All rows the user has loaded so far, still respecting the type filter
-  const loadedRows: TxRow[] = useMemo(() => {
-    const types = Array.isArray(selectedTypes)
-      ? (selectedTypes as TxType[])
-      : [];
-    if (!items?.length) return [];
-    if (!types.length || (selectedTypes as any)[0] === "all") return items;
-    return items.filter((r) => types.includes(r.type));
-  }, [items, selectedTypes]);
-
-  const serverType = useMemo<null | TxType>(() => {
-    // If "all" or 0/many selected => null (no server-side type)
-    const types = Array.isArray(selectedTypes)
-      ? (selectedTypes as TxType[])
-      : [];
-    if (!types.length || (selectedTypes as any)[0] === "all") return null;
-    return types.length === 1 ? types[0] : null;
-  }, [selectedTypes]);
-
-  // initial & when address changes or refresh
+  // Initial/refresh
   useEffect(() => {
-    setItems([]);
-    setNextCursor(null);
-    setViewPage(1);
-    if (address) loadPage(false);
+    setPage(1);
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey]);
 
-  // When serverType toggles (e.g., user clicks Expense/Swap/Gas), reload from page 1
+  // When server-side class filter changes (chips), go back to page 1
   useEffect(() => {
     if (!address) return;
-    setItems([]);
-    setNextCursor(null);
-    setViewPage(1);
-    loadPage(false);
-  }, [serverType]);
+    setPage(1);
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(selectedTypes)]);
 
-  const windowStartIdx = (viewPage - 1) * PAGE_SIZE; // 0-based index
-  const windowEndIdx = Math.min(windowStartIdx + PAGE_SIZE, filtered.length);
-  const windowRows = filtered.slice(windowStartIdx, windowEndIdx);
-
-  const labelStart = filtered.length ? windowStartIdx + 1 : 0; // 1-based for display
-  const labelEnd = windowEndIdx; // inclusive 1-based
-
-  const canPrev = viewPage > 1;
-  const canNext = windowEndIdx < filtered.length || !!nextCursor;
-
-  const goPrev = () => setViewPage((p) => Math.max(1, p - 1));
-
-  const goNext = async () => {
-    // If we're at the end of loaded rows but backend has more, load then advance
-    if (windowEndIdx >= filtered.length && nextCursor) {
-      await loadPage(true);
-    }
-    setViewPage((p) => p + 1);
+  const canPrev = page > 1;
+  const canNext = hasNext;
+  const goPrev = () => {
+    const p = Math.max(1, page - 1);
+    setPage(p);
+    load(p);
+  };
+  const goNext = () => {
+    const p = page + 1;
+    setPage(p);
+    load(p);
   };
 
-  const toggleType = (t: TxType | "all", checked: boolean) => {
-    if (t === "all") {
-      setSelectedTypes(checked ? (["all"] as any) : ([] as any));
-      return;
-    }
-    setSelectedTypes((prev: any) => {
-      const arr: TxType[] =
-        Array.isArray(prev) && prev[0] !== "all" ? prev : [];
-      const next = checked ? [...arr, t] : arr.filter((x) => x !== t);
-      return next.length ? next : (["all"] as any);
-    });
-  };
-
-  const onRefresh = () => setRefreshKey((k) => k + 1);
-
-  const explorerBase = (network?: string) => {
-    switch (network) {
-      case "eth-mainnet":
-      case "ethereum":
-        return "https://etherscan.io";
-      case "eth-sepolia":
-      case "sepolia":
-        return "https://sepolia.etherscan.io";
-      default:
-        return "https://etherscan.io"; // MVP fallback
-    }
-  };
-  const etherscanTxUrl = (hash: string, network?: string) =>
-    `${explorerBase(network)}/tx/${hash}`;
-
-  const networkLabel = (network?: string) => {
-    switch (network) {
-      case "eth-mainnet":
-      case "ethereum":
-        return "Ethereum";
-      case "eth-sepolia":
-      case "sepolia":
-        return "Sepolia";
-      default:
-        return network || "Unknown";
-    }
-  };
-
-  // --- Export helpers (CSV/JSON)
+  // Export helpers (unchanged from your file)
   const nowStamp = () => {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
@@ -308,12 +239,9 @@ export default function AllTransactionsTab() {
       d.getHours()
     )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
   };
-
   const shortForFile = (a: string) =>
     a ? `${a.slice(0, 6)}_${a.slice(-4)}` : "wallet";
-
   type Scope = "visible" | "loaded";
-
   function mapTxForCsv(tx: TxRow) {
     return {
       date_iso: tx.ts,
@@ -331,7 +259,6 @@ export default function AllTransactionsTab() {
       counterparty_label: tx.counterparty?.label ?? "",
     };
   }
-
   function toCsv(rows: ReturnType<typeof mapTxForCsv>[]) {
     const headers = Object.keys(rows[0] ?? { date_iso: "", type: "" });
     const escape = (v: any) => {
@@ -342,12 +269,10 @@ export default function AllTransactionsTab() {
       headers.join(","),
       ...rows.map((r) => headers.map((h) => escape((r as any)[h])).join(",")),
     ].join("\n");
-    // Add BOM for Excel
     return new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), lines], {
       type: "text/csv;charset=utf-8",
     });
   }
-
   function downloadBlob(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -358,37 +283,56 @@ export default function AllTransactionsTab() {
     a.remove();
     URL.revokeObjectURL(url);
   }
-
   function exportCsv(
     address: string,
     rows: TxRow[],
     scope: Scope,
     typeLabel: string
   ) {
-    if (!rows || rows.length === 0) return;
-    const mapped = rows.map(mapTxForCsv);
-    const blob = toCsv(mapped);
-    const filename = `ledgerlift_${shortForFile(
-      address
-    )}_${typeLabel}_${nowStamp()}_${scope}.csv`;
-    downloadBlob(blob, filename);
+    if (!rows?.length) return;
+    const blob = toCsv(rows.map(mapTxForCsv));
+    downloadBlob(
+      blob,
+      `ledgerlift_${shortForFile(
+        address
+      )}_${typeLabel}_${nowStamp()}_${scope}.csv`
+    );
   }
-
   function exportJson(
     address: string,
     rows: TxRow[],
     scope: Scope,
     typeLabel: string
   ) {
-    if (!rows || rows.length === 0) return;
+    if (!rows?.length) return;
     const blob = new Blob([JSON.stringify(rows, null, 2)], {
       type: "application/json",
     });
-    const filename = `ledgerlift_${shortForFile(
-      address
-    )}_${typeLabel}_${nowStamp()}_${scope}.json`;
-    downloadBlob(blob, filename);
+    downloadBlob(
+      blob,
+      `ledgerlift_${shortForFile(
+        address
+      )}_${typeLabel}_${nowStamp()}_${scope}.json`
+    );
   }
+
+  // Filters UI helpers
+  const toggleType = (t: TxType | "all", checked: boolean) => {
+    if (t === "all") {
+      return setSelectedTypes(checked ? (["all"] as any) : ([] as any));
+    }
+    setSelectedTypes((prev: any) => {
+      const arr: TxType[] =
+        Array.isArray(prev) && prev[0] !== "all" ? prev : [];
+      const next = checked ? [...arr, t] : arr.filter((x) => x !== t);
+      return next.length ? next : (["all"] as any);
+    });
+  };
+  const visibleRows = rows;
+  const typeLabelForExport =
+    (selectedTypes as any)[0] === "all"
+      ? "all"
+      : (selectedTypes as TxType[]).join("-");
 
   return (
     <div className="space-y-6">
@@ -400,110 +344,17 @@ export default function AllTransactionsTab() {
             </h3>
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-                <span className="font-medium">
-                  Latest {labelStart}–{labelEnd}
-                </span>
-                {totalCount != null && (
-                  <span className="ml-1">of {totalCount}</span>
-                )}
+                {/* Page label: we don’t have total; show page window only */}
+                <span className="font-medium">Page {page}</span>
               </div>
-              <div className="hidden sm:flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goPrev}
-                  disabled={!canPrev}
-                >
-                  Prev
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goNext}
-                  disabled={!canNext}
-                >
-                  Next
-                </Button>
-              </div>
+
+              {/* Columns & Export */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
                     <Eye className="w-4 h-4 mr-2" /> Columns
                   </Button>
                 </DropdownMenuTrigger>
-                {/* Export menu */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      Export
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <button
-                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                      onClick={() =>
-                        exportCsv(
-                          address,
-                          visibleRows,
-                          "visible",
-                          (selectedTypes as any)[0] === "all"
-                            ? "all"
-                            : (selectedTypes as TxType[]).join("-")
-                        )
-                      }
-                    >
-                      CSV (visible)
-                    </button>
-                    <button
-                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                      onClick={() =>
-                        exportCsv(
-                          address,
-                          loadedRows,
-                          "loaded",
-                          (selectedTypes as any)[0] === "all"
-                            ? "all"
-                            : (selectedTypes as TxType[]).join("-")
-                        )
-                      }
-                      disabled={!loadedRows.length}
-                    >
-                      CSV (loaded)
-                    </button>
-                    <div className="h-px bg-slate-200 my-1" />
-                    <button
-                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                      onClick={() =>
-                        exportJson(
-                          address,
-                          visibleRows,
-                          "visible",
-                          (selectedTypes as any)[0] === "all"
-                            ? "all"
-                            : (selectedTypes as TxType[]).join("-")
-                        )
-                      }
-                    >
-                      JSON (visible)
-                    </button>
-                    <button
-                      className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                      onClick={() =>
-                        exportJson(
-                          address,
-                          loadedRows,
-                          "loaded",
-                          (selectedTypes as any)[0] === "all"
-                            ? "all"
-                            : (selectedTypes as TxType[]).join("-")
-                        )
-                      }
-                      disabled={!loadedRows.length}
-                    >
-                      JSON (loaded)
-                    </button>
-                  </DropdownMenuContent>
-                </DropdownMenu>
                 <DropdownMenuContent align="end" className="w-48">
                   {(
                     Object.keys(visibleColumns) as Array<
@@ -526,21 +377,86 @@ export default function AllTransactionsTab() {
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Export
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <button
+                    className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                    onClick={() =>
+                      exportCsv(
+                        address,
+                        visibleRows,
+                        "visible",
+                        typeLabelForExport
+                      )
+                    }
+                  >
+                    CSV (visible)
+                  </button>
+                  <div className="h-px bg-slate-200 my-1" />
+                  <button
+                    className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                    onClick={() =>
+                      exportJson(
+                        address,
+                        visibleRows,
+                        "visible",
+                        typeLabelForExport
+                      )
+                    }
+                  >
+                    JSON (visible)
+                  </button>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="hidden sm:flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (canPrev) {
+                      goPrev();
+                    }
+                  }}
+                  disabled={!canPrev}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (canNext) {
+                      goNext();
+                    }
+                  }}
+                  disabled={!canNext}
+                >
+                  Next
+                </Button>
+              </div>
+
               <Button
                 variant="outline"
                 size="sm"
-                onClick={onRefresh}
+                onClick={() => setRefreshKey((k) => k + 1)}
                 disabled={loading}
               >
                 <RefreshCw
                   className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
-                />
+                />{" "}
                 Refresh
               </Button>
             </div>
           </div>
 
-          {/* MVP Filter: Transaction Type only */}
+          {/* Filter chips (server-side class filter) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
             <div className="flex items-center space-x-2">
               <Checkbox
@@ -552,7 +468,6 @@ export default function AllTransactionsTab() {
                 All Types
               </Label>
             </div>
-
             {["income", "expense", "swap", "gas"].map((t) => (
               <div key={t} className="flex items-center space-x-2">
                 <Checkbox
@@ -576,13 +491,13 @@ export default function AllTransactionsTab() {
           </div>
         </div>
 
-        {/* Status messages */}
+        {/* Status */}
         {!address && (
           <div className="p-6 text-sm text-slate-500">
             Enter an address on the Overview tab to load transactions.
           </div>
         )}
-        {address && loading && items.length === 0 && (
+        {address && loading && rows.length === 0 && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -600,50 +515,14 @@ export default function AllTransactionsTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...Array(5)].map((_, idx) => (
-                  <TableRow key={`skeleton-${idx}`}>
-                    {visibleColumns.type && (
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Skeleton className="w-4 h-4" />
-                          <Skeleton className="h-4 w-16" />
-                        </div>
-                      </TableCell>
-                    )}
-                    {visibleColumns.date && (
-                      <TableCell>
-                        <Skeleton className="h-4 w-32" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.network && (
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.asset && (
-                      <TableCell>
-                        <Skeleton className="h-4 w-16" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.qty && (
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.usd && (
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.counterparty && (
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                    )}
-                    {visibleColumns.tx && (
-                      <TableCell>
-                        <Skeleton className="h-4 w-16" />
-                      </TableCell>
+                {[...Array(6)].map((_, i) => (
+                  <TableRow key={i}>
+                    {Object.keys(visibleColumns).map((k) =>
+                      visibleColumns[k as keyof typeof visibleColumns] ? (
+                        <TableCell key={k}>
+                          <Skeleton className="h-4 w-28" />
+                        </TableCell>
+                      ) : null
                     )}
                   </TableRow>
                 ))}
@@ -656,7 +535,7 @@ export default function AllTransactionsTab() {
         )}
 
         {/* Table */}
-        {address && items.length > 0 && (
+        {address && rows.length > 0 && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -674,7 +553,7 @@ export default function AllTransactionsTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {windowRows.map((tx, idx) => (
+                {rows.map((tx, idx) => (
                   <TableRow key={`${tx.hash}-${idx}`}>
                     {visibleColumns.type && (
                       <TableCell>
@@ -727,7 +606,7 @@ export default function AllTransactionsTab() {
                     {visibleColumns.counterparty && (
                       <TableCell className="font-mono">
                         {tx.counterparty?.label ||
-                          shortAddr(tx.counterparty?.address)}
+                          shortAddr(tx.counterparty?.address || undefined)}
                       </TableCell>
                     )}
                     {visibleColumns.tx && (
@@ -745,21 +624,28 @@ export default function AllTransactionsTab() {
                     )}
                   </TableRow>
                 ))}
-
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={
-                        Object.values(visibleColumns).filter(Boolean).length
-                      }
-                      className="text-center py-8 text-slate-500"
-                    >
-                      No transactions found for the selected type(s).
-                    </TableCell>
-                  </TableRow>
-                )}
               </TableBody>
             </Table>
+
+            {/* Pager footer (mobile) */}
+            <div className="flex sm:hidden justify-end gap-2 p-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goPrev}
+                disabled={!canPrev}
+              >
+                Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goNext}
+                disabled={!canNext}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         )}
       </Card>
