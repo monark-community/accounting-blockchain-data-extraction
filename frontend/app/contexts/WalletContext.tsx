@@ -24,6 +24,7 @@ import {
   arbitrum,
   optimism,
 } from "wagmi/chains";
+import { clearWeb3AuthSessionStorage } from "@/lib/utils";
 
 export interface Wallet {
   id: string;
@@ -182,6 +183,51 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       };
     }
   }, [web3auth?.web3Auth]);
+
+  // Logout when tab/browser closes (beforeunload event)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleBeforeUnload = () => {
+      // Force logout on tab/browser close
+      if (web3AuthIsConnected && web3auth?.web3Auth) {
+        try {
+          // Clear backend session cookie using sendBeacon (more reliable during unload)
+          if (navigator.sendBeacon) {
+            navigator.sendBeacon('/api/auth/logout', '');
+          } else {
+            // Fallback to fetch with keepalive
+            fetch('/api/auth/logout', {
+              method: 'POST',
+              credentials: 'include',
+              keepalive: true,
+            }).catch(() => {});
+          }
+          // Logout from Web3Auth synchronously (this will clear sessionStorage)
+          // Note: async operations in beforeunload are unreliable, but logout() should work
+          web3auth.web3Auth.logout().catch(() => {
+            // If async fails, manually clear sessionStorage
+            clearWeb3AuthSessionStorage();
+          });
+        } catch (error) {
+          // Fallback: manually clear sessionStorage if logout fails
+          clearWeb3AuthSessionStorage();
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    // Also handle visibility change (when tab becomes hidden)
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        // Tab is being hidden, but don't logout yet (might be just switching tabs)
+      }
+    });
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [web3AuthIsConnected, web3auth]);
 
   // Debug log to see what Web3Auth provides
   // useEffect(() => {
