@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   webpack: (config) => {
+    const path = require("path");
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -15,8 +16,8 @@ const nextConfig = {
       assert: false,
       os: false,
       path: false,
-      buffer: require.resolve("buffer"),
-      process: require.resolve("process/browser"),
+      buffer: path.join(process.cwd(), "node_modules", "buffer", "index.js"),
+      process: path.join(process.cwd(), "node_modules", "process", "browser.js"),
       // Add fallbacks for packages that are not needed in browser
       "@react-native-async-storage/async-storage": false,
       "pino-pretty": false,
