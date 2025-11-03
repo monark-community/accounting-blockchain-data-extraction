@@ -5,10 +5,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
-import { WalletProvider } from "@/contexts/WalletContext";
 import { config } from "@/lib/wagmi";
-import { Web3AuthProvider } from "@web3auth/no-modal-react-hooks";
-import { web3authConfig } from "@/lib/web3auth";
 import MonarkBannerWrapper from "@/components/MonarkDemoWrapper";
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
@@ -19,13 +16,39 @@ const DynamicToaster = dynamic(
   { ssr: false }
 );
 
+const Web3AuthProvider = dynamic(
+  () => import("@web3auth/no-modal-react-hooks").then((mod) => mod.Web3AuthProvider),
+  { ssr: false, loading: () => null }
+);
+
+const WalletProvider = dynamic(
+  () => import("@/contexts/WalletContext").then((mod) => mod.WalletProvider),
+  { ssr: false, loading: () => null }
+);
+
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
+  const [web3authConfig, setWeb3authConfig] = useState<any>(null);
 
-  // Clean up old localStorage Web3Auth data on mount (migration from localStorage to sessionStorage)
+  // Initialize on mount
   useEffect(() => {
     clearWeb3AuthLocalStorage();
+    
+    // Initialize Web3Auth config only on client side using dynamic import
+    (async () => {
+      try {
+        const { getWeb3AuthConfig } = await import("@/lib/web3auth");
+        setWeb3authConfig(getWeb3AuthConfig());
+      } catch (error) {
+        console.error("Failed to initialize Web3Auth config:", error);
+      }
+    })();
   }, []);
+
+  // Don't render Web3AuthProvider until config is ready
+  if (!web3authConfig) {
+    return null;
+  }
 
   return (
     <Web3AuthProvider config={web3authConfig}>
