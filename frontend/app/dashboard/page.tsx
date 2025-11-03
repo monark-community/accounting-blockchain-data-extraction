@@ -28,6 +28,9 @@ import {
   Legend,
   Treemap,
   Tooltip as RechartsTooltip,
+  AreaChart,
+  Area,
+  ReferenceLine,
 } from "recharts";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
@@ -51,6 +54,7 @@ import {
   computeHHI,
   isStable,
 } from "@/lib/portfolioUtils";
+import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
 
 const Dashboard = () => {
   const {
@@ -74,6 +78,9 @@ const Dashboard = () => {
   const [minUsdFilter, setMinUsdFilter] = useState(5);
   const [hideStables, setHideStables] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
+  const [loadingHistorical, setLoadingHistorical] = useState(false);
+  const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -126,6 +133,57 @@ const Dashboard = () => {
       .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
       .finally(() => setLoadingOv(false));
   }, [address, networks, userWallet, isConnected]);
+
+  // Fetch historical data for 6-month graph
+  useEffect(() => {
+    if (!address) {
+      console.log("[Dashboard] No address, skipping historical data fetch");
+      return;
+    }
+    console.log(`[Dashboard] Fetching historical data for ${address}, networks: ${networks}`);
+    setLoadingHistorical(true);
+    fetchHistoricalData(address, {
+      networks,
+      days: 180,
+    })
+      .then((response) => {
+        console.log(`[Dashboard] Historical data received: ${response.data.length} points`);
+        // Clean data by removing internal _isEstimated field
+        const cleanData = response.data.map((point: any) => {
+          const { _isEstimated, ...rest } = point;
+          return rest;
+        });
+        setHistoricalData(cleanData);
+        setIsHistoricalEstimated(response.isEstimated || false);
+      })
+      .catch((e) => {
+        console.error("[Dashboard] Failed to load historical data:", e);
+      })
+      .finally(() => {
+        setLoadingHistorical(false);
+        console.log("[Dashboard] Historical data fetch completed");
+      });
+  }, [address, networks]);
+
+  const historicalChartData = useMemo(() => {
+    console.log(`[Dashboard] Processing historical data: ${historicalData.length} points`);
+    if (historicalData.length === 0) {
+      console.log("[Dashboard] No historical data to process");
+      return [];
+    }
+    const processed = historicalData
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map((point) => ({
+        date: new Date(point.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+        value: point.totalValueUsd,
+        timestamp: point.timestamp,
+      }));
+    console.log(`[Dashboard] Processed chart data: ${processed.length} points`);
+    return processed;
+  }, [historicalData]);
 
   const allocationData = useMemo(() => {
     if (!ov) return [];
@@ -318,8 +376,9 @@ const Dashboard = () => {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="graphs">Graphs</TabsTrigger>
             <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
           </TabsList>
 
@@ -699,87 +758,6 @@ const Dashboard = () => {
                 )}
               </Card>
 
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-semibold text-slate-800">
-                    Allocation by Chain
-                  </h3>
-                </div>
-
-                {loadingOv ? (
-                  <div className="space-y-4">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-[300px] w-full" />
-                  </div>
-                ) : !ov ? (
-                  <div className="text-sm text-slate-500">
-                    Load an address to see allocation by chain.
-                  </div>
-                ) : chainBreakdown.length === 0 ? (
-                  <div className="text-sm text-slate-500">
-                    No priced tokens to display.
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={chainBreakdown}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <RechartsTooltip
-                        formatter={(
-                          value: unknown,
-                          _name: string,
-                          entry: { payload?: { pct: number; usd: number } }
-                        ) => {
-                          if (entry?.payload) {
-                            const row = entry.payload;
-                            return [
-                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
-                              "Allocation",
-                            ];
-                          }
-                          return [value, "Allocation"];
-                        }}
-                        labelFormatter={(label) => String(label)}
-                      />
-                      <Bar dataKey="pct" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  24h P&L by Chain
-                </h3>
-                {loadingOv || !ov ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : pnlByChain.length === 0 ? (
-                  <div className="text-sm text-slate-500">No 24h data.</div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={pnlByChain}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis tickFormatter={(v) => fmtUSD(v)} />
-                      <RechartsTooltip
-                        formatter={(v: any, _n: any, e: any) => [
-                          fmtUSD(v),
-                          "24h Δ",
-                        ]}
-                      />
-                      <Bar dataKey="pnl" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-                {!loadingOv && !!ov && (
-                  <p className="text-xs text-slate-500 mt-2">
-                    Weighted move:{" "}
-                    {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over
-                    24h.
-                  </p>
-                )}
-              </Card>
 
               <Card className="p-6 bg-white shadow-sm lg:col-span-2">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
@@ -1189,6 +1167,220 @@ const Dashboard = () => {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="graphs" className="space-y-6">
+            {/* 6-Month Portfolio Fluctuation Chart */}
+            <Card className="p-6 bg-white shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Évolution du Portfolio (6 derniers mois)
+                </h3>
+                {loadingHistorical && (
+                  <span className="text-xs text-slate-500">Chargement...</span>
+                )}
+              </div>
+              {loadingHistorical ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-[400px] w-full" />
+                  <p className="text-sm text-slate-500 text-center">
+                    Récupération des données historiques, cela peut prendre quelques secondes...
+                  </p>
+                </div>
+              ) : historicalChartData.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-sm text-slate-500 mb-2">
+                    Aucune donnée historique disponible pour cette adresse.
+                  </p>
+                  <p className="text-xs text-slate-400 mb-4">
+                    Les données historiques nécessitent des transactions sur les 6 derniers mois.
+                  </p>
+                  <details className="text-xs text-slate-400 text-left max-w-md mx-auto">
+                    <summary className="cursor-pointer text-slate-500 mb-2">
+                      Informations de débogage
+                    </summary>
+                    <div className="bg-slate-50 p-3 rounded mt-2 space-y-1">
+                      <p>Adresse: {address?.substring(0, 10)}...</p>
+                      <p>Réseaux: {networks?.split(",").length || 0} réseau(x)</p>
+                      <p>Points reçus: {historicalData.length}</p>
+                      <p>Vérifiez les logs du backend pour plus de détails.</p>
+                    </div>
+                  </details>
+                </div>
+              ) : (
+                <>
+                  {isHistoricalEstimated && (
+                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                      <div className="flex items-start">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="ml-3 flex-1">
+                          <h3 className="text-sm font-medium text-amber-800">
+                            Données estimées
+                          </h3>
+                          <div className="mt-1 text-sm text-amber-700">
+                            <p>
+                              Les données historiques réelles ne sont pas disponibles via l'API. Ce graphique affiche une estimation basée sur la composition actuelle de votre portefeuille. Les valeurs peuvent ne pas refléter précisément l'historique réel.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <ResponsiveContainer width="100%" height={400}>
+                    <AreaChart data={historicalChartData}>
+                      <defs>
+                        <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 11 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tickFormatter={(v) => fmtUSD(v)}
+                        tick={{ fontSize: 11 }}
+                        domain={["dataMin", "dataMax"]}
+                      />
+                      <RechartsTooltip
+                        formatter={(value: number) => fmtUSD(value)}
+                        labelFormatter={(label) => `Date: ${label}`}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorPortfolio)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  {!loadingHistorical && historicalChartData.length > 0 && (
+                    <div className="mt-4 text-xs text-slate-500">
+                      <p>
+                        Données hebdomadaires sur {historicalChartData.length} points
+                        {historicalChartData.length > 0 && (
+                          <>
+                            {" • "}
+                            Du {historicalChartData[0].date} au{" "}
+                            {historicalChartData[historicalChartData.length - 1].date}
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </Card>
+
+            {/* Allocation by Chain */}
+            <Card className="p-6 bg-white shadow-sm">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Allocation by Chain
+                </h3>
+              </div>
+
+              {loadingOv ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-[300px] w-full" />
+                </div>
+              ) : !ov ? (
+                <div className="text-sm text-slate-500">
+                  Load an address to see allocation by chain.
+                </div>
+              ) : chainBreakdown.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No priced tokens to display.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={chainBreakdown}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                    <RechartsTooltip
+                      formatter={(
+                        value: unknown,
+                        _name: string,
+                        entry: { payload?: { pct: number; usd: number } }
+                      ) => {
+                        if (entry?.payload) {
+                          const row = entry.payload;
+                          return [
+                            `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
+                            "Allocation",
+                          ];
+                        }
+                        return [value, "Allocation"];
+                      }}
+                      labelFormatter={(label) => String(label)}
+                    />
+                    <Bar dataKey="pct" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* 24h P&L by Chain */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                24h P&L by Chain
+              </h3>
+              {loadingOv || !ov ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : pnlByChain.length === 0 ? (
+                <div className="text-sm text-slate-500">No 24h data.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={pnlByChain}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis
+                      tickFormatter={(v) => fmtUSD(v)}
+                      domain={["auto", "auto"]}
+                    />
+                    <RechartsTooltip
+                      formatter={(v: any, _n: any, e: any) => [
+                        fmtUSD(v),
+                        "24h Δ",
+                      ]}
+                    />
+                    <Bar dataKey="pnl">
+                      {pnlByChain.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={entry.pnl >= 0 ? "#10b981" : "#ef4444"}
+                        />
+                      ))}
+                    </Bar>
+                    <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+              {!loadingOv && !!ov && (
+                <p className="text-xs text-slate-500 mt-2">
+                  Weighted move:{" "}
+                  {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over
+                  24h.
+                </p>
               )}
             </Card>
           </TabsContent>
