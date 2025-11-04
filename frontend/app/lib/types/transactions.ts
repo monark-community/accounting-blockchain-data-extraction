@@ -50,4 +50,5 @@ export interface TxListResponse {
   meta: { gasUsdByTx: Record<string, number> };
   page: number;
   limit: number;
+  total: number | null; // Total count from Covalent (null if unavailable)
 }
