@@ -555,7 +555,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
             Enter an address on the Overview tab to load transactions.
           </div>
         )}
-        {address && loading && rows.length === 0 && (
+        {address && loading && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -593,7 +593,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
         )}
 
         {/* Table */}
-        {address && rows.length > 0 && (
+        {address && !loading && rows.length > 0 && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
