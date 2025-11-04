@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -157,6 +157,9 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
+  const pageCache = useRef(new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>());
+
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
     "all",
@@ -177,9 +180,29 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     Record<keyof typeof visibleColumnsInit, boolean>
   >({ ...visibleColumnsInit });
 
-  // Load current page
+  // Generate cache key for current filters
+  const getCacheKey = (addr: string, pageNum: number) => {
+    const filterKey = JSON.stringify(selectedTypes);
+    return `${addr}:${filterKey}:${pageNum}`;
+  };
+
+  // Load current page (with cache check)
   async function load(p: number) {
     if (!address) return;
+    
+    // Check cache first
+    const cacheKey = getCacheKey(address, p);
+    const cached = pageCache.current.get(cacheKey);
+    
+    if (cached) {
+      // Use cached data immediately (no loading state)
+      setRows(cached.rows);
+      setHasNext(cached.hasNext);
+      setTotal(cached.total);
+      return;
+    }
+
+    // Not in cache, fetch from API
     setLoading(true);
     setError(null);
     try {
@@ -193,6 +216,10 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
         spamFilter: "soft",
         ...(classParam ? { class: classParam } : {}),
       });
+      
+      // Store in cache
+      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      
       setRows(rows);
       setHasNext(hasNext);
       setTotal(totalCount); // Store total count from backend
@@ -206,9 +233,10 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     }
   }
 
-  // Initial/refresh
+  // Initial/refresh - clear cache when address or filters change
   useEffect(() => {
     setPage(1);
+    pageCache.current.clear(); // Clear cache when address or filters change
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey]);
@@ -217,6 +245,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
   useEffect(() => {
     if (!address) return;
     setPage(1);
+    pageCache.current.clear(); // Clear cache when filters change
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
