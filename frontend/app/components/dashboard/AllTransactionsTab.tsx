@@ -199,6 +199,11 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
       setRows(cached.rows);
       setHasNext(cached.hasNext);
       setTotal(cached.total);
+      
+      // Prefetch next page in background (if available)
+      if (cached.hasNext) {
+        preloadNextPage(p + 1);
+      }
       return;
     }
 
@@ -223,6 +228,11 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
       setRows(rows);
       setHasNext(hasNext);
       setTotal(totalCount); // Store total count from backend
+      
+      // Prefetch next page in background (if available)
+      if (hasNext) {
+        preloadNextPage(p + 1);
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to load transactions");
       setRows([]);
@@ -230,6 +240,35 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
       setTotal(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Preload next page in background (silent, no loading state)
+  async function preloadNextPage(nextPage: number) {
+    if (!address) return;
+    
+    // Check if already cached
+    const cacheKey = getCacheKey(address, nextPage);
+    if (pageCache.current.has(cacheKey)) {
+      return; // Already cached
+    }
+    
+    try {
+      const classParam = uiTypesToClassParam(selectedTypes);
+      const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
+        networks: "mainnet",
+        page: nextPage,
+        limit: PAGE_SIZE,
+        minUsd: 0,
+        spamFilter: "soft",
+        ...(classParam ? { class: classParam } : {}),
+      });
+      
+      // Store in cache (silently, no state updates)
+      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+    } catch (e) {
+      // Silent failure - prefetch errors should not affect UI
+      console.debug("[Prefetch] Failed to preload page", nextPage, e);
     }
   }
 
