@@ -1,7 +1,7 @@
 // backend/src/routes/transactions.routes.ts
 
 import { Router } from "express";
-import { listTransactionLegs } from "../services/transactions.service";
+import { listTransactionLegs, getTransactionCountTotal } from "../services/transactions.service";
 import { parseNetworks } from "../config/networks";
 import { applyLegFilters } from "../utils/tx.filters";
 import { buildSummary } from "../services/tx.aggregate";
@@ -30,6 +30,14 @@ router.get("/:address", async (req, res) => {
     if (!ok) return res.status(400).json({ error: "Invalid address" });
 
     const addr = raw.toLowerCase() as `0x${string}`;
+
+    // Get total count from Covalent (in parallel with fetching transactions)
+    const totalCountPromise = getTransactionCountTotal({
+      address: addr,
+      networks: req.query.networks as string | string[] | undefined,
+      from: req.query.from as string | undefined,
+      to: req.query.to as string | undefined,
+    });
 
     const legsRaw = await listTransactionLegs({
       address: addr,
@@ -61,11 +69,15 @@ router.get("/:address", async (req, res) => {
       ? legs.filter((l) => l.class && classSet.has(l.class))
       : legs;
 
+    // Get total count (may be null if Covalent fails)
+    const totalCount = await totalCountPromise;
+
     res.json({
       data: legsFilteredByClass,
       meta: { gasUsdByTx: gasMeta ?? {} },
       page: Number(req.query.page ?? 1),
       limit: Number(req.query.limit ?? 100),
+      total: totalCount, // Total count from Covalent (null if unavailable)
     });
   } catch (err: any) {
     res
