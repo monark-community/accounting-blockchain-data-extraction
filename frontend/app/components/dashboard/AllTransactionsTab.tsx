@@ -152,6 +152,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
   const [rows, setRows] = useState<TxRow[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
+  const [total, setTotal] = useState<number | null>(null); // Total count from backend (Covalent)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -183,7 +184,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     setError(null);
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
-      const { rows, hasNext } = await fetchTransactions(address, {
+      const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
         // networks: (omitted) → backend default = all supported EVM networks
         networks: "mainnet",
         page: p,
@@ -194,10 +195,12 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
       });
       setRows(rows);
       setHasNext(hasNext);
+      setTotal(totalCount); // Store total count from backend
     } catch (e: any) {
       setError(e?.message || "Failed to load transactions");
       setRows([]);
       setHasNext(false);
+      setTotal(null);
     } finally {
       setLoading(false);
     }
@@ -217,6 +220,23 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
+
+  // Use total from backend (Covalent) if available, otherwise fallback to estimation
+  const totalCount = useMemo(() => {
+    if (total !== null) return total; // Use real total from backend
+    // Fallback to estimation if backend total not available
+    if (rows.length === 0) return null;
+    if (hasNext) {
+      return page * PAGE_SIZE; // At least this many
+    } else {
+      return (page - 1) * PAGE_SIZE + rows.length; // Exact count
+    }
+  }, [total, page, hasNext, rows.length]);
+
+  const totalPages = useMemo(() => {
+    if (!totalCount) return null;
+    return Math.ceil(totalCount / PAGE_SIZE);
+  }, [totalCount]);
 
   const canPrev = page > 1;
   const canNext = hasNext;
@@ -344,8 +364,17 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
             </h3>
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-                {/* Page label: we don’t have total; show page window only */}
-                <span className="font-medium">Page {page}</span>
+                {totalCount && totalPages ? (
+                  <span className="font-medium">
+                    Page {page} of {totalPages} ({totalCount.toLocaleString()} total)
+                  </span>
+                ) : totalCount ? (
+                  <span className="font-medium">
+                    Page {page} ({totalCount.toLocaleString()}+ transactions)
+                  </span>
+                ) : (
+                  <span className="font-medium">Page {page}</span>
+                )}
               </div>
 
               {/* Columns & Export */}
