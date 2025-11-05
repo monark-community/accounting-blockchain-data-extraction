@@ -1176,36 +1176,36 @@ const Dashboard = () => {
             <Card className="p-6 bg-white shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-800">
-                  Évolution du Portfolio (6 derniers mois)
+                  Portfolio Evolution (Last 6 Months)
                 </h3>
                 {loadingHistorical && (
-                  <span className="text-xs text-slate-500">Chargement...</span>
+                  <span className="text-xs text-slate-500">Loading...</span>
                 )}
               </div>
               {loadingHistorical ? (
                 <div className="space-y-4">
                   <Skeleton className="h-[400px] w-full" />
                   <p className="text-sm text-slate-500 text-center">
-                    Récupération des données historiques, cela peut prendre quelques secondes...
+                    Fetching historical data, this may take a few seconds...
                   </p>
                 </div>
               ) : historicalChartData.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-sm text-slate-500 mb-2">
-                    Aucune donnée historique disponible pour cette adresse.
+                    No historical data available for this address.
                   </p>
                   <p className="text-xs text-slate-400 mb-4">
-                    Les données historiques nécessitent des transactions sur les 6 derniers mois.
+                    Historical data requires transactions over the last 6 months.
                   </p>
                   <details className="text-xs text-slate-400 text-left max-w-md mx-auto">
                     <summary className="cursor-pointer text-slate-500 mb-2">
-                      Informations de débogage
+                      Debug Information
                     </summary>
                     <div className="bg-slate-50 p-3 rounded mt-2 space-y-1">
-                      <p>Adresse: {address?.substring(0, 10)}...</p>
-                      <p>Réseaux: {networks?.split(",").length || 0} réseau(x)</p>
-                      <p>Points reçus: {historicalData.length}</p>
-                      <p>Vérifiez les logs du backend pour plus de détails.</p>
+                      <p>Address: {address?.substring(0, 10)}...</p>
+                      <p>Networks: {networks?.split(",").length || 0} network(s)</p>
+                      <p>Points received: {historicalData.length}</p>
+                      <p>Check backend logs for more details.</p>
                     </div>
                   </details>
                 </div>
@@ -1221,11 +1221,11 @@ const Dashboard = () => {
                         </div>
                         <div className="ml-3 flex-1">
                           <h3 className="text-sm font-medium text-amber-800">
-                            Données estimées
+                            Estimated Data
                           </h3>
                           <div className="mt-1 text-sm text-amber-700">
                             <p>
-                              Les données historiques réelles ne sont pas disponibles via l'API. Ce graphique affiche une estimation basée sur la composition actuelle de votre portefeuille. Les valeurs peuvent ne pas refléter précisément l'historique réel.
+                              Real historical data is not available via the API. This chart displays an estimation based on your current portfolio composition. Values may not accurately reflect actual history.
                             </p>
                           </div>
                         </div>
@@ -1271,11 +1271,11 @@ const Dashboard = () => {
                   {!loadingHistorical && historicalChartData.length > 0 && (
                     <div className="mt-4 text-xs text-slate-500">
                       <p>
-                        Données hebdomadaires sur {historicalChartData.length} points
+                        Weekly data over {historicalChartData.length} points
                         {historicalChartData.length > 0 && (
                           <>
                             {" • "}
-                            Du {historicalChartData[0].date} au{" "}
+                            From {historicalChartData[0].date} to{" "}
                             {historicalChartData[historicalChartData.length - 1].date}
                           </>
                         )}
@@ -1381,6 +1381,287 @@ const Dashboard = () => {
                   {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over
                   24h.
                 </p>
+              )}
+            </Card>
+
+            {/* Asset Distribution Pie Chart */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Asset Distribution
+              </h3>
+              {loadingOv ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : !ov ? (
+                <div className="text-sm text-slate-500">
+                  Load an address to see asset distribution.
+                </div>
+              ) : allocationData.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No assets to display.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <RPieChart>
+                    <Pie
+                      data={allocationData}
+                      dataKey="usd"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
+                    >
+                      {allocationData.map((entry, index) => {
+                        const colors = [
+                          "#3b82f6",
+                          "#10b981",
+                          "#f59e0b",
+                          "#ef4444",
+                          "#8b5cf6",
+                          "#ec4899",
+                          "#06b6d4",
+                          "#84cc16",
+                        ];
+                        return (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={colors[index % colors.length]}
+                          />
+                        );
+                      })}
+                    </Pie>
+                    <RechartsTooltip
+                      formatter={(value: number, name: string, props: any) => [
+                        fmtUSD(value),
+                        `${name} (${fmtPct(props.payload.pct)})`,
+                      ]}
+                    />
+                    <Legend />
+                  </RPieChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* Stablecoin vs Risk Assets */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Stablecoin vs Risk Assets
+              </h3>
+              {loadingOv || !ov ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
+                <div className="text-sm text-slate-500">No data available.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <RPieChart>
+                    <Pie
+                      data={[
+                        { name: "Stablecoins", value: stableVsRisk.stable },
+                        { name: "Risk Assets", value: stableVsRisk.nonStable },
+                      ]}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={(entry) =>
+                        `${entry.name}: ${fmtPct(
+                          (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
+                        )}`
+                      }
+                    >
+                      <Cell fill="#10b981" />
+                      <Cell fill="#f59e0b" />
+                    </Pie>
+                    <RechartsTooltip
+                      formatter={(value: number) => fmtUSD(value)}
+                    />
+                    <Legend />
+                  </RPieChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* Top Gainers vs Losers Comparison */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Top Gainers vs Losers (24h)
+              </h3>
+              {loadingOv || !ov ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : movers.gainers.length === 0 && movers.losers.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No 24h change data available.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={[
+                      ...movers.gainers.map((h, i) => ({
+                        name: h.symbol || "Unknown",
+                        value: h.delta24hUsd || 0,
+                        pct: h.delta24hPct || 0,
+                        type: "Gainer",
+                      })),
+                      ...movers.losers.map((h, i) => ({
+                        name: h.symbol || "Unknown",
+                        value: h.delta24hUsd || 0,
+                        pct: h.delta24hPct || 0,
+                        type: "Loser",
+                      })),
+                    ]}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                    <RechartsTooltip
+                      formatter={(value: number, _name: string, props: any) => [
+                        `${fmtUSD(value)} (${props.payload.pct >= 0 ? "+" : ""}${fmtPct(props.payload.pct)})`,
+                        "24h Change",
+                      ]}
+                    />
+                    <Bar dataKey="value">
+                      {[...movers.gainers, ...movers.losers].map((h, index) => (
+                        <Cell
+                          key={`mover-cell-${index}`}
+                          fill={(h.delta24hUsd || 0) >= 0 ? "#10b981" : "#ef4444"}
+                        />
+                      ))}
+                    </Bar>
+                    <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* Portfolio Treemap */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Portfolio Value Treemap
+              </h3>
+              {loadingOv ? (
+                <Skeleton className="h-[400px] w-full" />
+              ) : !ov ? (
+                <div className="text-sm text-slate-500">
+                  Load an address to see portfolio treemap.
+                </div>
+              ) : treemapData.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No holdings to display.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={400}>
+                  <Treemap
+                    data={treemapData}
+                    dataKey="size"
+                    stroke="#fff"
+                    fill="#8884d8"
+                    content={(props: any) => {
+                      const { x, y, width, height, payload } = props;
+                      if (!payload || width < 5 || height < 5) return null;
+                      const size = payload.size || 0;
+                      const name = payload.name || "Unknown";
+                      return (
+                        <g>
+                          <rect
+                            x={x}
+                            y={y}
+                            width={width}
+                            height={height}
+                            fill={
+                              size > 0
+                                ? `hsl(${(size / (ov?.kpis.totalValueUsd || 1)) * 240}, 70%, 50%)`
+                                : "#ccc"
+                            }
+                            stroke="#fff"
+                            strokeWidth={2}
+                          />
+                          <text
+                            x={x + width / 2}
+                            y={y + height / 2}
+                            textAnchor="middle"
+                            fill="#fff"
+                            fontSize={12}
+                            fontWeight="bold"
+                          >
+                            {name.length > 20
+                              ? `${name.substring(0, 20)}...`
+                              : name}
+                          </text>
+                          <text
+                            x={x + width / 2}
+                            y={y + height / 2 + 16}
+                            textAnchor="middle"
+                            fill="#fff"
+                            fontSize={10}
+                          >
+                            {fmtUSD(size)}
+                          </text>
+                        </g>
+                      );
+                    }}
+                  />
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* Asset Performance by 24h Change */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Asset Performance (24h % Change)
+              </h3>
+              {loadingOv || !ov ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : (
+                (() => {
+                  const performanceData = (ov.holdings ?? [])
+                    .filter((h) => typeof h.delta24hPct === "number")
+                    .sort((a, b) => (b.delta24hPct || 0) - (a.delta24hPct || 0))
+                    .slice(0, 15)
+                    .map((h) => ({
+                      name: h.symbol || "Unknown",
+                      change: h.delta24hPct || 0,
+                      value: h.valueUsd || 0,
+                    }));
+                  return performanceData.length === 0 ? (
+                    <div className="text-sm text-slate-500">
+                      No 24h performance data available.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={performanceData}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="name"
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          tick={{ fontSize: 10 }}
+                        />
+                        <YAxis tickFormatter={(v) => `${v}%`} />
+                        <RechartsTooltip
+                          formatter={(value: number, _name: string, props: any) => [
+                            `${value >= 0 ? "+" : ""}${value.toFixed(2)}% (${fmtUSD(props.payload.value)})`,
+                            "24h Change",
+                          ]}
+                        />
+                        <Bar dataKey="change">
+                          {performanceData.map((entry, index) => (
+                            <Cell
+                              key={`perf-cell-${index}`}
+                              fill={entry.change >= 0 ? "#10b981" : "#ef4444"}
+                            />
+                          ))}
+                        </Bar>
+                        <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  );
+                })()
               )}
             </Card>
           </TabsContent>
