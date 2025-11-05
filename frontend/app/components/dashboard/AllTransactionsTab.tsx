@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -152,9 +152,13 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
   const [rows, setRows] = useState<TxRow[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
+  const [total, setTotal] = useState<number | null>(null); // Total count from backend (Covalent)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
+  const pageCache = useRef(new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>());
 
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
@@ -176,14 +180,39 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     Record<keyof typeof visibleColumnsInit, boolean>
   >({ ...visibleColumnsInit });
 
-  // Load current page
+  // Generate cache key for current filters
+  const getCacheKey = (addr: string, pageNum: number) => {
+    const filterKey = JSON.stringify(selectedTypes);
+    return `${addr}:${filterKey}:${pageNum}`;
+  };
+
+  // Load current page (with cache check)
   async function load(p: number) {
     if (!address) return;
+    
+    // Check cache first
+    const cacheKey = getCacheKey(address, p);
+    const cached = pageCache.current.get(cacheKey);
+    
+    if (cached) {
+      // Use cached data immediately (no loading state)
+      setRows(cached.rows);
+      setHasNext(cached.hasNext);
+      setTotal(cached.total);
+      
+      // Prefetch next page in background (if available)
+      if (cached.hasNext) {
+        preloadNextPage(p + 1);
+      }
+      return;
+    }
+
+    // Not in cache, fetch from API
     setLoading(true);
     setError(null);
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
-      const { rows, hasNext } = await fetchTransactions(address, {
+      const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
         // networks: (omitted) → backend default = all supported EVM networks
         networks: "mainnet",
         page: p,
@@ -192,20 +221,61 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
         spamFilter: "soft",
         ...(classParam ? { class: classParam } : {}),
       });
+      
+      // Store in cache
+      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      
       setRows(rows);
       setHasNext(hasNext);
+      setTotal(totalCount); // Store total count from backend
+      
+      // Prefetch next page in background (if available)
+      if (hasNext) {
+        preloadNextPage(p + 1);
+      }
     } catch (e: any) {
       setError(e?.message || "Failed to load transactions");
       setRows([]);
       setHasNext(false);
+      setTotal(null);
     } finally {
       setLoading(false);
     }
   }
 
-  // Initial/refresh
+  // Preload next page in background (silent, no loading state)
+  async function preloadNextPage(nextPage: number) {
+    if (!address) return;
+    
+    // Check if already cached
+    const cacheKey = getCacheKey(address, nextPage);
+    if (pageCache.current.has(cacheKey)) {
+      return; // Already cached
+    }
+    
+    try {
+      const classParam = uiTypesToClassParam(selectedTypes);
+      const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
+        networks: "mainnet",
+        page: nextPage,
+        limit: PAGE_SIZE,
+        minUsd: 0,
+        spamFilter: "soft",
+        ...(classParam ? { class: classParam } : {}),
+      });
+      
+      // Store in cache (silently, no state updates)
+      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+    } catch (e) {
+      // Silent failure - prefetch errors should not affect UI
+      console.debug("[Prefetch] Failed to preload page", nextPage, e);
+    }
+  }
+
+  // Initial/refresh - clear cache when address or filters change
   useEffect(() => {
     setPage(1);
+    pageCache.current.clear(); // Clear cache when address or filters change
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey]);
@@ -214,9 +284,27 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
   useEffect(() => {
     if (!address) return;
     setPage(1);
+    pageCache.current.clear(); // Clear cache when filters change
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
+
+  // Use total from backend (Covalent) if available, otherwise fallback to estimation
+  const totalCount = useMemo(() => {
+    if (total !== null) return total; // Use real total from backend
+    // Fallback to estimation if backend total not available
+    if (rows.length === 0) return null;
+    if (hasNext) {
+      return page * PAGE_SIZE; // At least this many
+    } else {
+      return (page - 1) * PAGE_SIZE + rows.length; // Exact count
+    }
+  }, [total, page, hasNext, rows.length]);
+
+  const totalPages = useMemo(() => {
+    if (!totalCount) return null;
+    return Math.ceil(totalCount / PAGE_SIZE);
+  }, [totalCount]);
 
   const canPrev = page > 1;
   const canNext = hasNext;
@@ -344,8 +432,17 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
             </h3>
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-                {/* Page label: we don’t have total; show page window only */}
-                <span className="font-medium">Page {page}</span>
+                {totalCount && totalPages ? (
+                  <span className="font-medium">
+                    Page {page} of {totalPages} ({totalCount.toLocaleString()} total)
+                  </span>
+                ) : totalCount ? (
+                  <span className="font-medium">
+                    Page {page} ({totalCount.toLocaleString()}+ transactions)
+                  </span>
+                ) : (
+                  <span className="font-medium">Page {page}</span>
+                )}
               </div>
 
               {/* Columns & Export */}
@@ -497,7 +594,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
             Enter an address on the Overview tab to load transactions.
           </div>
         )}
-        {address && loading && rows.length === 0 && (
+        {address && loading && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -535,7 +632,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
         )}
 
         {/* Table */}
-        {address && rows.length > 0 && (
+        {address && !loading && rows.length > 0 && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
