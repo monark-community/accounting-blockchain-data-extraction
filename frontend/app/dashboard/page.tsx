@@ -446,11 +446,11 @@ const Dashboard = () => {
                         </HoverCardTrigger>
                         <HoverCardContent className="w-80">
                           <p className="text-sm font-medium mb-2">Volatility (24h proxy)</p>
-                          <p className="text-xs text-slate-600 mb-2">Valeur absolue du P&L 24h divisée par la valeur totale du portefeuille. Plus élevé = plus volatil.</p>
+                          <p className="text-xs text-slate-600 mb-2">Absolute value of 24h P&L divided by total portfolio value. Higher = more volatile.</p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formula:</p>
                             <p className="text-xs text-slate-700 font-mono">|Δ24h USD| / TVL × 100%</p>
-                            <p className="text-xs text-slate-500 mt-2">Où Δ24h = variation absolue en USD sur 24h, TVL = valeur totale du portefeuille.</p>
+                            <p className="text-xs text-slate-500 mt-2">Where Δ24h = absolute change in USD over 24h, TVL = total portfolio value.</p>
                           </div>
                         </HoverCardContent>
                       </HoverCard>
@@ -463,11 +463,11 @@ const Dashboard = () => {
                         </HoverCardTrigger>
                         <HoverCardContent className="w-80">
                           <p className="text-sm font-medium mb-2">Blue-chip share</p>
-                          <p className="text-xs text-slate-600 mb-2">Part du portefeuille détenue en ETH, WETH, BTC ou WBTC.</p>
+                          <p className="text-xs text-slate-600 mb-2">Portion of portfolio held in ETH, WETH, BTC, or WBTC.</p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
-                            <p className="text-xs text-slate-700 font-mono">(Σ valeur ETH/WETH/BTC/WBTC) / TVL × 100%</p>
-                            <p className="text-xs text-slate-500 mt-2">Somme des valeurs USD de tous les tokens ETH, WETH, BTC, WBTC divisée par la valeur totale.</p>
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formula:</p>
+                            <p className="text-xs text-slate-700 font-mono">(Σ value ETH/WETH/BTC/WBTC) / TVL × 100%</p>
+                            <p className="text-xs text-slate-500 mt-2">Sum of USD values of all ETH, WETH, BTC, WBTC tokens divided by total value.</p>
                           </div>
                         </HoverCardContent>
                       </HoverCard>
@@ -480,11 +480,11 @@ const Dashboard = () => {
                         </HoverCardTrigger>
                         <HoverCardContent className="w-80">
                           <p className="text-sm font-medium mb-2">Chain breadth</p>
-                          <p className="text-xs text-slate-600 mb-2">Nombre de chaînes représentant au moins 2% de la valeur du portefeuille.</p>
+                          <p className="text-xs text-slate-600 mb-2">Number of chains representing at least 2% of portfolio value.</p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">Calcul:</p>
-                            <p className="text-xs text-slate-700 font-mono">count(chains où valeur_chaîne / TVL ≥ 0.02)</p>
-                            <p className="text-xs text-slate-500 mt-2">Indicateur de diversification multi-chaînes. Plus élevé = meilleure répartition.</p>
+                            <p className="text-xs font-mono text-slate-500 mb-1">Calculation:</p>
+                            <p className="text-xs text-slate-700 font-mono">count(chains where chain_value / TVL ≥ 0.02)</p>
+                            <p className="text-xs text-slate-500 mt-2">Multi-chain diversification indicator. Higher = better distribution.</p>
                           </div>
                         </HoverCardContent>
                       </HoverCard>
@@ -509,18 +509,18 @@ const Dashboard = () => {
                         </HoverCardTrigger>
                         <HoverCardContent className="w-80">
                           <p className="text-sm font-medium mb-2">Herfindahl–Hirschman Index (HHI)</p>
-                          <p className="text-xs text-slate-600 mb-3">Mesure de concentration calculée sur les poids des actifs dans le portefeuille. Plus faible = meilleure diversification.</p>
+                          <p className="text-xs text-slate-600 mb-3">Concentration measure calculated on asset weights in the portfolio. Lower = better diversification.</p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formula:</p>
                             <p className="text-xs text-slate-700 font-mono mb-2">HHI = Σ(w_i)² × 100</p>
-                            <p className="text-xs text-slate-600 mb-2">Où w_i = poids en pourcentage de l'actif i divisé par 100.</p>
+                            <p className="text-xs text-slate-600 mb-2">Where w_i = percentage weight of asset i divided by 100.</p>
                           </div>
                           <div className="mt-3 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-medium text-slate-700 mb-1">Interprétation:</p>
+                            <p className="text-xs font-medium text-slate-700 mb-1">Interpretation:</p>
                             <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
-                              <li>&lt; 15 : Bien diversifié (plusieurs actifs équilibrés)</li>
-                              <li>15-25 : Modérément concentré (quelques actifs dominants)</li>
-                              <li>&gt; 25 : Très concentré (risque élevé de concentration)</li>
+                              <li>&lt; 15 : Well diversified (multiple balanced assets)</li>
+                              <li>15-25 : Moderately concentrated (few dominant assets)</li>
+                              <li>&gt; 25 : Highly concentrated (high concentration risk)</li>
                             </ul>
                           </div>
                         </HoverCardContent>
@@ -541,9 +541,9 @@ const Dashboard = () => {
                             </p>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-72">
-                            <p className="text-xs font-medium text-slate-700 mb-1">Valeur HHI actuelle</p>
-                            <p className="text-xs text-slate-600 mb-2">Index de concentration calculé sur {ov?.allocation?.length || 0} actifs dans le portefeuille.</p>
-                            <p className="text-xs text-slate-500 italic">Survolez le titre pour plus de détails sur le calcul.</p>
+                            <p className="text-xs font-medium text-slate-700 mb-1">Current HHI value</p>
+                            <p className="text-xs text-slate-600 mb-2">Concentration index calculated on {ov?.allocation?.length || 0} assets in the portfolio.</p>
+                            <p className="text-xs text-slate-500 italic">Hover over the title for more details on the calculation.</p>
                           </HoverCardContent>
                         </HoverCard>
                         <p className="text-xs text-slate-500">
@@ -572,25 +572,25 @@ const Dashboard = () => {
                         </p>
                       </HoverCardTrigger>
                       <HoverCardContent className="w-80">
-                        <p className="text-sm font-medium mb-2">Détails de concentration</p>
+                        <p className="text-sm font-medium mb-2">Concentration details</p>
                         <div className="text-xs text-slate-600 mb-3 space-y-2">
                           <div>
-                            <p className="font-medium text-slate-700 mb-0.5">Eff. assets (actifs effectifs):</p>
-                            <p>Nombre effectif d'actifs équivalents ≈ 1/∑w². Indique combien d'actifs équilibrés composent le portefeuille.</p>
+                            <p className="font-medium text-slate-700 mb-0.5">Eff. assets (effective assets):</p>
+                            <p>Effective number of equivalent assets ≈ 1/∑w². Indicates how many balanced assets compose the portfolio.</p>
                           </div>
                           <div>
                             <p className="font-medium text-slate-700 mb-0.5">Top-1:</p>
-                            <p>Poids en pourcentage du plus grand actif du portefeuille.</p>
+                            <p>Percentage weight of the largest asset in the portfolio.</p>
                           </div>
                           <div>
                             <p className="font-medium text-slate-700 mb-0.5">Top-3:</p>
-                            <p>Somme cumulée des poids des 3 plus grandes positions.</p>
+                            <p>Cumulative sum of weights of the 3 largest positions.</p>
                           </div>
                         </div>
                         <div className="mt-3 pt-2 border-t border-slate-200">
-                          <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
+                          <p className="text-xs font-mono text-slate-500 mb-1">Formula:</p>
                           <p className="text-xs text-slate-700 font-mono mb-2">Eff. assets = 1 / Σ(w_i)²</p>
-                          <p className="text-xs text-slate-600">Où w_i = poids normalisé (poids % / 100). Si tous les actifs sont égaux, Eff. assets = nombre d'actifs.</p>
+                          <p className="text-xs text-slate-600">Where w_i = normalized weight (weight % / 100). If all assets are equal, Eff. assets = number of assets.</p>
                         </div>
                       </HoverCardContent>
                     </HoverCard>
@@ -612,22 +612,22 @@ const Dashboard = () => {
                         </HoverCardTrigger>
                         <HoverCardContent className="w-80">
                           <p className="text-sm font-medium mb-2">Stablecoin exposure</p>
-                          <p className="text-xs text-slate-600 mb-3">Pourcentage de la valeur totale du portefeuille détenue en stablecoins. Indicateur de risque de change et de liquidité.</p>
+                          <p className="text-xs text-slate-600 mb-3">Percentage of total portfolio value held in stablecoins. Indicator of currency risk and liquidity.</p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">Formule:</p>
-                            <p className="text-xs text-slate-700 font-mono mb-2">Stablecoin Share = (Σ valeur_stablecoins_USD) / TVL × 100%</p>
-                            <p className="text-xs text-slate-600 mb-2">Où TVL = valeur totale du portefeuille en USD.</p>
+                            <p className="text-xs font-mono text-slate-500 mb-1">Formula:</p>
+                            <p className="text-xs text-slate-700 font-mono mb-2">Stablecoin Share = (Σ stablecoins_value_USD) / TVL × 100%</p>
+                            <p className="text-xs text-slate-600 mb-2">Where TVL = total portfolio value in USD.</p>
                           </div>
                           <div className="mt-3 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-medium text-slate-700 mb-1">Tokens détectés:</p>
-                            <p className="text-xs text-slate-600">USDT, USDC, DAI, FRAX, TUSD, USDD, LUSD, GUSD, PYUSD et variantes.</p>
+                            <p className="text-xs font-medium text-slate-700 mb-1">Detected tokens:</p>
+                            <p className="text-xs text-slate-600">USDT, USDC, DAI, FRAX, TUSD, USDD, LUSD, GUSD, PYUSD and variants.</p>
                           </div>
                           <div className="mt-3 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-medium text-slate-700 mb-1">Interprétation:</p>
+                            <p className="text-xs font-medium text-slate-700 mb-1">Interpretation:</p>
                             <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
-                              <li>0-20% : Faible exposition (portefeuille volatile)</li>
-                              <li>20-50% : Exposition modérée (équilibre risque/stable)</li>
-                              <li>&gt; 50% : Forte exposition (portefeuille défensif)</li>
+                              <li>0-20% : Low exposure (volatile portfolio)</li>
+                              <li>20-50% : Moderate exposure (risk/stable balance)</li>
+                              <li>&gt; 50% : High exposure (defensive portfolio)</li>
                             </ul>
                           </div>
                         </HoverCardContent>
@@ -648,11 +648,11 @@ const Dashboard = () => {
                             </p>
                           </HoverCardTrigger>
                           <HoverCardContent className="w-72">
-                            <p className="text-xs font-medium text-slate-700 mb-1">Exposition stablecoin actuelle</p>
+                            <p className="text-xs font-medium text-slate-700 mb-1">Current stablecoin exposure</p>
                             <p className="text-xs text-slate-600 mb-2">
-                              {concentration.stableSharePct.toFixed(1)}% du portefeuille est détenu en stablecoins.
+                              {concentration.stableSharePct.toFixed(1)}% of the portfolio is held in stablecoins.
                             </p>
-                            <p className="text-xs text-slate-500 italic">Survolez le titre pour plus de détails sur le calcul.</p>
+                            <p className="text-xs text-slate-500 italic">Hover over the title for more details on the calculation.</p>
                           </HoverCardContent>
                         </HoverCard>
                         <p className="text-xs text-slate-500">
