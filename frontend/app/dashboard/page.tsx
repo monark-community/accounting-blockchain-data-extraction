@@ -776,9 +776,9 @@ const Dashboard = () => {
                         .filter((h) => (h.valueUsd || 0) > minUsdFilter)
                         .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
                         .slice(0, 12)
-                        .map((h) => (
+                        .map((h, idx) => (
                           <div
-                            key={h.contract || h.symbol}
+                            key={h.contract || `${h.symbol || 'unknown'}-${(h as any).chain || 'unknown'}-${idx}`}
                             className={`p-4 rounded-lg ${
                               !h.delta24hPct
                                 ? "bg-slate-100"
@@ -904,7 +904,7 @@ const Dashboard = () => {
                         : "text-red-600";
                     return (
                       <div
-                        key={h.contract ?? h.symbol ?? `holding-${index}`}
+                        key={h.contract || `${h.symbol || 'unknown'}-${(h as any).chain || 'unknown'}-${index}`}
                         className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
@@ -1120,7 +1120,7 @@ const Dashboard = () => {
                         .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
                         .map((h, i) => (
                           <tr
-                            key={`${h.contract ?? h.symbol ?? i}`}
+                            key={`${h.contract || 'no-contract'}-${(h as any).chain || 'unknown'}-${i}`}
                             className="border-t"
                           >
                             <td className="px-2 py-2 font-medium text-slate-800">
