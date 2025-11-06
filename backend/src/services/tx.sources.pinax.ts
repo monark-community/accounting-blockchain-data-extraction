@@ -131,11 +131,11 @@ export async function fetchNftTransfersPage(
     1,
     Math.min(p.limit ?? TOKEN_API_LIMIT_MAX, TOKEN_API_LIMIT_MAX)
   );
-  if ((p.limit ?? 0) > effLimit) {
-    console.warn(
-      `[tokenapi] capping NFT limit from ${p.limit} to ${effLimit} (max=${TOKEN_API_LIMIT_MAX})`
-    );
-  }
+  // if ((p.limit ?? 0) > effLimit) {
+  //   console.warn(
+  //     `[tokenapi] capping NFT limit from ${p.limit} to ${effLimit} (max=${TOKEN_API_LIMIT_MAX})`
+  //   );
+  // }
   const u = `${base}?${qs({
     network: p.network,
     address: p.address,

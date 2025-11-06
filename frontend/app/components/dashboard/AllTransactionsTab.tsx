@@ -133,9 +133,10 @@ const PAGE_SIZE = 20;
 
 interface AllTransactionsTabProps {
   address?: string;
+  networks?: string; // comma-separated networks; omit to use backend default (all)
 }
 
-export default function AllTransactionsTab({ address: propAddress }: AllTransactionsTabProps) {
+export default function AllTransactionsTab({ address: propAddress, networks: propNetworks }: AllTransactionsTabProps) {
   // Use prop address if provided, otherwise read from URL
   const [address, setAddress] = useState<string>(propAddress || "");
   
@@ -157,6 +158,18 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
+  // Networks: if provided via props, use it; otherwise try URL (?networks=...); else omit to use backend default
+  const [networks, setNetworks] = useState<string | undefined>(propNetworks);
+  useEffect(() => {
+    if (propNetworks) {
+      setNetworks(propNetworks);
+    } else {
+      const sp = new URLSearchParams(window.location.search);
+      const n = sp.get("networks");
+      setNetworks(n || undefined);
+    }
+  }, [propNetworks]);
+
   // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
   const pageCache = useRef(new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>());
 
@@ -173,6 +186,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     asset: true,
     qty: true,
     usd: true,
+    fee: true,
     counterparty: true,
     tx: true,
   } as const;
@@ -183,7 +197,8 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
   // Generate cache key for current filters
   const getCacheKey = (addr: string, pageNum: number) => {
     const filterKey = JSON.stringify(selectedTypes);
-    return `${addr}:${filterKey}:${pageNum}`;
+    const nets = networks || "(all)";
+    return `${addr}:${nets}:${filterKey}:${pageNum}`;
   };
 
   // Load current page (with cache check)
@@ -213,8 +228,8 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
-        // networks: (omitted) → backend default = all supported EVM networks
-        networks: "mainnet",
+        // networks: if undefined → backend default = all supported EVM networks
+        ...(networks ? { networks } : {}),
         page: p,
         limit: PAGE_SIZE,
         minUsd: 0,
@@ -256,7 +271,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
-        networks: "mainnet",
+        ...(networks ? { networks } : {}),
         page: nextPage,
         limit: PAGE_SIZE,
         minUsd: 0,
@@ -605,6 +620,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
                   {visibleColumns.asset && <TableHead>Asset</TableHead>}
                   {visibleColumns.qty && <TableHead>Qty</TableHead>}
                   {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
+                  {visibleColumns.fee && <TableHead>Gas (USD)</TableHead>}
                   {visibleColumns.counterparty && (
                     <TableHead>Counterparty</TableHead>
                   )}
@@ -643,6 +659,7 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
                   {visibleColumns.asset && <TableHead>Asset</TableHead>}
                   {visibleColumns.qty && <TableHead>Qty</TableHead>}
                   {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
+                  {visibleColumns.fee && <TableHead>Gas (USD)</TableHead>}
                   {visibleColumns.counterparty && (
                     <TableHead>Counterparty</TableHead>
                   )}
@@ -695,11 +712,16 @@ export default function AllTransactionsTab({ address: propAddress }: AllTransact
                         {fmtQty(tx.qty, tx.direction)}
                       </TableCell>
                     )}
-                    {visibleColumns.usd && (
-                      <TableCell className="font-mono">
-                        {fmtUSD(tx.usdAtTs)}
-                      </TableCell>
-                    )}
+                  {visibleColumns.usd && (
+                    <TableCell className="font-mono">
+                      {fmtUSD(tx.usdAtTs)}
+                    </TableCell>
+                  )}
+                  {visibleColumns.fee && (
+                    <TableCell className="font-mono">
+                      {fmtUSD(tx.fee?.usdAtTs ?? null)}
+                    </TableCell>
+                  )}
                     {visibleColumns.counterparty && (
                       <TableCell className="font-mono">
                         {tx.counterparty?.label ||
