@@ -326,9 +326,35 @@ export async function getHoldingsOverview(
 
   // 5) KPIs & allocation
   const totalValueUsd = holdings.reduce((s, h) => s + h.valueUsd, 0);
-  const deltaAggUsd = holdings.reduce((s, h) => s + (h.delta24hUsd ?? 0), 0);
+  // Compute 24h KPI only from tokens with a known 24h price
+  let valueNowSum24 = 0;
+  let value24Sum = 0;
+  let have24 = false;
+  for (const h of holdings) {
+    const net = h.chain;
+    const p24Map = price24ByNet.get(net) ?? new Map<string, number>();
+    const isNative = h.contract == null;
+    const contractKey = isNative
+      ? NATIVE_SENTINEL
+      : (h.contract as string).toLowerCase();
+    const key24 = isNative
+      ? `${net}:${NATIVE_SENTINEL}`
+      : `${net}:${contractKey}`;
+    const price24 = p24Map.get(key24);
+    if (typeof price24 === "number" && price24 > 0) {
+      have24 = true;
+      valueNowSum24 += h.valueUsd;
+      const prevMap =
+        prevQtyByNet.get(net) ??
+        new Map<string, { prevQty: number; decimals: number }>();
+      const prevQty =
+        prevMap.get(contractKey)?.prevQty ?? parseFloat(h.qty || "0");
+      value24Sum += prevQty * price24;
+    }
+  }
+  const deltaAggUsd = have24 ? valueNowSum24 - value24Sum : 0;
   const deltaAggPct =
-    totalValueUsd > 0 ? (deltaAggUsd / (totalValueUsd - deltaAggUsd)) * 100 : 0;
+    have24 && value24Sum > 0 ? (deltaAggUsd / value24Sum) * 100 : 0;
 
   const allocation = holdings
     .map((h) => ({ symbol: h.symbol, valueUsd: h.valueUsd, chain: h.chain }))
