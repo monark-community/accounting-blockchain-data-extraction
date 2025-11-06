@@ -17,6 +17,7 @@ export type PricedHolding = {
   valueUsd: number;
   delta24hUsd?: number | null;
   delta24hPct?: number | null;
+  priceSource: "native" | "map" | "tokenapi" | "unknown";
 };
 
 export type OverviewResponse = {

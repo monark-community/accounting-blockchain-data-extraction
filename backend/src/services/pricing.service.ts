@@ -62,25 +62,32 @@ async function fetchDexScreenerPrices(
 
   const url = `https://api.dexscreener.com/latest/dex/tokens/${contracts.join(
     ","
-  )}`;
+  )}?chain=${encodeURIComponent(chain)}`;
   const res = await fetch(url);
   if (!res.ok) return map;
   const json = await res.json();
 
-  const best: Record<string, number> = {};
+  // Choose the pair with the highest liquidity for each base token,
+  // to avoid thin/dust pairs with unrealistic prices.
+  const best: Record<string, { price: number; liq: number }> = {};
   if (Array.isArray(json.pairs)) {
     for (const p of json.pairs) {
       const addr = String(p.baseToken?.address || "").toLowerCase();
       const price = Number(p.priceUsd);
-      if (addr && Number.isFinite(price)) {
-        if (!best[addr] || price > best[addr]) best[addr] = price;
-      }
+      const liq = Number(p?.liquidity?.usd ?? 0);
+      if (!addr || !Number.isFinite(price)) continue;
+      const prev = best[addr];
+      if (!prev || liq > prev.liq) best[addr] = { price, liq };
     }
   }
 
+  // Optionally gate on minimum liquidity to drop obvious outliers
+  const MIN_LIQ_USD = 10_000; // conservative threshold
   for (const c of contracts) {
-    const k = `${network}:${c.toLowerCase()}`;
-    if (best[c.toLowerCase()]) map.set(k, best[c.toLowerCase()]);
+    const rec = best[c.toLowerCase()];
+    if (rec && (rec.liq >= MIN_LIQ_USD || rec.liq === 0)) {
+      map.set(`${network}:${c.toLowerCase()}`, rec.price);
+    }
   }
   return map;
 }
@@ -120,16 +127,48 @@ export async function getPricesFor(
   const need = [...new Set(contracts.map((c) => c.toLowerCase()))];
   const final: PriceMap = new Map();
 
-  const [ds, llama] = await Promise.all([
-    fetchDexScreenerPrices(network, need),
+  // Prefer DeFiLlama when available; fill gaps with DexScreener
+  const [llama, ds] = await Promise.all([
     fetchDefiLlamaPrices(network, need),
+    fetchDexScreenerPrices(network, need),
   ]);
-  ds.forEach((v, k) => final.set(k, v));
-  llama.forEach((v, k) => {
+  llama.forEach((v, k) => final.set(k, v));
+  ds.forEach((v, k) => {
     if (!final.has(k)) final.set(k, v);
   });
 
   return final;
+}
+
+export async function getPricesForWithSource(
+  network: EvmNetwork,
+  contracts: string[]
+): Promise<{
+  prices: PriceMap;
+  sources: Map<string, "defillama" | "dexscreener">;
+}> {
+  const need = [...new Set(contracts.map((c) => c.toLowerCase()))];
+  const prices: PriceMap = new Map();
+  const sources: Map<string, "defillama" | "dexscreener"> = new Map();
+
+  const [llama, ds] = await Promise.all([
+    fetchDefiLlamaPrices(network, need),
+    fetchDexScreenerPrices(network, need),
+  ]);
+
+  // Prefer Llama; fill with Dex
+  llama.forEach((v, k) => {
+    prices.set(k, v);
+    sources.set(k, "defillama");
+  });
+  ds.forEach((v, k) => {
+    if (!prices.has(k)) {
+      prices.set(k, v);
+      sources.set(k, "dexscreener");
+    }
+  });
+
+  return { prices, sources };
 }
 
 export async function getNativePriceUsd(

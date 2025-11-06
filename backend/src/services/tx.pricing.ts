@@ -52,11 +52,11 @@ function nativeCoinId(network: string): string | null {
     case "polygon":
       return "coingecko:polygon-pos";
     case "optimism":
-      return "coingecko:optimism";
+      return "coingecko:ethereum";
     case "base":
-      return "coingecko:base";
+      return "coingecko:ethereum";
     case "arbitrum-one":
-      return "coingecko:arbitrum";
+      return "coingecko:ethereum";
     case "avalanche":
       return "coingecko:avalanche-2";
     case "unichain":

@@ -81,7 +81,21 @@ export async function listTransactionLegs(
 
     // 2) receipts per network (unique tx hashes in this page window)
     const uniqTx = Array.from(new Set(legs.map((l) => l.txHash)));
-    const receipts = await fetchReceiptsBatch(network, uniqTx);
+    // Fetch receipts defensively — failures should not break the listing.
+    let receipts: Record<
+      string,
+      {
+        status: "success" | "reverted" | "unknown";
+        gasUsed: number;
+        effectiveGasPrice: number;
+      }
+    >;
+    try {
+      receipts = await fetchReceiptsBatch(network, uniqTx);
+    } catch (e: any) {
+      console.error(`Receipts fetch failed for ${network}:`, e?.message || e);
+      receipts = {};
+    }
 
     // 3) fill status
     for (const l of legs) {
@@ -178,7 +192,7 @@ export async function getTransactionCountTotal(
   params: ListParams
 ): Promise<number | null> {
   const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
-  
+
   // Get count from Covalent for each network and sum them
   const countPromises = nets.map(async (network) => {
     try {
@@ -193,10 +207,10 @@ export async function getTransactionCountTotal(
   });
 
   const counts = await Promise.all(countPromises);
-  
+
   // Sum all valid counts
   const validCounts = counts.filter((c): c is number => c !== null && c >= 0);
-  
+
   if (validCounts.length === 0) {
     return null; // No valid counts
   }
