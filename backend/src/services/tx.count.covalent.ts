@@ -10,6 +10,18 @@ import {
 import type { EvmNetwork } from "../config/networks";
 import { fetchWithRetry } from "../utils/http";
 
+// Simple throttle to avoid Covalent 429s
+const COVALENT_RPM = Math.max(30, Number(process.env.COVALENT_RPM ?? 60));
+const COVALENT_MIN_INTERVAL_MS = Math.floor(60000 / COVALENT_RPM);
+let covalentNextAt = 0;
+async function covalentThrottle() {
+  const now = Date.now();
+  if (now < covalentNextAt) {
+    await new Promise((r) => setTimeout(r, covalentNextAt - now));
+  }
+  covalentNextAt = Math.max(Date.now(), covalentNextAt) + COVALENT_MIN_INTERVAL_MS;
+}
+
 /**
  * Get total transaction count for an address from Covalent API
  * Returns null if Covalent is not configured, network not supported, or API call fails
@@ -45,18 +57,21 @@ export async function getTransactionCountFromCovalent(
     const firstPageUrl = `${getCovalentApiBase()}/${chainId}/address/${address}/transactions_v3/?page-size=${pageSize}&key=${apiKey}`;
 
     // First, get first page to see pagination info
+    await covalentThrottle();
     const firstPageResponse = await fetchWithRetry(
       firstPageUrl,
       {},
-      { retries: 1, timeoutMs: 10000 }
+      { retries: 2, timeoutMs: 12000 }
     );
 
     if (!firstPageResponse.ok) {
-      const errorText = await firstPageResponse.text().catch(() => "");
-      console.error(
-        `[Covalent] Failed to fetch count for ${address} on ${network}: ${firstPageResponse.status} ${firstPageResponse.statusText}`
-      );
-      console.error(`[Covalent] Response: ${errorText.substring(0, 500)}`);
+      // Reduce noise on 429s; rely on retry and return null silently after retries
+      if (firstPageResponse.status !== 429) {
+        const brief = `${firstPageResponse.status} ${firstPageResponse.statusText}`;
+        console.error(
+          `[Covalent] Failed to fetch count for ${address} on ${network}: ${brief}`
+        );
+      }
       return null;
     }
 

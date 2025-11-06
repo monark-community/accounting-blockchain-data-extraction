@@ -55,8 +55,12 @@ export async function listTransactionLegs(
   const fromTime = toEpochSeconds(params.from);
   const toTime = toEpochSeconds(params.to);
 
-  // 1) fetch + normalize per network
-  const perNetPromises = nets.map(async (network) => {
+  // 1) fetch + normalize per network (limit cross-network concurrency)
+  const maxConc = Math.max(1, Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2));
+  const queue: EvmNetwork[] = [...nets];
+  const chunksArr: NormalizedLegRow[][] = [];
+
+  async function runForNetwork(network: EvmNetwork) {
     const basePage: PageParams = {
       network,
       address: params.address.toLowerCase() as `0x${string}`,
@@ -164,9 +168,19 @@ export async function listTransactionLegs(
     (legs as any)._gasUsdByTx = gasUsdByTx;
 
     return legs;
-  });
+  }
 
-  const chunks = await Promise.all(perNetPromises);
+  async function worker() {
+    while (queue.length) {
+      const net = queue.shift()!;
+      const legs = await runForNetwork(net);
+      chunksArr.push(legs);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () => worker());
+  await Promise.all(workers);
+  const chunks = chunksArr;
   const all = chunks.flat();
 
   // collect gas meta from chunks (each chunk may have _gasUsdByTx)
@@ -193,20 +207,32 @@ export async function getTransactionCountTotal(
 ): Promise<number | null> {
   const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
 
-  // Get count from Covalent for each network and sum them
-  const countPromises = nets.map(async (network) => {
-    try {
-      return await getTransactionCountFromCovalent(params.address, network);
-    } catch (error: any) {
-      console.error(
-        `[Transactions] Failed to get count from Covalent for ${network}:`,
-        error?.message || error
-      );
-      return null;
-    }
-  });
+  // Get count from Covalent for each network and sum them (limit concurrency)
+  const maxConc = Math.max(1, Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2));
+  const queue = [...nets];
+  const results: Array<number | null> = new Array(nets.length).fill(null);
 
-  const counts = await Promise.all(countPromises);
+  async function worker() {
+    while (queue.length) {
+      const network = queue.shift()!;
+      const idx = nets.indexOf(network);
+      try {
+        results[idx] = await getTransactionCountFromCovalent(params.address, network);
+      } catch (error: any) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error(
+            `[Transactions] Failed to get count from Covalent for ${network}:`,
+            error?.message || error
+          );
+        }
+        results[idx] = null;
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () => worker());
+  await Promise.all(workers);
+  const counts = results;
 
   // Sum all valid counts
   const validCounts = counts.filter((c): c is number => c !== null && c >= 0);
