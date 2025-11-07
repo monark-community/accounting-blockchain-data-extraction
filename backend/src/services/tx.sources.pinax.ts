@@ -9,16 +9,17 @@ import { fetchWithRetry } from "../utils/http";
 
 // Simple in-process throttle for Token API to avoid 429s.
 // Configurable via env: TOKEN_API_RPM (requests per minute, default 300)
-const TOKEN_API_RPM = Math.max(60, Number(process.env.TOKEN_API_RPM ?? 300));
-const TOKEN_API_MIN_INTERVAL_MS = Math.floor(60000 / TOKEN_API_RPM);
-let tokenApiNextAt = 0;
-async function tokenApiThrottle() {
-  const now = Date.now();
-  if (now < tokenApiNextAt) {
-    await new Promise((r) => setTimeout(r, tokenApiNextAt - now));
-  }
-  tokenApiNextAt = Math.max(Date.now(), tokenApiNextAt) + TOKEN_API_MIN_INTERVAL_MS;
-}
+// const TOKEN_API_RPM = Math.max(60, Number(process.env.TOKEN_API_RPM ?? 300));
+// const TOKEN_API_MIN_INTERVAL_MS = Math.floor(60000 / TOKEN_API_RPM);
+// let tokenApiNextAt = 0;
+// async function tokenApiThrottle() {
+//   const now = Date.now();
+//   if (now < tokenApiNextAt) {
+//     await new Promise((r) => setTimeout(r, tokenApiNextAt - now));
+//   }
+//   tokenApiNextAt =
+//     Math.max(Date.now(), tokenApiNextAt) + TOKEN_API_MIN_INTERVAL_MS;
+// }
 
 const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL?.replace(/\/+$/, "") ??
@@ -85,7 +86,7 @@ export async function fetchFungibleTransfersPage(
   };
   let outRows: TokenApiTransfer[] = [];
   try {
-    await tokenApiThrottle();
+    // await tokenApiThrottle();
     const r = await fetchWithRetry(
       `${base}?${qs({ ...common, from_address: p.address })}`,
       { headers: tokenApiHeaders() }
@@ -108,7 +109,7 @@ export async function fetchFungibleTransfersPage(
   // inbound
   let inRows: TokenApiTransfer[] = [];
   try {
-    await tokenApiThrottle();
+    // await tokenApiThrottle();
     const r = await fetchWithRetry(
       `${base}?${qs({ ...common, to_address: p.address })}`,
       { headers: tokenApiHeaders() }
@@ -161,7 +162,7 @@ export async function fetchNftTransfersPage(
   })}`;
 
   try {
-    await tokenApiThrottle();
+    // await tokenApiThrottle();
     const res = await fetchWithRetry(u, { headers: tokenApiHeaders() });
     if (!res.ok) {
       // Do not hard-fail the entire listing on NFT errors (e.g., 403 for missing credentials).
