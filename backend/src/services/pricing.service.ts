@@ -1,9 +1,30 @@
 // src/services/pricing.service.ts
 import fetch from "node-fetch";
 import type { EvmNetwork } from "../config/networks";
-import { fetchWithRetry } from "../utils/http";
 
 export const NATIVE_SENTINEL = "__native__";
+
+// Rate limiter for DeFiLlama
+const LLAMA_RPM = Number(process.env.LLAMA_RPM ?? 60);
+const llamaQueue: { timestamp: number }[] = [];
+
+async function rateLimitLlama() {
+  const now = Date.now();
+  // Remove requests older than 1 minute
+  while (llamaQueue.length > 0 && now - llamaQueue[0].timestamp > 60000) {
+    llamaQueue.shift();
+  }
+
+  if (llamaQueue.length >= LLAMA_RPM) {
+    const oldestRequest = llamaQueue[0];
+    const waitTime = 60000 - (now - oldestRequest.timestamp);
+    if (waitTime > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    }
+  }
+
+  llamaQueue.push({ timestamp: Date.now() });
+}
 
 const ENABLE_DEXSCREENER =
   (process.env.ENABLE_DEXSCREENER ?? "false") === "true";
@@ -63,6 +84,17 @@ async function fetchDexScreenerPrices(
   const map: PriceMap = new Map();
   if (!ENABLE_DEXSCREENER || !contracts.length) return map;
 
+  const dsChainMap: Record<EvmNetwork, string | null> = {
+    mainnet: "ethereum",
+    bsc: "bsc",
+    polygon: "polygon",
+    optimism: "optimism",
+    base: "base",
+    "arbitrum-one": "arbitrum",
+    avalanche: "avalanche",
+    unichain: null,
+  };
+
   const chain = dsChainMap[network];
   if (!chain) return map;
 
@@ -98,67 +130,6 @@ async function fetchDexScreenerPrices(
   return map;
 }
 
-// Resolve highest-liquidity Dex pair for a token
-async function dexTopPairIdForToken(
-  network: EvmNetwork,
-  token: string
-): Promise<string | null> {
-  if (!ENABLE_DEXSCREENER) return null;
-  const chain = dsChainMap[network];
-  if (!chain) return null;
-  try {
-    const url = `${DEX_BASE}/tokens/${token}?chain=${encodeURIComponent(
-      chain
-    )}`;
-    const res = await fetchWithRetry(url, {}, { retries: 1, timeoutMs: 10000 });
-    if (!res.ok) return null;
-    const json = await res.json();
-    const pairs: any[] = Array.isArray(json?.pairs) ? json.pairs : [];
-    if (!pairs.length) return null;
-    pairs.sort(
-      (a, b) => Number(b?.liquidity?.usd ?? 0) - Number(a?.liquidity?.usd ?? 0)
-    );
-    return (pairs[0]?.pairId as string) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// Historical price near timestamp from DexScreener bars
-async function dexBarUsdAtTs(
-  pairId: string,
-  tsSec: number
-): Promise<number | null> {
-  try {
-    const from = tsSec - 30 * 60;
-    const to = tsSec + 30 * 60;
-    const url = `${DEX_CHART_BASE}/${encodeURIComponent(
-      pairId
-    )}?from=${from}&to=${to}&resolution=5`;
-    const res = await fetchWithRetry(url, {}, { retries: 1, timeoutMs: 10000 });
-    if (!res.ok) return null;
-    const json = await res.json();
-    const bars: Array<{ t: number; c: number }> = Array.isArray(json?.bars)
-      ? json.bars
-      : [];
-    if (!bars.length) return null;
-    let best = bars[0];
-    let bestDiff = Math.abs((best.t ?? 0) - tsSec * 1000);
-    for (const b of bars) {
-      const bt = b.t > 10_000_000_000 ? Math.floor(b.t / 1000) : b.t;
-      const diff = Math.abs(bt - tsSec);
-      if (diff < bestDiff) {
-        best = { ...b, t: bt } as any;
-        bestDiff = diff;
-      }
-    }
-    const price = Number(best?.c);
-    return Number.isFinite(price) && price > 0 ? price : null;
-  } catch {
-    return null;
-  }
-}
-
 // --- DeFiLlama fallback ---
 async function fetchDefiLlamaPrices(
   network: EvmNetwork,
@@ -172,10 +143,19 @@ async function fetchDefiLlamaPrices(
 
   const keys = contracts.map((c) => `${chain}:${c.toLowerCase()}`);
   const url = `https://coins.llama.fi/prices/current/${keys.join(",")}`;
+  console.log("[DeFiLlama] Fetching prices from:", url);
   const res = await fetch(url);
-  if (!res.ok) return map;
+  if (!res.ok) {
+    console.error(
+      "[DeFiLlama] Error fetching prices:",
+      res.status,
+      await res.text()
+    );
+    return map;
+  }
   const json = await res.json();
   const coins = json?.coins ?? {};
+  console.log("[DeFiLlama] Got response:", json);
   for (const [kk, v] of Object.entries<any>(coins)) {
     const addr = kk.split(":")[1];
     const k = `${network}:${addr}`;
@@ -282,38 +262,35 @@ export async function getPricesAtTimestamp(
   }
   if (!keys.length) return map;
 
+  await rateLimitLlama();
+
   const url = `https://coins.llama.fi/prices/historical/${timestampSec}/${keys.join(
     ","
   )}`;
-  try {
-    const res = await fetchWithRetry(url, {}, { retries: 2, timeoutMs: 10000 });
-    if (res.ok) {
-      const json = await res.json();
-      const coins = json?.coins ?? {};
-      for (const [kk, v] of Object.entries<any>(coins)) {
-        if (kk.startsWith("coingecko:")) {
-          const price = Number(v.price);
-          if (Number.isFinite(price)) map.set(`${network}:__native__`, price);
-        } else {
-          const addr = kk.split(":")[1];
-          const price = Number(v.price);
-          if (Number.isFinite(price)) map.set(`${network}:${addr}`, price);
-        }
-      }
-    }
-  } catch {}
+  console.log("[DeFiLlama Historical] Fetching prices from:", url);
+  const res = await fetch(url);
+  if (!res.ok) {
+    console.error(
+      "[DeFiLlama Historical] Error fetching prices:",
+      res.status,
+      await res.text()
+    );
+    return map;
+  }
+  const json = await res.json();
+  console.log("[DeFiLlama Historical] Got response:", json);
+  const coins = json?.coins ?? {};
 
-  // DexScreener bar fallback for ERC-20s missing a 24h price
-  if (ENABLE_DEXSCREENER) {
-    for (const c of contracts) {
-      const key = `${network}:${c.toLowerCase()}`;
-      if (map.has(key)) continue;
-      const pairId = await dexTopPairIdForToken(network, c);
-      if (!pairId) continue;
-      const px = await dexBarUsdAtTs(pairId, timestampSec);
-      if (px && px > 0) map.set(key, px);
+  for (const [kk, v] of Object.entries<any>(coins)) {
+    if (kk.startsWith("coingecko:")) {
+      // native
+      const price = Number(v.price);
+      if (Number.isFinite(price)) map.set(`${network}:__native__`, price);
+    } else {
+      const addr = kk.split(":")[1]; // chain:0x...
+      const price = Number(v.price);
+      if (Number.isFinite(price)) map.set(`${network}:${addr}`, price);
     }
   }
-
   return map;
 }
