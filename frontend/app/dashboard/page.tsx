@@ -513,10 +513,16 @@ const Dashboard = () => {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="graphs">Graphs</TabsTrigger>
-            <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
+          <TabsList className="flex w-full gap-2">
+            <TabsTrigger className="flex-1" value="overview">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="graphs">
+              Graphs
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="all-transactions">
+              All Transactions
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -588,19 +594,19 @@ const Dashboard = () => {
                             Volatility (24h proxy)
                           </p>
                           <p className="text-xs text-slate-600 mb-2">
-                            Valeur absolue du P&L 24h divisée par la valeur
-                            totale du portefeuille. Plus élevé = plus volatil.
+                            Absolute value of 24h P&L divided by total portfolio
+                            value. Higher = more volatile.
                           </p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
                             <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formule:
+                              Formula:
                             </p>
                             <p className="text-xs text-slate-700 font-mono">
                               |Δ24h USD| / TVL × 100%
                             </p>
                             <p className="text-xs text-slate-500 mt-2">
-                              Où Δ24h = variation absolue en USD sur 24h, TVL =
-                              valeur totale du portefeuille.
+                              Where Δ24h = absolute change in USD over 24h, TVL
+                              = total portfolio value.
                             </p>
                           </div>
                         </HoverCardContent>
@@ -619,19 +625,19 @@ const Dashboard = () => {
                             Blue-chip share
                           </p>
                           <p className="text-xs text-slate-600 mb-2">
-                            Part du portefeuille détenue en ETH, WETH, BTC ou
+                            Portion of portfolio held in ETH, WETH, BTC, or
                             WBTC.
                           </p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
                             <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formule:
+                              Formula:
                             </p>
                             <p className="text-xs text-slate-700 font-mono">
-                              (Σ valeur ETH/WETH/BTC/WBTC) / TVL × 100%
+                              (Σ value ETH/WETH/BTC/WBTC) / TVL × 100%
                             </p>
                             <p className="text-xs text-slate-500 mt-2">
-                              Somme des valeurs USD de tous les tokens ETH,
-                              WETH, BTC, WBTC divisée par la valeur totale.
+                              Sum of USD values of all ETH, WETH, BTC, WBTC
+                              tokens divided by total value.
                             </p>
                           </div>
                         </HoverCardContent>
@@ -648,19 +654,19 @@ const Dashboard = () => {
                             Chain breadth
                           </p>
                           <p className="text-xs text-slate-600 mb-2">
-                            Nombre de chaînes représentant au moins 2% de la
-                            valeur du portefeuille.
+                            Number of chains representing at least 2% of
+                            portfolio value.
                           </p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
                             <p className="text-xs font-mono text-slate-500 mb-1">
-                              Calcul:
+                              Calculation:
                             </p>
                             <p className="text-xs text-slate-700 font-mono">
-                              count(chains où valeur_chaîne / TVL ≥ 0.02)
+                              count(chains where chain_value / TVL ≥ 0.02)
                             </p>
                             <p className="text-xs text-slate-500 mt-2">
-                              Indicateur de diversification multi-chaînes. Plus
-                              élevé = meilleure répartition.
+                              Multi-chain diversification indicator. Higher =
+                              better distribution.
                             </p>
                           </div>
                         </HoverCardContent>
@@ -696,38 +702,37 @@ const Dashboard = () => {
                             Herfindahl–Hirschman Index (HHI)
                           </p>
                           <p className="text-xs text-slate-600 mb-3">
-                            Mesure de concentration calculée sur les poids des
-                            actifs dans le portefeuille. Plus faible = meilleure
-                            diversification.
+                            Concentration measure calculated on asset weights in
+                            the portfolio. Lower = better diversification.
                           </p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
                             <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formule:
+                              Formula:
                             </p>
                             <p className="text-xs text-slate-700 font-mono mb-2">
                               HHI = Σ(w_i)² × 100
                             </p>
                             <p className="text-xs text-slate-600 mb-2">
-                              Où w_i = poids en pourcentage de l'actif i divisé
-                              par 100.
+                              Where w_i = percentage weight of asset i divided
+                              by 100.
                             </p>
                           </div>
                           <div className="mt-3 pt-2 border-t border-slate-200">
                             <p className="text-xs font-medium text-slate-700 mb-1">
-                              Interprétation:
+                              Interpretation:
                             </p>
                             <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
                               <li>
-                                &lt; 15 : Bien diversifié (plusieurs actifs
-                                équilibrés)
+                                &lt; 15 : Well diversified (multiple balanced
+                                assets)
                               </li>
                               <li>
-                                15-25 : Modérément concentré (quelques actifs
-                                dominants)
+                                15-25 : Moderately concentrated (few dominant
+                                assets)
                               </li>
                               <li>
-                                &gt; 25 : Très concentré (risque élevé de
-                                concentration)
+                                &gt; 25 : Highly concentrated (high
+                                concentration risk)
                               </li>
                             </ul>
                           </div>
@@ -752,16 +757,16 @@ const Dashboard = () => {
                           </HoverCardTrigger>
                           <HoverCardContent className="w-72">
                             <p className="text-xs font-medium text-slate-700 mb-1">
-                              Valeur HHI actuelle
+                              Current HHI value
                             </p>
                             <p className="text-xs text-slate-600 mb-2">
-                              Index de concentration calculé sur{" "}
-                              {ov?.allocation?.length || 0} actifs dans le
-                              portefeuille.
+                              Concentration index calculated on{" "}
+                              {ov?.allocation?.length || 0} assets in the
+                              portfolio.
                             </p>
                             <p className="text-xs text-slate-500 italic">
-                              Survolez le titre pour plus de détails sur le
-                              calcul.
+                              Hover over the title for more details on the
+                              calculation.
                             </p>
                           </HoverCardContent>
                         </HoverCard>
@@ -794,17 +799,17 @@ const Dashboard = () => {
                       </HoverCardTrigger>
                       <HoverCardContent className="w-80">
                         <p className="text-sm font-medium mb-2">
-                          Détails de concentration
+                          Concentration details
                         </p>
                         <div className="text-xs text-slate-600 mb-3 space-y-2">
                           <div>
                             <p className="font-medium text-slate-700 mb-0.5">
-                              Eff. assets (actifs effectifs):
+                              Eff. assets (effective assets):
                             </p>
                             <p>
-                              Nombre effectif d'actifs équivalents ≈ 1/∑w².
-                              Indique combien d'actifs équilibrés composent le
-                              portefeuille.
+                              Effective number of equivalent assets ≈ 1/∑w².
+                              Indicates how many balanced assets compose the
+                              portfolio.
                             </p>
                           </div>
                           <div>
@@ -812,8 +817,8 @@ const Dashboard = () => {
                               Top-1:
                             </p>
                             <p>
-                              Poids en pourcentage du plus grand actif du
-                              portefeuille.
+                              Percentage weight of the largest asset in the
+                              portfolio.
                             </p>
                           </div>
                           <div>
@@ -821,22 +826,22 @@ const Dashboard = () => {
                               Top-3:
                             </p>
                             <p>
-                              Somme cumulée des poids des 3 plus grandes
+                              Cumulative sum of weights of the 3 largest
                               positions.
                             </p>
                           </div>
                         </div>
                         <div className="mt-3 pt-2 border-t border-slate-200">
                           <p className="text-xs font-mono text-slate-500 mb-1">
-                            Formule:
+                            Formula:
                           </p>
                           <p className="text-xs text-slate-700 font-mono mb-2">
                             Eff. assets = 1 / Σ(w_i)²
                           </p>
                           <p className="text-xs text-slate-600">
-                            Où w_i = poids normalisé (poids % / 100). Si tous
-                            les actifs sont égaux, Eff. assets = nombre
-                            d'actifs.
+                            Where w_i = normalized weight (weight % / 100). If
+                            all assets are equal, Eff. assets = number of
+                            assets.
                           </p>
                         </div>
                       </HoverCardContent>
@@ -865,47 +870,42 @@ const Dashboard = () => {
                             Stablecoin exposure
                           </p>
                           <p className="text-xs text-slate-600 mb-3">
-                            Pourcentage de la valeur totale du portefeuille
-                            détenue en stablecoins. Indicateur de risque de
-                            change et de liquidité.
+                            Percentage of total portfolio value held in
+                            stablecoins. Indicator of currency risk and
+                            liquidity.
                           </p>
                           <div className="mt-2 pt-2 border-t border-slate-200">
                             <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formule:
+                              Formula:
                             </p>
                             <p className="text-xs text-slate-700 font-mono mb-2">
-                              Stablecoin Share = (Σ valeur_stablecoins_USD) /
-                              TVL × 100%
+                              Stablecoin Share = (Σ stablecoins_value_USD) / TVL
+                              × 100%
                             </p>
                             <p className="text-xs text-slate-600 mb-2">
-                              Où TVL = valeur totale du portefeuille en USD.
+                              Where TVL = total portfolio value in USD.
                             </p>
                           </div>
                           <div className="mt-3 pt-2 border-t border-slate-200">
                             <p className="text-xs font-medium text-slate-700 mb-1">
-                              Tokens détectés:
+                              Detected tokens:
                             </p>
                             <p className="text-xs text-slate-600">
                               USDT, USDC, DAI, FRAX, TUSD, USDD, LUSD, GUSD,
-                              PYUSD et variantes.
+                              PYUSD and variants.
                             </p>
                           </div>
                           <div className="mt-3 pt-2 border-t border-slate-200">
                             <p className="text-xs font-medium text-slate-700 mb-1">
-                              Interprétation:
+                              Interpretation:
                             </p>
                             <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
+                              <li>0-20% : Low exposure (volatile portfolio)</li>
                               <li>
-                                0-20% : Faible exposition (portefeuille
-                                volatile)
+                                20-50% : Moderate exposure (risk/stable balance)
                               </li>
                               <li>
-                                20-50% : Exposition modérée (équilibre
-                                risque/stable)
-                              </li>
-                              <li>
-                                &gt; 50% : Forte exposition (portefeuille
-                                défensif)
+                                &gt; 50% : High exposure (defensive portfolio)
                               </li>
                             </ul>
                           </div>
@@ -930,15 +930,15 @@ const Dashboard = () => {
                           </HoverCardTrigger>
                           <HoverCardContent className="w-72">
                             <p className="text-xs font-medium text-slate-700 mb-1">
-                              Exposition stablecoin actuelle
+                              Current stablecoin exposure
                             </p>
                             <p className="text-xs text-slate-600 mb-2">
-                              {concentration.stableSharePct.toFixed(1)}% du
-                              portefeuille est détenu en stablecoins.
+                              {concentration.stableSharePct.toFixed(1)}% of the
+                              portfolio is held in stablecoins.
                             </p>
                             <p className="text-xs text-slate-500 italic">
-                              Survolez le titre pour plus de détails sur le
-                              calcul.
+                              Hover over the title for more details on the
+                              calculation.
                             </p>
                           </HoverCardContent>
                         </HoverCard>
@@ -1062,9 +1062,14 @@ const Dashboard = () => {
                         .filter((h) => (h.valueUsd || 0) > minUsdFilter)
                         .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
                         .slice(0, 12)
-                        .map((h) => (
+                        .map((h, idx) => (
                           <div
-                            key={h.contract || h.symbol}
+                            key={
+                              h.contract ||
+                              `${h.symbol || "unknown"}-${
+                                (h as any).chain || "unknown"
+                              }-${idx}`
+                            }
                             className={`p-4 rounded-lg ${
                               !h.delta24hPct
                                 ? "bg-slate-100"
@@ -1190,9 +1195,12 @@ const Dashboard = () => {
                         : "text-red-600";
                     return (
                       <div
-                        key={`${h.contract ?? "native"}-${
-                          h.symbol ?? "unknown"
-                        }-${index}`}
+                        key={
+                          h.contract ||
+                          `${h.symbol || "unknown"}-${
+                            (h as any).chain || "unknown"
+                          }-${index}`
+                        }
                         className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
@@ -1408,7 +1416,9 @@ const Dashboard = () => {
                         .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
                         .map((h, i) => (
                           <tr
-                            key={`${h.contract ?? h.symbol ?? i}`}
+                            key={`${h.contract || "no-contract"}-${
+                              (h as any).chain || "unknown"
+                            }-${i}`}
                             className="border-t"
                           >
                             <td className="px-2 py-2 font-medium text-slate-800">
@@ -1464,40 +1474,39 @@ const Dashboard = () => {
             <Card className="p-6 bg-white shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-800">
-                  Évolution du Portfolio (6 derniers mois)
+                  Portfolio Evolution (Last 6 Months)
                 </h3>
                 {loadingHistorical && (
-                  <span className="text-xs text-slate-500">Chargement...</span>
+                  <span className="text-xs text-slate-500">Loading...</span>
                 )}
               </div>
               {loadingHistorical ? (
                 <div className="space-y-4">
                   <Skeleton className="h-[400px] w-full" />
                   <p className="text-sm text-slate-500 text-center">
-                    Récupération des données historiques, cela peut prendre
-                    quelques secondes...
+                    Fetching historical data, this may take a few seconds...
                   </p>
                 </div>
               ) : historicalChartData.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-sm text-slate-500 mb-2">
-                    Aucune donnée historique disponible pour cette adresse.
+                    No historical data available for this address.
                   </p>
                   <p className="text-xs text-slate-400 mb-4">
-                    Les données historiques nécessitent des transactions sur les
-                    6 derniers mois.
+                    Historical data requires transactions over the last 6
+                    months.
                   </p>
                   <details className="text-xs text-slate-400 text-left max-w-md mx-auto">
                     <summary className="cursor-pointer text-slate-500 mb-2">
-                      Informations de débogage
+                      Debug Information
                     </summary>
                     <div className="bg-slate-50 p-3 rounded mt-2 space-y-1">
-                      <p>Adresse: {address?.substring(0, 10)}...</p>
+                      <p>Address: {address?.substring(0, 10)}...</p>
                       <p>
-                        Réseaux: {networks?.split(",").length || 0} réseau(x)
+                        Networks: {networks?.split(",").length || 0} network(s)
                       </p>
-                      <p>Points reçus: {historicalData.length}</p>
-                      <p>Vérifiez les logs du backend pour plus de détails.</p>
+                      <p>Points received: {historicalData.length}</p>
+                      <p>Check backend logs for more details.</p>
                     </div>
                   </details>
                 </div>
@@ -1521,15 +1530,14 @@ const Dashboard = () => {
                         </div>
                         <div className="ml-3 flex-1">
                           <h3 className="text-sm font-medium text-amber-800">
-                            Données estimées
+                            Estimated Data
                           </h3>
                           <div className="mt-1 text-sm text-amber-700">
                             <p>
-                              Les données historiques réelles ne sont pas
-                              disponibles via l'API. Ce graphique affiche une
-                              estimation basée sur la composition actuelle de
-                              votre portefeuille. Les valeurs peuvent ne pas
-                              refléter précisément l'historique réel.
+                              Real historical data is not available via the API.
+                              This chart displays an estimation based on your
+                              current portfolio composition. Values may not
+                              accurately reflect actual history.
                             </p>
                           </div>
                         </div>
@@ -1589,12 +1597,11 @@ const Dashboard = () => {
                   {!loadingHistorical && historicalChartData.length > 0 && (
                     <div className="mt-4 text-xs text-slate-500">
                       <p>
-                        Données hebdomadaires sur {historicalChartData.length}{" "}
-                        points
+                        Weekly data over {historicalChartData.length} points
                         {historicalChartData.length > 0 && (
                           <>
                             {" • "}
-                            Du {historicalChartData[0].date} au{" "}
+                            From {historicalChartData[0].date} to{" "}
                             {
                               historicalChartData[
                                 historicalChartData.length - 1
@@ -1703,6 +1710,229 @@ const Dashboard = () => {
                   Weighted move:{" "}
                   {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over 24h.
                 </p>
+              )}
+            </Card>
+
+            {/* Asset Distribution Pie Chart */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Asset Distribution
+              </h3>
+              {loadingOv ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : !ov ? (
+                <div className="text-sm text-slate-500">
+                  Load an address to see asset distribution.
+                </div>
+              ) : allocationData.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No assets to display.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <RPieChart>
+                    <Pie
+                      data={allocationData}
+                      dataKey="usd"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
+                    >
+                      {allocationData.map((entry, index) => {
+                        const colors = [
+                          "#3b82f6",
+                          "#10b981",
+                          "#f59e0b",
+                          "#ef4444",
+                          "#8b5cf6",
+                          "#ec4899",
+                          "#06b6d4",
+                          "#84cc16",
+                        ];
+                        return (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={colors[index % colors.length]}
+                          />
+                        );
+                      })}
+                    </Pie>
+                    <RechartsTooltip
+                      formatter={(value: number, name: string, props: any) => [
+                        fmtUSD(value),
+                        `${name} (${fmtPct(props.payload.pct)})`,
+                      ]}
+                    />
+                    <Legend />
+                  </RPieChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* Stablecoin vs Risk Assets */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Stablecoin vs Risk Assets
+              </h3>
+              {loadingOv || !ov ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
+                <div className="text-sm text-slate-500">No data available.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <RPieChart>
+                    <Pie
+                      data={[
+                        { name: "Stablecoins", value: stableVsRisk.stable },
+                        { name: "Risk Assets", value: stableVsRisk.nonStable },
+                      ]}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label={(entry) =>
+                        `${entry.name}: ${fmtPct(
+                          (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
+                        )}`
+                      }
+                    >
+                      <Cell fill="#10b981" />
+                      <Cell fill="#f59e0b" />
+                    </Pie>
+                    <RechartsTooltip
+                      formatter={(value: number) => fmtUSD(value)}
+                    />
+                    <Legend />
+                  </RPieChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+
+            {/* Top Gainers vs Losers Comparison */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Top Gainers vs Losers (24h)
+              </h3>
+              {loadingOv || !ov ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : movers.gainers.length === 0 && movers.losers.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No 24h change data available.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={[
+                      ...movers.gainers.map((h, i) => ({
+                        name: h.symbol || "Unknown",
+                        value: h.delta24hUsd || 0,
+                        pct: h.delta24hPct || 0,
+                        type: "Gainer",
+                      })),
+                      ...movers.losers.map((h, i) => ({
+                        name: h.symbol || "Unknown",
+                        value: h.delta24hUsd || 0,
+                        pct: h.delta24hPct || 0,
+                        type: "Loser",
+                      })),
+                    ]}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                    <RechartsTooltip
+                      formatter={(value: number, _name: string, props: any) => [
+                        `${fmtUSD(value)} (${
+                          props.payload.pct >= 0 ? "+" : ""
+                        }${fmtPct(props.payload.pct)})`,
+                        "24h Change",
+                      ]}
+                    />
+                    <Bar dataKey="value">
+                      {[...movers.gainers, ...movers.losers].map((h, index) => (
+                        <Cell
+                          key={`mover-cell-${index}`}
+                          fill={
+                            (h.delta24hUsd || 0) >= 0 ? "#10b981" : "#ef4444"
+                          }
+                        />
+                      ))}
+                    </Bar>
+                    <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </Card>
+            {/* Asset Performance by 24h Change */}
+            <Card className="p-6 bg-white shadow-sm">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                Asset Performance (24h % Change)
+              </h3>
+              {loadingOv || !ov ? (
+                <Skeleton className="h-[300px] w-full" />
+              ) : (
+                (() => {
+                  const performanceData = (ov.holdings ?? [])
+                    .filter((h) => typeof h.delta24hPct === "number")
+                    .sort((a, b) => (b.delta24hPct || 0) - (a.delta24hPct || 0))
+                    .slice(0, 15)
+                    .map((h) => ({
+                      name: h.symbol || "Unknown",
+                      change: h.delta24hPct || 0,
+                      value: h.valueUsd || 0,
+                    }));
+                  return performanceData.length === 0 ? (
+                    <div className="text-sm text-slate-500">
+                      No 24h performance data available.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <BarChart
+                        data={performanceData}
+                        margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                          dataKey="name"
+                          angle={-45}
+                          textAnchor="end"
+                          height={80}
+                          tick={{ fontSize: 10 }}
+                        />
+                        <YAxis tickFormatter={(v) => `${v}%`} />
+                        <RechartsTooltip
+                          formatter={(
+                            value: number,
+                            _name: string,
+                            props: any
+                          ) => [
+                            `${value >= 0 ? "+" : ""}${value.toFixed(
+                              2
+                            )}% (${fmtUSD(props.payload.value)})`,
+                            "24h Change",
+                          ]}
+                        />
+                        <Bar dataKey="change">
+                          {performanceData.map((entry, index) => (
+                            <Cell
+                              key={`perf-cell-${index}`}
+                              fill={entry.change >= 0 ? "#10b981" : "#ef4444"}
+                            />
+                          ))}
+                        </Bar>
+                        <ReferenceLine
+                          y={0}
+                          stroke="#666"
+                          strokeDasharray="2 2"
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  );
+                })()
               )}
             </Card>
           </TabsContent>
