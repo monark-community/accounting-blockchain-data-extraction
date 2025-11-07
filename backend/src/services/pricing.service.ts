@@ -27,9 +27,9 @@ async function rateLimitLlama() {
 }
 
 // Toggle verbose pricing/debug logs. When false only concise errors are printed.
-const PRICING_DEBUG = (process.env.PRICING_DEBUG ?? "false") === "true";
+const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
 function dbg(...args: any[]) {
-  if (PRICING_DEBUG) console.log(...args);
+  if (LOGS_DEBUG) console.log(...args);
 }
 
 const ENABLE_DEXSCREENER =
@@ -63,6 +63,8 @@ const dsChainMap: Record<EvmNetwork, string | null> = {
 
 const DEX_BASE = "https://api.dexscreener.com/latest/dex";
 const DEX_CHART_BASE = "https://api.dexscreener.com/chart/bars";
+const dexPairCache = new Map<string, string | null>(); // `${network}:${token}` -> pairId
+const dexHistCache = new Map<string, number>(); // `${pairId}:${bucketTs}` -> price
 
 const nativeToLlamaId: Record<EvmNetwork, string | null> = {
   mainnet: "coingecko:ethereum",
@@ -134,6 +136,106 @@ async function fetchDexScreenerPrices(
     }
   }
   return map;
+}
+
+async function getDexPairId(
+  network: EvmNetwork,
+  contract: string
+): Promise<string | null> {
+  const key = `${network}:${contract.toLowerCase()}`;
+  if (dexPairCache.has(key)) return dexPairCache.get(key)!;
+
+  const chain = dsChainMap[network];
+  if (!chain) {
+    dexPairCache.set(key, null);
+    return null;
+  }
+
+  const url = `${DEX_BASE}/tokens/${contract}?chain=${encodeURIComponent(
+    chain
+  )}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      dexPairCache.set(key, null);
+      return null;
+    }
+    const json = await res.json();
+    const pairs: any[] = Array.isArray(json?.pairs) ? json.pairs : [];
+    if (!pairs.length) {
+      dexPairCache.set(key, null);
+      return null;
+    }
+    pairs.sort(
+      (a, b) => Number(b?.liquidity?.usd ?? 0) - Number(a?.liquidity?.usd ?? 0)
+    );
+    const pairId = pairs[0]?.pairId ?? null;
+    dexPairCache.set(key, pairId);
+    return pairId;
+  } catch {
+    dexPairCache.set(key, null);
+    return null;
+  }
+}
+
+async function getDexPriceAtTimestamp(
+  pairId: string,
+  timestampSec: number
+): Promise<number | undefined> {
+  const bucket = Math.floor(timestampSec / (5 * 60)) * (5 * 60);
+  const cacheKey = `${pairId}:${bucket}`;
+  if (dexHistCache.has(cacheKey)) return dexHistCache.get(cacheKey);
+
+  const from = timestampSec - 30 * 60;
+  const to = timestampSec + 30 * 60;
+  const url = `${DEX_CHART_BASE}/${encodeURIComponent(
+    pairId
+  )}?from=${from}&to=${to}&resolution=5`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return undefined;
+    const json = await res.json();
+    const bars: Array<{ t: number; c: number }> = Array.isArray(json?.bars)
+      ? json.bars
+      : [];
+    if (!bars.length) return undefined;
+    let best = bars[0];
+    let bestDiff = Number.MAX_SAFE_INTEGER;
+    for (const bar of bars) {
+      const t = bar.t > 10_000_000_000 ? Math.floor(bar.t / 1000) : bar.t;
+      const diff = Math.abs(t - timestampSec);
+      if (diff < bestDiff) {
+        best = { t, c: bar.c };
+        bestDiff = diff;
+      }
+    }
+    const price = Number(best?.c);
+    if (Number.isFinite(price)) {
+      dexHistCache.set(cacheKey, price);
+      return price;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+async function fetchDexScreenerPricesAtTimestamp(
+  network: EvmNetwork,
+  contracts: string[],
+  timestampSec: number
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!ENABLE_DEXSCREENER || !contracts.length) return out;
+  for (const c of contracts) {
+    const pairId = await getDexPairId(network, c);
+    if (!pairId) continue;
+    const price = await getDexPriceAtTimestamp(pairId, timestampSec);
+    if (typeof price === "number") {
+      out.set(`${network}:${c.toLowerCase()}`, price);
+    }
+  }
+  return out;
 }
 
 // --- DeFiLlama fallback ---
@@ -255,40 +357,60 @@ export async function getPricesAtTimestamp(
 ): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   const chain = llamaChainMap[network];
-  if (!chain) return map;
-
-  const keys: string[] = contracts.map((c) => `${chain}:${c.toLowerCase()}`);
-  if (includeNative) {
-    const id = nativeToLlamaId[network];
-    if (id) keys.push(id);
-  }
-  if (!keys.length) return map;
-
-  await rateLimitLlama();
-
-  const url = `https://coins.llama.fi/prices/historical/${timestampSec}/${keys.join(
-    ","
-  )}`;
-  dbg("[DeFiLlama Historical] Fetching prices from:", url);
-  const res = await fetch(url);
-  if (!res.ok) {
-    console.error("[DeFiLlama Historical] Error fetching prices:", res.status);
-    return map;
-  }
-  const json = await res.json();
-  dbg("[DeFiLlama Historical] Got response:", json);
-  const coins = json?.coins ?? {};
-
-  for (const [kk, v] of Object.entries<any>(coins)) {
-    if (kk.startsWith("coingecko:")) {
-      // native
-      const price = Number(v.price);
-      if (Number.isFinite(price)) map.set(`${network}:__native__`, price);
-    } else {
-      const addr = kk.split(":")[1]; // chain:0x...
-      const price = Number(v.price);
-      if (Number.isFinite(price)) map.set(`${network}:${addr}`, price);
+  const llamaKeys: string[] = [];
+  if (chain) {
+    llamaKeys.push(...contracts.map((c) => `${chain}:${c.toLowerCase()}`));
+    if (includeNative) {
+      const id = nativeToLlamaId[network];
+      if (id) llamaKeys.push(id);
     }
   }
+
+  if (llamaKeys.length) {
+    await rateLimitLlama();
+    try {
+      const url = `https://coins.llama.fi/prices/historical/${timestampSec}/${llamaKeys.join(
+        ","
+      )}`;
+      dbg("[DeFiLlama Historical] Fetching prices from:", url);
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.error(
+          "[DeFiLlama Historical] Error fetching prices:",
+          res.status
+        );
+      } else {
+        const json = await res.json();
+        dbg("[DeFiLlama Historical] Got response:", json);
+        const coins = json?.coins ?? {};
+        for (const [kk, v] of Object.entries<any>(coins)) {
+          if (kk.startsWith("coingecko:")) {
+            const price = Number(v.price);
+            if (Number.isFinite(price)) map.set(`${network}:__native__`, price);
+          } else {
+            const addr = kk.split(":")[1];
+            const price = Number(v.price);
+            if (Number.isFinite(price)) map.set(`${network}:${addr}`, price);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[DeFiLlama Historical] Fetch error:", err);
+    }
+  }
+
+  const missing = contracts
+    .map((c) => c.toLowerCase())
+    .filter((c) => c !== NATIVE_SENTINEL && !map.has(`${network}:${c}`));
+
+  if (missing.length) {
+    const fallback = await fetchDexScreenerPricesAtTimestamp(
+      network,
+      missing,
+      timestampSec
+    );
+    fallback.forEach((v, k) => map.set(k, v));
+  }
+
   return map;
 }
