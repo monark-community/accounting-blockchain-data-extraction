@@ -308,12 +308,13 @@ export default function AllTransactionsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey]);
 
-  // When server-side class filter changes (chips), go back to page 1
+  // When server-side class filter changes (chips), reload current page with new filter
   useEffect(() => {
     if (!address) return;
-    setPage(1);
-    pageCache.current.clear(); // Clear cache when filters change
-    load(1);
+    // Don't clear cache - it's already organized by filter via getCacheKey
+    // This allows instant navigation when returning to previously visited filters
+    // Load current page with new filter (if page doesn't exist, backend will handle it)
+    load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
 
@@ -334,8 +335,14 @@ export default function AllTransactionsTab({
     return Math.ceil(totalCount / PAGE_SIZE);
   }, [totalCount]);
 
-  const canPrev = page > 1;
-  const canNext = hasNext;
+  // Check if any filter is active (not "all")
+  const hasActiveFilter = useMemo(() => {
+    return !Array.isArray(selectedTypes) || (selectedTypes as any)[0] !== "all";
+  }, [selectedTypes]);
+
+  // Block navigation buttons when filters are active
+  const canPrev = !hasActiveFilter && page > 1;
+  const canNext = !hasActiveFilter && hasNext;
   const goPrev = () => {
     const p = Math.max(1, page - 1);
     setPage(p);
@@ -460,7 +467,15 @@ export default function AllTransactionsTab({
             </h3>
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-                {totalCount && totalPages ? (
+                {hasActiveFilter ? (
+                  loading ? (
+                    <span className="font-medium">Loading...</span>
+                  ) : (
+                    <span className="font-medium">
+                      {rows.length} transaction{rows.length !== 1 ? 's' : ''}
+                    </span>
+                  )
+                ) : totalCount && totalPages ? (
                   <span className="font-medium">
                     Page {page} of {totalPages} ({totalCount.toLocaleString()}{" "}
                     total)

@@ -80,13 +80,20 @@ router.get("/:address", async (req, res) => {
       class: req.query.class,
     });
 
-    // Get total count from Covalent (in parallel with fetching transactions)
-    const totalCountPromise = getTransactionCountTotal({
-      address: addr,
-      networks: req.query.networks as string | string[] | undefined,
-      from: req.query.from as string | undefined,
-      to: req.query.to as string | undefined,
-    });
+    // Check if class filter is applied (expenses, incomes, etc.)
+    const classParam = (req.query.class as string | undefined)?.trim();
+    const hasClassFilter = !!classParam;
+
+    // Get total count from Covalent ONLY if no class filter is applied
+    // (Covalent doesn't support our custom class filters like expenses/incomes)
+    const totalCountPromise = hasClassFilter
+      ? Promise.resolve(null) // Don't use Covalent when filters are active
+      : getTransactionCountTotal({
+          address: addr,
+          networks: req.query.networks as string | string[] | undefined,
+          from: req.query.from as string | undefined,
+          to: req.query.to as string | undefined,
+        });
 
     const legsRaw = await listTransactionLegs({
       address: addr,
@@ -110,7 +117,6 @@ router.get("/:address", async (req, res) => {
       "hard";
     const legs = applyLegFilters(legsRaw, { minUsd, spamFilter });
 
-    const classParam = (req.query.class as string | undefined)?.trim();
     const classSet = classParam
       ? new Set(classParam.split(",").map((s) => s.trim()))
       : null;
@@ -120,7 +126,7 @@ router.get("/:address", async (req, res) => {
     const start = (page - 1) * limit;
     const pagedLegs = legsFilteredByClass.slice(start, start + limit);
 
-    // Get total count (may be null if Covalent fails)
+    // Get total count (null if filters are active or Covalent fails)
     const totalCount = await totalCountPromise;
 
     res.json({
