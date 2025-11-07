@@ -21,8 +21,33 @@ type ListParams = {
   from?: string; // ISO datetime or epoch seconds (string ok)
   to?: string; // ISO datetime or epoch seconds (string ok)
   page?: number; // default 1
-  limit?: number; // default 100
+  limit?: number; // default 20
 };
+
+const ZERO_ADDRESS: `0x${string}` =
+  "0x0000000000000000000000000000000000000000";
+const NATIVE_SYMBOL: Record<EvmNetwork, string> = {
+  mainnet: "ETH",
+  bsc: "BNB",
+  polygon: "MATIC",
+  optimism: "ETH",
+  base: "ETH",
+  "arbitrum-one": "ETH",
+  avalanche: "AVAX",
+  unichain: "ETH",
+};
+const TX_FETCH_WINDOW_CAP = Number(process.env.TX_FETCH_WINDOW_CAP ?? 80);
+const LOGS_DEBUG =
+  String(process.env.LOGS_DEBUG ?? "false").toLowerCase() === "true";
+const debugLog = (...args: any[]) => {
+  if (LOGS_DEBUG) {
+    console.log("[transactions.service]", ...args);
+  }
+};
+
+function nativeSymbolFor(network: EvmNetwork): string {
+  return NATIVE_SYMBOL[network] ?? "ETH";
+}
 
 function toEpochSeconds(v?: string): number | undefined {
   if (!v) return undefined;
@@ -46,34 +71,61 @@ export async function listTransactionLegs(
   params: ListParams
 ): Promise<NormalizedLegRow[]> {
   const page = Math.max(1, params.page ?? 1);
-  const limit = Math.min(
-    Math.max(1, params.limit ?? Number(process.env.TX_DEFAULT_LIMIT ?? 100)),
-    Number(process.env.TX_MAX_LIMIT ?? 200)
+  const defaultLimit = Number(process.env.TX_DEFAULT_LIMIT ?? 20);
+  const maxLimit = Number(process.env.TX_MAX_LIMIT ?? 40);
+  const pageSize = Math.min(
+    Math.max(1, params.limit ?? defaultLimit),
+    maxLimit
   );
+  const requestedWindow = pageSize * page;
+  const fetchWindow = Math.max(
+    pageSize,
+    Math.min(requestedWindow, TX_FETCH_WINDOW_CAP)
+  );
+  const wallet = params.address.toLowerCase() as `0x${string}`;
 
   const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
   const fromTime = toEpochSeconds(params.from);
   const toTime = toEpochSeconds(params.to);
 
+  debugLog("list:start", {
+    address: wallet,
+    page,
+    pageSize,
+    fetchWindow,
+    networks: nets,
+    fromTime,
+    toTime,
+  });
+
   // 1) fetch + normalize per network (limit cross-network concurrency)
-  const maxConc = Math.max(1, Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2));
+  const maxConc = Math.max(
+    1,
+    Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2)
+  );
   const queue: EvmNetwork[] = [...nets];
   const chunksArr: NormalizedLegRow[][] = [];
 
   async function runForNetwork(network: EvmNetwork) {
     const basePage: PageParams = {
       network,
-      address: params.address.toLowerCase() as `0x${string}`,
+      address: wallet,
       fromTime,
       toTime,
-      page,
-      limit,
+      page: 1,
+      limit: fetchWindow,
     };
 
     const [fungible, nft] = await Promise.all([
       fetchFungibleTransfersPage(basePage),
       fetchNftTransfersPage(basePage),
     ]);
+    debugLog("network:fetched", {
+      network,
+      fungibleCount: fungible.length,
+      nftCount: nft.length,
+      fetchWindow,
+    });
 
     const legsF = fungible.map((r) =>
       normalizeFungibleTransfer(r, basePage.address, network)
@@ -106,6 +158,11 @@ export async function listTransactionLegs(
       const rc = receipts[l.txHash];
       if (rc) l.status = rc.status;
     }
+    debugLog("network:receipts", {
+      network,
+      uniqueTx: uniqTx.length,
+      receipts: Object.keys(receipts).length,
+    });
 
     // 4) pricing: per-leg USD at timestamp (pre-warm unique keys in parallel)
     const uniquePriceKeys = new Map<
@@ -154,16 +211,53 @@ export async function listTransactionLegs(
       if (!sampleLeg) continue;
       const ts = sampleLeg.timestamp;
 
-      let px = nativeUsdCache[ts];
+      const tsForPrice = Math.min(ts, Math.floor(Date.now() / 1000));
+      let px = nativeUsdCache[tsForPrice];
       if (px === undefined) {
-        px = await quoteNativeUsdAtTs(network, ts);
-        nativeUsdCache[ts] = px;
+        px = await quoteNativeUsdAtTs(network, tsForPrice);
+        nativeUsdCache[tsForPrice] = px;
       }
-      if (typeof px === "number") {
-        const ethSpent = (rc.gasUsed * rc.effectiveGasPrice) / 1e18;
-        gasUsdByTx[txHash] = ethSpent * px;
+
+      const ethSpent = (rc.gasUsed * rc.effectiveGasPrice) / 1e18;
+      if (ethSpent <= 0) continue;
+
+      const gasUsdValue = typeof px === "number" ? Number(ethSpent * px) : null;
+      if (gasUsdValue !== null) {
+        gasUsdByTx[txHash] = gasUsdValue;
       }
+
+      const weiSpent = (
+        BigInt(rc.gasUsed ?? 0) * BigInt(rc.effectiveGasPrice ?? 0)
+      ).toString();
+      legs.push({
+        txHash,
+        blockNumber: sampleLeg.blockNumber,
+        timestamp: sampleLeg.timestamp,
+        network,
+        from: wallet,
+        to: ZERO_ADDRESS,
+        direction: "out",
+        kind: "native",
+        asset: {
+          contract: undefined,
+          symbol: nativeSymbolFor(network),
+          decimals: 18,
+          tokenId: null,
+        },
+        amountRaw: weiSpent,
+        amount: ethSpent,
+        amountUsdAtTx: gasUsdValue,
+        status: rc.status,
+        logIndex: Number.MAX_SAFE_INTEGER,
+        source: "rpc",
+        class: "gas",
+      });
     }
+    debugLog("network:gas", {
+      network,
+      gasEntries: Object.keys(gasUsdByTx).length,
+      syntheticGasLegs: legs.filter((l) => l.class === "gas").length,
+    });
     // Attach meta on this chunk
     (legs as any)._gasUsdByTx = gasUsdByTx;
 
@@ -178,7 +272,9 @@ export async function listTransactionLegs(
     }
   }
 
-  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () => worker());
+  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () =>
+    worker()
+  );
   await Promise.all(workers);
   const chunks = chunksArr;
   const all = chunks.flat();
@@ -193,6 +289,12 @@ export async function listTransactionLegs(
   all.sort(sortLegs);
   // Return both legs and meta so the route can include it
   (all as any)._gasUsdByTx = gasMeta;
+  debugLog("list:complete", {
+    address: wallet,
+    totalLegs: all.length,
+    networksProcessed: chunks.length,
+    gasMetaEntries: Object.keys(gasMeta).length,
+  });
   return all;
 }
 
@@ -208,7 +310,10 @@ export async function getTransactionCountTotal(
   const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
 
   // Get count from Covalent for each network and sum them (limit concurrency)
-  const maxConc = Math.max(1, Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2));
+  const maxConc = Math.max(
+    1,
+    Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2)
+  );
   const queue = [...nets];
   const results: Array<number | null> = new Array(nets.length).fill(null);
 
@@ -217,9 +322,12 @@ export async function getTransactionCountTotal(
       const network = queue.shift()!;
       const idx = nets.indexOf(network);
       try {
-        results[idx] = await getTransactionCountFromCovalent(params.address, network);
+        results[idx] = await getTransactionCountFromCovalent(
+          params.address,
+          network
+        );
       } catch (error: any) {
-        if (process.env.NODE_ENV !== 'production') {
+        if (process.env.NODE_ENV !== "production") {
           console.error(
             `[Transactions] Failed to get count from Covalent for ${network}:`,
             error?.message || error
@@ -230,7 +338,9 @@ export async function getTransactionCountTotal(
     }
   }
 
-  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () => worker());
+  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () =>
+    worker()
+  );
   await Promise.all(workers);
   const counts = results;
 

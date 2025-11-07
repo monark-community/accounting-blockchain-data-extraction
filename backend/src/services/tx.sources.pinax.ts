@@ -1,5 +1,4 @@
 // backend/src/services/tx.sources.pinax.ts
-import { parseNetworks, type EvmNetwork } from "../config/networks";
 import type { PageParams } from "../types/transactions";
 import type {
   TokenApiTransfer,
@@ -26,7 +25,7 @@ const TOKEN_API_BASE =
   "https://token-api.thegraph.com/v1";
 const TOKEN_API_KEY = process.env.GRAPH_TOKEN_API_KEY;
 const TOKEN_API_JWT = process.env.GRAPH_TOKEN_API_JWT;
-const TOKEN_API_LIMIT_MAX = Number(process.env.TOKEN_API_LIMIT_MAX ?? 10);
+const TOKEN_API_LIMIT_MAX = Number(process.env.TOKEN_API_LIMIT_MAX ?? 40);
 const DEBUG_TOKEN_API =
   String(process.env.DEBUG_TOKEN_API).toLowerCase() === "true";
 const TOKEN_API_AUTH_MODE = TOKEN_API_JWT
@@ -67,67 +66,67 @@ export async function fetchFungibleTransfersPage(
   p: PageParams
 ): Promise<TokenApiTransfer[]> {
   const base = `${TOKEN_API_BASE}/evm/transfers`;
-  const effLimit = Math.max(
-    1,
-    Math.min(p.limit ?? TOKEN_API_LIMIT_MAX, TOKEN_API_LIMIT_MAX)
-  );
-  // if ((p.limit ?? 0) > effLimit) {
-  //   console.warn(
-  //     `[tokenapi] capping fungible limit from ${p.limit} to ${effLimit} (max=${TOKEN_API_LIMIT_MAX})`
-  //   );
-  // }
+  const target = Math.max(1, p.limit ?? TOKEN_API_LIMIT_MAX);
   const common = {
     network: p.network,
     start_time: p.fromTime,
     end_time: p.toTime,
-    page: p.page,
-    limit: effLimit,
-    // we’ll rely on server-side ordering by block/timestamp/log
   };
-  let outRows: TokenApiTransfer[] = [];
-  try {
-    // await tokenApiThrottle();
-    const r = await fetchWithRetry(
-      `${base}?${qs({ ...common, from_address: p.address })}`,
-      { headers: tokenApiHeaders() }
-    );
-    if (!r.ok) {
-      const text = await r.text().catch(() => "");
-      throw new Error(`${r.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
+  async function fetchDirection(direction: "out" | "in") {
+    const rows: TokenApiTransfer[] = [];
+    let page = Math.max(1, p.page ?? 1);
+
+    while (rows.length < target) {
+      const limitThisCall = Math.min(
+        TOKEN_API_LIMIT_MAX,
+        target - rows.length
+      );
+      const directionParams =
+        direction === "out"
+          ? { from_address: p.address }
+          : { to_address: p.address };
+      const query = qs({
+        ...common,
+        ...directionParams,
+        page,
+        limit: limitThisCall,
+      });
+
+      try {
+        const res = await fetchWithRetry(`${base}?${query}`, {
+          headers: tokenApiHeaders(),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(
+            `${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`
+          );
+        }
+        const payload = await res.json();
+        const chunk: TokenApiTransfer[] = Array.isArray(payload)
+          ? payload
+          : payload?.data ?? [];
+        if (!chunk.length) break;
+        rows.push(...chunk);
+        if (chunk.length < limitThisCall) break;
+        page += 1;
+      } catch (e: any) {
+        console.error(
+          `TokenAPI transfers ${
+            direction === "out" ? "outbound" : "inbound"
+          } ${p.network} p${page} limit=${limitThisCall}: ${e?.message ?? e}`
+        );
+        break;
+      }
     }
-    const j = await r.json();
-    outRows = Array.isArray(j) ? j : j?.data ?? [];
-  } catch (e: any) {
-    // if outbound fails (e.g., 403/429/5xx), continue with inbound results
-    console.error(
-      `TokenAPI transfers outbound ${p.network} p${p.page} limit=${p.limit}: ${
-        e?.message ?? e
-      }`
-    );
+
+    return rows;
   }
 
-  // inbound
-  let inRows: TokenApiTransfer[] = [];
-  try {
-    // await tokenApiThrottle();
-    const r = await fetchWithRetry(
-      `${base}?${qs({ ...common, to_address: p.address })}`,
-      { headers: tokenApiHeaders() }
-    );
-    if (!r.ok) {
-      const text = await r.text().catch(() => "");
-      throw new Error(`${r.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
-    }
-    const j = await r.json();
-    inRows = Array.isArray(j) ? j : j?.data ?? [];
-  } catch (e: any) {
-    // if inbound fails, we still return outbound results
-    console.error(
-      `TokenAPI transfers inbound ${p.network} p${p.page} limit=${p.limit}: ${
-        e?.message ?? e
-      }`
-    );
-  }
+  const [outRows, inRows] = await Promise.all([
+    fetchDirection("out"),
+    fetchDirection("in"),
+  ]);
 
   if (!outRows.length && !inRows.length) {
     // Degrade gracefully instead of failing the whole request.
@@ -136,6 +135,7 @@ export async function fetchFungibleTransfersPage(
     );
     return [];
   }
+
   return [...outRows, ...inRows];
 }
 
@@ -143,47 +143,54 @@ export async function fetchNftTransfersPage(
   p: PageParams
 ): Promise<TokenApiNftTransfer[]> {
   const base = `${TOKEN_API_BASE}/evm/nft/transfers`;
-  const effLimit = Math.max(
-    1,
-    Math.min(p.limit ?? TOKEN_API_LIMIT_MAX, TOKEN_API_LIMIT_MAX)
-  );
-  // if ((p.limit ?? 0) > effLimit) {
-  //   console.warn(
-  //     `[tokenapi] capping NFT limit from ${p.limit} to ${effLimit} (max=${TOKEN_API_LIMIT_MAX})`
-  //   );
-  // }
-  const u = `${base}?${qs({
-    network: p.network,
-    address: p.address,
-    start_time: p.fromTime,
-    end_time: p.toTime,
-    page: p.page,
-    limit: effLimit,
-  })}`;
+  const target = Math.max(1, p.limit ?? TOKEN_API_LIMIT_MAX);
+  const rows: TokenApiNftTransfer[] = [];
+  let page = Math.max(1, p.page ?? 1);
 
-  try {
-    // await tokenApiThrottle();
-    const res = await fetchWithRetry(u, { headers: tokenApiHeaders() });
-    if (!res.ok) {
-      // Do not hard-fail the entire listing on NFT errors (e.g., 403 for missing credentials).
-      const text = await res.text().catch(() => "");
-      console.error(
-        `TokenAPI NFT ${p.network} p${p.page} limit=${p.limit}: ${res.status}${
-          text ? `: ${text.slice(0, 200)}` : ""
-        } — returning empty NFT set`
-      );
-      return [];
-    }
-    const json = await res.json();
-    const rows: TokenApiNftTransfer[] = Array.isArray(json)
-      ? json
-      : json?.data ?? [];
-    return rows;
-  } catch (e: any) {
-    // Network/timeouts also shouldn’t break the page; degrade gracefully.
-    console.error(
-      `TokenAPI NFT ${p.network} p${p.page} error: ${e?.message ?? e}`
+  while (rows.length < target) {
+    const limitThisCall = Math.min(
+      TOKEN_API_LIMIT_MAX,
+      target - rows.length
     );
-    return [];
+    const query = qs({
+      network: p.network,
+      address: p.address,
+      start_time: p.fromTime,
+      end_time: p.toTime,
+      page,
+      limit: limitThisCall,
+    });
+
+    try {
+      const res = await fetchWithRetry(`${base}?${query}`, {
+        headers: tokenApiHeaders(),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error(
+          `TokenAPI NFT ${p.network} p${page} limit=${limitThisCall}: ${
+            res.status
+          }${text ? `: ${text.slice(0, 200)}` : ""} — returning partial NFT set`
+        );
+        break;
+      }
+      const json = await res.json();
+      const chunk: TokenApiNftTransfer[] = Array.isArray(json)
+        ? json
+        : json?.data ?? [];
+      if (!chunk.length) break;
+      rows.push(...chunk);
+      if (chunk.length < limitThisCall) break;
+      page += 1;
+    } catch (e: any) {
+      console.error(
+        `TokenAPI NFT ${p.network} p${page} limit=${limitThisCall} error: ${
+          e?.message ?? e
+        }`
+      );
+      break;
+    }
   }
+
+  return rows;
 }

@@ -16,14 +16,18 @@ function hexToNumber(hex?: string): number {
 
 /** Resolve per-network RPC URL from env. Fallback to PINAX_RPC_URL if provided. */
 function rpcUrlFor(network: EvmNetwork): string {
-  // Example env names: PINAX_RPC_URL_MAINNET, PINAX_RPC_URL_ARBITRUM_ONE, etc.
-  const envKey = `RPC_URL_${network.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
-  const perNet = process.env[envKey];
-  const generic = process.env.RPC_URL_MAINNET;
-  if (perNet) return perNet;
-  if (generic) return generic;
+  const suffix = network.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const direct = process.env[`RPC_URL_${suffix}`];
+  const pinaxPerChain = process.env[`PINAX_RPC_URL_${suffix}`];
+  const pinaxGlobal = process.env.PINAX_RPC_URL;
+  if (direct) return direct;
+  if (pinaxPerChain) return pinaxPerChain;
+  if (network === "mainnet" && process.env.RPC_URL_MAINNET) {
+    return process.env.RPC_URL_MAINNET!;
+  }
+  if (pinaxGlobal) return pinaxGlobal;
   throw new Error(
-    `No RPC URL configured for ${network} (set ${envKey} or RPC_URL_MAINNET)`
+    `No RPC URL configured for ${network} (set RPC_URL_${suffix})`
   );
 }
 

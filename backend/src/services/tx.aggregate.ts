@@ -59,16 +59,25 @@ export function buildSummary(
     .sort((a, b) => b.usd - a.usd)
     .slice(0, 20);
 
-  const gasUsdTotal = Object.values(gasUsdByTx ?? {}).reduce(
+  const gasLegs = legs.filter((l) => l.class === "gas");
+  const hasGasLegs = gasLegs.length > 0;
+  const gasUsdFromLegs = gasLegs.reduce(
+    (sum, leg) => sum + (leg.amountUsdAtTx ?? 0),
+    0
+  );
+  const gasUsdFallback = Object.values(gasUsdByTx ?? {}).reduce(
     (s, v) => s + (v ?? 0),
     0
   );
+  const gasUsdTotal = hasGasLegs ? gasUsdFromLegs : gasUsdFallback;
 
   return {
     kpi: {
       totalUsdIn: totalIn,
       totalUsdOut: totalOut,
-      netUsd: totalIn - totalOut - gasUsdTotal, // net after gas
+      netUsd: hasGasLegs
+        ? totalIn - totalOut
+        : totalIn - totalOut - gasUsdTotal, // subtract meta gas only when not represented as legs
       count: legs.length,
     },
     byClass,

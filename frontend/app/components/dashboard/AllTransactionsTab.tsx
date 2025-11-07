@@ -46,11 +46,11 @@ const shortAddr = (a?: string | null) =>
   a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—";
 const typeColor = (t: TxType) =>
   ({
-    income: "text-green-600",
-    expense: "text-red-600",
-    swap: "text-blue-600",
-    gas: "text-amber-600",
-  }[t]);
+    income: "text-emerald-600",
+    expense: "text-rose-600",
+    swap: "text-indigo-600",
+    gas: "text-sky-600",
+  }[t] ?? "text-slate-600");
 const typeIcon = (t: TxType) =>
   t === "income" ? (
     <TrendingUp className="w-4 h-4" />
@@ -125,7 +125,7 @@ function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
     classes.push("transfer_in", "nft_transfer_in", "nft_buy", "income");
   if (set.has("expense"))
     classes.push("transfer_out", "nft_transfer_out", "nft_sell", "expense");
-  // NOTE: "gas" isn’t a leg row today; we show fees per tx in the row. Leaving out.
+  if (set.has("gas")) classes.push("gas");
   return classes.length ? classes.join(",") : null;
 }
 
@@ -136,10 +136,13 @@ interface AllTransactionsTabProps {
   networks?: string; // comma-separated networks; omit to use backend default (all)
 }
 
-export default function AllTransactionsTab({ address: propAddress, networks: propNetworks }: AllTransactionsTabProps) {
+export default function AllTransactionsTab({
+  address: propAddress,
+  networks: propNetworks,
+}: AllTransactionsTabProps) {
   // Use prop address if provided, otherwise read from URL
   const [address, setAddress] = useState<string>(propAddress || "");
-  
+
   useEffect(() => {
     if (propAddress) {
       setAddress(propAddress);
@@ -171,7 +174,9 @@ export default function AllTransactionsTab({ address: propAddress, networks: pro
   }, [propNetworks]);
 
   // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
-  const pageCache = useRef(new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>());
+  const pageCache = useRef(
+    new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>()
+  );
 
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
@@ -204,17 +209,17 @@ export default function AllTransactionsTab({ address: propAddress, networks: pro
   // Load current page (with cache check)
   async function load(p: number) {
     if (!address) return;
-    
+
     // Check cache first
     const cacheKey = getCacheKey(address, p);
     const cached = pageCache.current.get(cacheKey);
-    
+
     if (cached) {
       // Use cached data immediately (no loading state)
       setRows(cached.rows);
       setHasNext(cached.hasNext);
       setTotal(cached.total);
-      
+
       // Prefetch next page in background (if available)
       if (cached.hasNext) {
         preloadNextPage(p + 1);
@@ -227,23 +232,27 @@ export default function AllTransactionsTab({ address: propAddress, networks: pro
     setError(null);
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
-      const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
+      const {
+        rows,
+        hasNext,
+        total: totalCount,
+      } = await fetchTransactions(address, {
         // networks: if undefined → backend default = all supported EVM networks
         ...(networks ? { networks } : {}),
         page: p,
         limit: PAGE_SIZE,
         minUsd: 0,
-        spamFilter: "soft",
+        spamFilter: "hard",
         ...(classParam ? { class: classParam } : {}),
       });
-      
+
       // Store in cache
       pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
-      
+
       setRows(rows);
       setHasNext(hasNext);
       setTotal(totalCount); // Store total count from backend
-      
+
       // Prefetch next page in background (if available)
       if (hasNext) {
         preloadNextPage(p + 1);
@@ -261,24 +270,28 @@ export default function AllTransactionsTab({ address: propAddress, networks: pro
   // Preload next page in background (silent, no loading state)
   async function preloadNextPage(nextPage: number) {
     if (!address) return;
-    
+
     // Check if already cached
     const cacheKey = getCacheKey(address, nextPage);
     if (pageCache.current.has(cacheKey)) {
       return; // Already cached
     }
-    
+
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
-      const { rows, hasNext, total: totalCount } = await fetchTransactions(address, {
+      const {
+        rows,
+        hasNext,
+        total: totalCount,
+      } = await fetchTransactions(address, {
         ...(networks ? { networks } : {}),
         page: nextPage,
         limit: PAGE_SIZE,
         minUsd: 0,
-        spamFilter: "soft",
+        spamFilter: "hard",
         ...(classParam ? { class: classParam } : {}),
       });
-      
+
       // Store in cache (silently, no state updates)
       pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
     } catch (e) {
@@ -449,7 +462,8 @@ export default function AllTransactionsTab({ address: propAddress, networks: pro
               <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
                 {totalCount && totalPages ? (
                   <span className="font-medium">
-                    Page {page} of {totalPages} ({totalCount.toLocaleString()} total)
+                    Page {page} of {totalPages} ({totalCount.toLocaleString()}{" "}
+                    total)
                   </span>
                 ) : totalCount ? (
                   <span className="font-medium">
@@ -712,16 +726,16 @@ export default function AllTransactionsTab({ address: propAddress, networks: pro
                         {fmtQty(tx.qty, tx.direction)}
                       </TableCell>
                     )}
-                  {visibleColumns.usd && (
-                    <TableCell className="font-mono">
-                      {fmtUSD(tx.usdAtTs)}
-                    </TableCell>
-                  )}
-                  {visibleColumns.fee && (
-                    <TableCell className="font-mono">
-                      {fmtUSD(tx.fee?.usdAtTs ?? null)}
-                    </TableCell>
-                  )}
+                    {visibleColumns.usd && (
+                      <TableCell className="font-mono">
+                        {fmtUSD(tx.usdAtTs)}
+                      </TableCell>
+                    )}
+                    {visibleColumns.fee && (
+                      <TableCell className="font-mono">
+                        {fmtUSD(tx.fee?.usdAtTs ?? null)}
+                      </TableCell>
+                    )}
                     {visibleColumns.counterparty && (
                       <TableCell className="font-mono">
                         {tx.counterparty?.label ||

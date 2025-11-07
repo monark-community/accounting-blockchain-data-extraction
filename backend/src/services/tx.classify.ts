@@ -32,7 +32,7 @@ function sumUsd(legs: TxLegs) {
  * - NFT SELL: erc721/1155 OUT and fungible IN
  * - TRANSFER_IN/OUT: only single-direction fungible
  * - INCOME/EXPENSE: fallback labels when value exists but no counter-leg
- * Gas is handled in summary via gasUsdByTx; we don't mark legs "gas".
+ * Gas legs are synthesized later (after receipts) so they don't pass through here.
  */
 export function classifyLegs(legs: TxLegs): void {
   const inFungible = legsIn(legs).filter(
