@@ -221,6 +221,10 @@ const Hero = () => {
       label: "binance.eth",
       address: "0xF977814e90dA44bFA03b6295A0616a897441aceC",
     },
+    {
+      label: "1inch.eth",
+      address: "0x111111125421ca6dc452d289314280a0f8842a65",
+    },
   ];
 
   const short = (a: string) =>
