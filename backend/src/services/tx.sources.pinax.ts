@@ -77,10 +77,7 @@ export async function fetchFungibleTransfersPage(
     let page = Math.max(1, p.page ?? 1);
 
     while (rows.length < target) {
-      const limitThisCall = Math.min(
-        TOKEN_API_LIMIT_MAX,
-        target - rows.length
-      );
+      const limitThisCall = Math.min(TOKEN_API_LIMIT_MAX, target - rows.length);
       const directionParams =
         direction === "out"
           ? { from_address: p.address }
@@ -112,9 +109,9 @@ export async function fetchFungibleTransfersPage(
         page += 1;
       } catch (e: any) {
         console.error(
-          `TokenAPI transfers ${
-            direction === "out" ? "outbound" : "inbound"
-          } ${p.network} p${page} limit=${limitThisCall}: ${e?.message ?? e}`
+          `TokenAPI transfers ${direction === "out" ? "outbound" : "inbound"} ${
+            p.network
+          } p${page} limit=${limitThisCall}: ${e?.message ?? e}`
         );
         break;
       }
@@ -148,10 +145,7 @@ export async function fetchNftTransfersPage(
   let page = Math.max(1, p.page ?? 1);
 
   while (rows.length < target) {
-    const limitThisCall = Math.min(
-      TOKEN_API_LIMIT_MAX,
-      target - rows.length
-    );
+    const limitThisCall = Math.min(TOKEN_API_LIMIT_MAX, target - rows.length);
     const query = qs({
       network: p.network,
       address: p.address,

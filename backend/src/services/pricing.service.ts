@@ -102,7 +102,6 @@ async function fetchDexScreenerPrices(
     avalanche: "avalanche",
     unichain: null,
   };
-
   const chain = dsChainMap[network];
   if (!chain) return map;
 

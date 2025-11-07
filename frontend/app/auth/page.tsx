@@ -20,11 +20,13 @@ import { MFAVerifyDialog } from "@/components/MFAVerifyDialog";
 export default function Auth() {
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [showMFAVerify, setShowMFAVerify] = useState(false);
-  const [pendingWalletAddress, setPendingWalletAddress] = useState<string | null>(null);
+  const [pendingWalletAddress, setPendingWalletAddress] = useState<
+    string | null
+  >(null);
   const [hasProcessedCallback, setHasProcessedCallback] = useState(false);
   const web3auth = useWeb3Auth();
   const router = useRouter();
-  
+
   // Store the hash immediately when component mounts (before Next.js clears it)
   useEffect(() => {
     if (window.location.hash && !hasProcessedCallback) {
@@ -36,35 +38,45 @@ export default function Auth() {
   useEffect(() => {
     const handleCallback = async () => {
       // If we detected a callback and Web3Auth is now connected, process it
-      if (hasProcessedCallback && web3auth?.isConnected && !pendingWalletAddress) {
+      if (
+        hasProcessedCallback &&
+        web3auth?.isConnected &&
+        !pendingWalletAddress
+      ) {
         // Get wallet address from Web3Auth provider
-        let address = '';
+        let address = "";
         if (web3auth?.web3Auth?.provider) {
           const provider = web3auth.web3Auth.provider;
-          const accounts = await provider.request({ method: "eth_accounts" }) as string[];
+          const accounts = (await provider.request({
+            method: "eth_accounts",
+          })) as string[];
           if (accounts && accounts.length > 0) {
             address = accounts[0];
           }
         }
-        
+
         if (address) {
           // Store the address for MFA check
           setPendingWalletAddress(address);
         }
       }
-      
+
       // If we have a pending wallet address, check MFA now
       if (pendingWalletAddress && web3auth?.isConnected) {
         // Show immediate toast
-        toast?.success?.('Successfully logged in with social provider!');
-        
+        toast?.success?.("Successfully logged in with social provider!");
+
         // Check if user has MFA enabled by wallet address
         try {
-          const response = await fetch(`/api/mfa/status-by-address?address=${encodeURIComponent(pendingWalletAddress)}`);
-          
+          const response = await fetch(
+            `/api/mfa/status-by-address?address=${encodeURIComponent(
+              pendingWalletAddress
+            )}`
+          );
+
           if (response.ok) {
             const data = await response.json();
-            
+
             if (data.enabled) {
               // User has MFA enabled, show verification dialog
               setShowMFAVerify(true);
@@ -72,26 +84,35 @@ export default function Auth() {
             }
           }
         } catch (error) {
-          console.error('Failed to check MFA status:', error);
+          console.error("Failed to check MFA status:", error);
         }
-        
+
         // No MFA or check failed, create backend session and proceed to dashboard
         await createBackendSession();
         setPendingWalletAddress(null);
         setHasProcessedCallback(false);
         setTimeout(() => {
-          router.push('/dashboard');
+          router.push("/dashboard");
         }, 1000);
       }
-      
+
       // Regular check for already connected users (not from callback)
-      if (web3auth?.isConnected && !hasProcessedCallback && !pendingWalletAddress) {
-        router.push('/dashboard');
+      if (
+        web3auth?.isConnected &&
+        !hasProcessedCallback &&
+        !pendingWalletAddress
+      ) {
+        router.push("/dashboard");
       }
     };
 
     handleCallback();
-  }, [web3auth?.isConnected, router, pendingWalletAddress, hasProcessedCallback]);
+  }, [
+    web3auth?.isConnected,
+    router,
+    pendingWalletAddress,
+    hasProcessedCallback,
+  ]);
 
   async function handleSocialLogin(provider: string) {
     setIsLoading(provider);
@@ -143,43 +164,45 @@ export default function Auth() {
   async function handleMFAVerify(code: string) {
     try {
       // Get wallet address from Web3Auth provider
-      let address = '';
+      let address = "";
       if (web3auth?.web3Auth?.provider) {
         const provider = web3auth.web3Auth.provider;
-        const accounts = await provider.request({ method: "eth_accounts" }) as string[];
+        const accounts = (await provider.request({
+          method: "eth_accounts",
+        })) as string[];
         if (accounts && accounts.length > 0) {
           address = accounts[0];
         }
       }
 
       if (!address) {
-        throw new Error('No wallet address found');
+        throw new Error("No wallet address found");
       }
 
       // Verify MFA code using wallet address (no auth required)
-      const response = await fetch('/api/mfa/verify-by-address', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const response = await fetch("/api/mfa/verify-by-address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ address, code }),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Invalid verification code');
+        throw new Error(error.error || "Invalid verification code");
       }
 
       // MFA verified successfully, create backend session
       await createBackendSession();
-      
+
       // Clear flags after successful verification
       setPendingWalletAddress(null);
       setHasProcessedCallback(false);
-      
+
       // Redirect to dashboard
-      toast.success('2FA verified successfully!');
+      toast.success("2FA verified successfully!");
       setShowMFAVerify(false);
-      router.push('/dashboard');
+      router.push("/dashboard");
     } catch (error: any) {
       throw error;
     }
@@ -188,26 +211,28 @@ export default function Auth() {
   async function createBackendSession() {
     try {
       // Get wallet address from Web3Auth provider
-      let address = '';
+      let address = "";
       if (web3auth?.web3Auth?.provider) {
         const provider = web3auth.web3Auth.provider;
-        const accounts = await provider.request({ method: "eth_accounts" }) as string[];
+        const accounts = (await provider.request({
+          method: "eth_accounts",
+        })) as string[];
         if (accounts && accounts.length > 0) {
           address = accounts[0];
         }
       }
 
-      await fetch('/api/auth/web3auth-session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      await fetch("/api/auth/web3auth-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           address,
-          userInfo: web3auth?.userInfo
-        })
+          userInfo: web3auth?.userInfo,
+        }),
       });
     } catch (error) {
-      console.error('Error creating backend session:', error);
+      console.error("Error creating backend session:", error);
     }
   }
 
@@ -379,10 +404,7 @@ export default function Auth() {
       </div>
 
       {/* MFA Verification Dialog */}
-      <MFAVerifyDialog
-        open={showMFAVerify}
-        onVerify={handleMFAVerify}
-      />
+      <MFAVerifyDialog open={showMFAVerify} onVerify={handleMFAVerify} />
     </div>
   );
 }

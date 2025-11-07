@@ -472,7 +472,7 @@ export default function AllTransactionsTab({
                     <span className="font-medium">Loading...</span>
                   ) : (
                     <span className="font-medium">
-                      {rows.length} transaction{rows.length !== 1 ? 's' : ''}
+                      {rows.length} transaction{rows.length !== 1 ? "s" : ""}
                     </span>
                   )
                 ) : totalCount && totalPages ? (
@@ -736,10 +736,12 @@ export default function AllTransactionsTab({
                                   : "—")}
                             </span>
                           </div>
-                        ) : tx.asset?.symbol ||
+                        ) : (
+                          tx.asset?.symbol ||
                           (tx.asset?.contract
                             ? shortAddr(tx.asset.contract)
-                            : "—")}
+                            : "—")
+                        )}
                       </TableCell>
                     )}
                     {visibleColumns.qty && (
