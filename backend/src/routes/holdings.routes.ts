@@ -21,7 +21,7 @@ router.get("/:address", async (req, res) => {
 
     // NEW: spamFilter mode
     const spamFilter = String(
-      req.query.spamFilter ?? process.env.SPAM_FILTER_MODE ?? "soft"
+      req.query.spamFilter ?? process.env.SPAM_FILTER_MODE ?? "hard"
     ).toLowerCase() as "off" | "soft" | "hard";
 
     const payload = await getHoldingsOverview(address, networks, withDelta24h, {
