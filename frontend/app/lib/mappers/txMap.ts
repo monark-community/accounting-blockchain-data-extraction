@@ -64,6 +64,7 @@ export function mapLegToTxRow(
       contract: (leg.asset?.contract as string) ?? null,
       decimals: leg.asset?.decimals ?? null,
     },
+    swapLabel: leg.swapLabel ?? null,
     qty: String(leg.amount ?? 0),
     priceUsdAtTs:
       leg.amountUsdAtTx && leg.amount ? leg.amountUsdAtTx / leg.amount : null,

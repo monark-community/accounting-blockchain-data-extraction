@@ -709,7 +709,19 @@ export default function AllTransactionsTab({
                     )}
                     {visibleColumns.asset && (
                       <TableCell className="font-mono">
-                        {tx.asset?.symbol ||
+                        {tx.type === "swap" && tx.swapLabel ? (
+                          <div className="flex flex-col">
+                            <span className="text-xs font-semibold text-indigo-600">
+                              {tx.swapLabel}
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              {tx.asset?.symbol ||
+                                (tx.asset?.contract
+                                  ? shortAddr(tx.asset.contract)
+                                  : "—")}
+                            </span>
+                          </div>
+                        ) : tx.asset?.symbol ||
                           (tx.asset?.contract
                             ? shortAddr(tx.asset.contract)
                             : "—")}

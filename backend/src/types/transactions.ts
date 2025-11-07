@@ -36,6 +36,7 @@ export interface NormalizedLegRow {
     decimals?: number | null;
     tokenId?: string | null; // for 721/1155
   };
+  swapLabel?: string | null;
 
   amountRaw: string; // base units as string
   amount: number; // human units (lossy ok for UI; accounting will re-use amountRaw)

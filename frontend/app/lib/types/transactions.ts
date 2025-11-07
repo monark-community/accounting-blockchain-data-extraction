@@ -13,6 +13,7 @@ export interface TxRow {
     contract: string | null;
     decimals: number | null;
   };
+  swapLabel?: string | null;
   qty: string; // decimal string
   priceUsdAtTs: number | null;
   usdAtTs: number | null;
