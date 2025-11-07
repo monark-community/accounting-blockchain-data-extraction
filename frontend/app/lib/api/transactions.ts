@@ -11,6 +11,8 @@ export type TxQuery = {
   minUsd?: number; // dust filter
   spamFilter?: "off" | "soft" | "hard";
   class?: string; // e.g. "swap_in,swap_out"
+  searchField?: "hash" | "to" | "amount";
+  searchValue?: string;
 };
 
 export async function fetchTransactions(address: string, q: TxQuery) {
@@ -23,6 +25,10 @@ export async function fetchTransactions(address: string, q: TxQuery) {
   if (q.minUsd != null) qs.set("minUsd", String(q.minUsd));
   if (q.spamFilter) qs.set("spamFilter", q.spamFilter);
   if (q.class) qs.set("class", q.class);
+  if (q.searchField && q.searchValue) {
+    qs.set("searchField", q.searchField);
+    qs.set("searchValue", q.searchValue);
+  }
 
   const url = `/api/transactions/${encodeURIComponent(
     address

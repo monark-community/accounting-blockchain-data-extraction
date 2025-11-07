@@ -26,6 +26,53 @@ const logError = (...args: any[]) => {
   }
 };
 
+function matchesAddressCandidate(
+  target: string | null | undefined,
+  searchRaw: string
+) {
+  if (!target) return false;
+  const targetLower = target.toLowerCase();
+  const normalized = searchRaw.toLowerCase().replace(/\s+/g, "");
+  if (!normalized) return false;
+
+  const ellipsisVariants = ["…", "..."];
+  for (const marker of ellipsisVariants) {
+    if (normalized.includes(marker)) {
+      const parts = normalized.split(marker);
+      const prefix = parts[0] ?? "";
+      const suffix = parts[parts.length - 1] ?? "";
+      if (prefix && !targetLower.startsWith(prefix)) return false;
+      if (suffix && !targetLower.endsWith(suffix)) return false;
+      return true;
+    }
+  }
+
+  return targetLower.includes(normalized);
+}
+
+function matchesHashCandidate(target: string, searchRaw: string) {
+  const targetLower = target.toLowerCase();
+  const normalized = searchRaw.toLowerCase().replace(/\s+/g, "");
+  if (!normalized) return false;
+
+  if (targetLower.includes(normalized)) return true;
+
+  const ellipsisRegex = /…|\.\.\./g;
+  const stripped = normalized.replace(ellipsisRegex, "");
+  if (stripped && targetLower.includes(stripped)) return true;
+
+  const parts = normalized.split(ellipsisRegex);
+  if (parts.length > 1) {
+    const prefix = parts[0] ?? "";
+    const suffix = parts[parts.length - 1] ?? "";
+    if (prefix && !targetLower.startsWith(prefix)) return false;
+    if (suffix && !targetLower.endsWith(suffix)) return false;
+    return true;
+  }
+
+  return false;
+}
+
 function firstQueryValue(
   value: string | string[] | undefined
 ): string | undefined {
@@ -78,15 +125,27 @@ router.get("/:address", async (req, res) => {
       minUsd: req.query.minUsd,
       spamFilter: req.query.spamFilter,
       class: req.query.class,
+      searchField: req.query.searchField,
+      searchValue: req.query.searchValue,
     });
 
     // Check if class filter is applied (expenses, incomes, etc.)
     const classParam = (req.query.class as string | undefined)?.trim();
     const hasClassFilter = !!classParam;
 
-    // Get total count from Covalent ONLY if no class filter is applied
-    // (Covalent doesn't support our custom class filters like expenses/incomes)
-    const totalCountPromise = hasClassFilter
+    // Check if search filter is applied
+    const searchFieldRaw = (req.query.searchField as string | undefined)?.trim();
+    const searchValue = (req.query.searchValue as string | undefined)?.trim();
+    const allowedSearchFields = new Set(["hash", "to", "amount"]);
+    const searchField =
+      searchFieldRaw && allowedSearchFields.has(searchFieldRaw)
+        ? (searchFieldRaw as "hash" | "to" | "amount")
+        : null;
+    const hasSearchFilter = !!(searchField && searchValue);
+
+    // Get total count from Covalent ONLY if no class filter or search filter is applied
+    // (Covalent doesn't support our custom class filters like expenses/incomes, and search filters after fetch)
+    const totalCountPromise = hasClassFilter || hasSearchFilter
       ? Promise.resolve(null) // Don't use Covalent when filters are active
       : getTransactionCountTotal({
           address: addr,
@@ -120,9 +179,41 @@ router.get("/:address", async (req, res) => {
     const classSet = classParam
       ? new Set(classParam.split(",").map((s) => s.trim()))
       : null;
-    const legsFilteredByClass = classSet
+    let legsFilteredByClass = classSet
       ? legs.filter((l) => l.class && classSet.has(l.class))
       : legs;
+
+    // Apply search filter if provided
+    if (hasSearchFilter && searchField && searchValue) {
+      legsFilteredByClass = legsFilteredByClass.filter((leg) => {
+        switch (searchField) {
+          case "hash": {
+            return matchesHashCandidate(leg.txHash, searchValue);
+          }
+          case "to": {
+            return (
+              matchesAddressCandidate(leg.to, searchValue) ||
+              matchesAddressCandidate(leg.from, searchValue)
+            );
+          }
+          case "amount": {
+            const normalized = searchValue.replace(/,/g, "").trim();
+            const searchNumber = Number(normalized);
+            if (!Number.isFinite(searchNumber)) {
+              return false;
+            }
+            if (searchNumber === 0) {
+              return leg.amount === 0;
+            }
+            const tolerance = Math.max(1e-12, Math.abs(searchNumber) * 1e-9);
+            return Math.abs(leg.amount - searchNumber) < tolerance;
+          }
+        }
+      
+        return false;
+      });
+    }
+
     const start = (page - 1) * limit;
     const pagedLegs = legsFilteredByClass.slice(start, start + limit);
 
@@ -144,6 +235,8 @@ router.get("/:address", async (req, res) => {
       filteredCount: legsFilteredByClass.length,
       returnedCount: pagedLegs.length,
       hasNext: pagedLegs.length === limit,
+      searchField,
+      searchValue,
     });
   } catch (err: any) {
     logError("list:error", err?.stack || err);

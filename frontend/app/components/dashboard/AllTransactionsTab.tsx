@@ -4,6 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -26,6 +34,7 @@ import {
   TrendingUp,
   Repeat,
   Fuel,
+  Search,
 } from "lucide-react";
 
 import type { TxRow, TxType } from "@/lib/types/transactions";
@@ -131,6 +140,25 @@ function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
 
 const PAGE_SIZE = 20;
 
+const SEARCH_OPTIONS = {
+  hash: {
+    label: "Hash de transaction",
+    placeholder: "Ex: 0x1234…abcd",
+  },
+  to: {
+    label: "Adresse contrepartie",
+    placeholder: "Ex: 0x8f4c…a1b2",
+  },
+  amount: {
+    label: "Montant exact",
+    placeholder: "Ex: 1.25",
+  },
+} as const;
+
+type SearchField = keyof typeof SEARCH_OPTIONS;
+type AppliedSearchValue = { field: SearchField; value: string };
+type AppliedSearch = AppliedSearchValue | null;
+
 interface AllTransactionsTabProps {
   address?: string;
   networks?: string; // comma-separated networks; omit to use backend default (all)
@@ -183,6 +211,11 @@ export default function AllTransactionsTab({
     "all",
   ] as any);
 
+  // Search state
+  const [searchField, setSearchField] = useState<SearchField>("hash");
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [appliedSearch, setAppliedSearch] = useState<AppliedSearch>(null);
+
   // Visible columns
   const visibleColumnsInit = {
     type: true,
@@ -200,18 +233,25 @@ export default function AllTransactionsTab({
   >({ ...visibleColumnsInit });
 
   // Generate cache key for current filters
-  const getCacheKey = (addr: string, pageNum: number) => {
+  const getCacheKey = (
+    addr: string,
+    pageNum: number,
+    searchState: AppliedSearch = appliedSearch
+  ) => {
     const filterKey = JSON.stringify(selectedTypes);
     const nets = networks || "(all)";
-    return `${addr}:${nets}:${filterKey}:${pageNum}`;
+    const searchKey = searchState
+      ? `${searchState.field}:${searchState.value}`
+      : "(none)";
+    return `${addr}:${nets}:${filterKey}:${searchKey}:${pageNum}`;
   };
 
   // Load current page (with cache check)
-  async function load(p: number) {
+  async function load(p: number, searchState: AppliedSearch = appliedSearch) {
     if (!address) return;
 
     // Check cache first
-    const cacheKey = getCacheKey(address, p);
+    const cacheKey = getCacheKey(address, p, searchState);
     const cached = pageCache.current.get(cacheKey);
 
     if (cached) {
@@ -222,7 +262,7 @@ export default function AllTransactionsTab({
 
       // Prefetch next page in background (if available)
       if (cached.hasNext) {
-        preloadNextPage(p + 1);
+        preloadNextPage(p + 1, searchState);
       }
       return;
     }
@@ -244,6 +284,9 @@ export default function AllTransactionsTab({
         minUsd: 0,
         spamFilter: "hard",
         ...(classParam ? { class: classParam } : {}),
+        ...(searchState
+          ? { searchField: searchState.field, searchValue: searchState.value }
+          : {}),
       });
 
       // Store in cache
@@ -255,7 +298,7 @@ export default function AllTransactionsTab({
 
       // Prefetch next page in background (if available)
       if (hasNext) {
-        preloadNextPage(p + 1);
+        preloadNextPage(p + 1, searchState);
       }
     } catch (e: any) {
       setError(e?.message || "Failed to load transactions");
@@ -268,11 +311,14 @@ export default function AllTransactionsTab({
   }
 
   // Preload next page in background (silent, no loading state)
-  async function preloadNextPage(nextPage: number) {
+  async function preloadNextPage(
+    nextPage: number,
+    searchState: AppliedSearch = appliedSearch
+  ) {
     if (!address) return;
 
     // Check if already cached
-    const cacheKey = getCacheKey(address, nextPage);
+    const cacheKey = getCacheKey(address, nextPage, searchState);
     if (pageCache.current.has(cacheKey)) {
       return; // Already cached
     }
@@ -290,6 +336,9 @@ export default function AllTransactionsTab({
         minUsd: 0,
         spamFilter: "hard",
         ...(classParam ? { class: classParam } : {}),
+        ...(searchState
+          ? { searchField: searchState.field, searchValue: searchState.value }
+          : {}),
       });
 
       // Store in cache (silently, no state updates)
@@ -299,6 +348,44 @@ export default function AllTransactionsTab({
       console.debug("[Prefetch] Failed to preload page", nextPage, e);
     }
   }
+
+  const applySearch = (nextSearch: AppliedSearch) => {
+    setAppliedSearch(nextSearch);
+    setPage(1);
+    pageCache.current.clear();
+    load(1, nextSearch);
+  };
+
+  const handleSearch = () => {
+    const trimmed = searchInput.trim();
+    const nextSearch = trimmed
+      ? ({ field: searchField, value: trimmed } as AppliedSearchValue)
+      : null;
+
+    if (
+      (nextSearch === null && appliedSearch === null) ||
+      (nextSearch &&
+        appliedSearch &&
+        nextSearch.field === appliedSearch.field &&
+        nextSearch.value === appliedSearch.value)
+    ) {
+      return;
+    }
+
+    applySearch(nextSearch);
+  };
+
+  const handleClearSearch = () => {
+    if (appliedSearch === null && !searchInput) {
+      return;
+    }
+    setSearchInput("");
+    if (appliedSearch !== null) {
+      applySearch(null);
+    }
+  };
+
+  const activePlaceholder = SEARCH_OPTIONS[searchField].placeholder;
 
   // Initial/refresh - clear cache when address or filters change
   useEffect(() => {
@@ -595,6 +682,71 @@ export default function AllTransactionsTab({
                 Refresh
               </Button>
             </div>
+          </div>
+
+          {/* Search bar */}
+          <div className="mb-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="w-full md:w-60">
+                <Select
+                  value={searchField}
+                  onValueChange={(value) => {
+                    const nextField = value as SearchField;
+                    setSearchField(nextField);
+                    setSearchInput("");
+                    if (appliedSearch !== null) {
+                      applySearch(null);
+                    }
+                  }}
+                >
+                  <SelectTrigger aria-label="Critère de recherche">
+                    <SelectValue placeholder="Choisir un critère" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(SEARCH_OPTIONS).map(([value, meta]) => (
+                      <SelectItem key={value} value={value}>
+                        {meta.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 transform text-slate-400 w-4 h-4" />
+                <Input
+                  placeholder={activePlaceholder}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearch();
+                    }
+                  }}
+                  className="pl-10"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button onClick={handleSearch} disabled={loading}>
+                  Rechercher
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleClearSearch}
+                  disabled={!appliedSearch && !searchInput}
+                >
+                  Réinitialiser
+                </Button>
+              </div>
+            </div>
+
+            {appliedSearch && (
+              <p className="mt-2 text-xs text-slate-500">
+                Filtre appliqué : {SEARCH_OPTIONS[appliedSearch.field].label} = {" "}
+                <span className="font-mono">{appliedSearch.value}</span>
+              </p>
+            )}
           </div>
 
           {/* Filter chips (server-side class filter) */}
