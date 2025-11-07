@@ -26,6 +26,12 @@ async function rateLimitLlama() {
   llamaQueue.push({ timestamp: Date.now() });
 }
 
+// Toggle verbose pricing/debug logs. When false only concise errors are printed.
+const PRICING_DEBUG = (process.env.PRICING_DEBUG ?? "false") === "true";
+function dbg(...args: any[]) {
+  if (PRICING_DEBUG) console.log(...args);
+}
+
 const ENABLE_DEXSCREENER =
   (process.env.ENABLE_DEXSCREENER ?? "false") === "true";
 const ENABLE_DEFI_LLAMA = (process.env.ENABLE_DEFI_LLAMA ?? "false") === "true";
@@ -143,19 +149,15 @@ async function fetchDefiLlamaPrices(
 
   const keys = contracts.map((c) => `${chain}:${c.toLowerCase()}`);
   const url = `https://coins.llama.fi/prices/current/${keys.join(",")}`;
-  console.log("[DeFiLlama] Fetching prices from:", url);
+  dbg("[DeFiLlama] Fetching prices from:", url);
   const res = await fetch(url);
   if (!res.ok) {
-    console.error(
-      "[DeFiLlama] Error fetching prices:",
-      res.status,
-      await res.text()
-    );
+    console.error("[DeFiLlama] Error fetching prices:", res.status);
     return map;
   }
   const json = await res.json();
   const coins = json?.coins ?? {};
-  console.log("[DeFiLlama] Got response:", json);
+  dbg("[DeFiLlama] Got response:", json);
   for (const [kk, v] of Object.entries<any>(coins)) {
     const addr = kk.split(":")[1];
     const k = `${network}:${addr}`;
@@ -267,18 +269,14 @@ export async function getPricesAtTimestamp(
   const url = `https://coins.llama.fi/prices/historical/${timestampSec}/${keys.join(
     ","
   )}`;
-  console.log("[DeFiLlama Historical] Fetching prices from:", url);
+  dbg("[DeFiLlama Historical] Fetching prices from:", url);
   const res = await fetch(url);
   if (!res.ok) {
-    console.error(
-      "[DeFiLlama Historical] Error fetching prices:",
-      res.status,
-      await res.text()
-    );
+    console.error("[DeFiLlama Historical] Error fetching prices:", res.status);
     return map;
   }
   const json = await res.json();
-  console.log("[DeFiLlama Historical] Got response:", json);
+  dbg("[DeFiLlama Historical] Got response:", json);
   const coins = json?.coins ?? {};
 
   for (const [kk, v] of Object.entries<any>(coins)) {
