@@ -376,10 +376,10 @@ const Dashboard = () => {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="graphs">Graphs</TabsTrigger>
-            <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
+          <TabsList className="flex w-full gap-2">
+            <TabsTrigger className="flex-1" value="overview">Overview</TabsTrigger>
+            <TabsTrigger className="flex-1" value="graphs">Graphs</TabsTrigger>
+            <TabsTrigger className="flex-1" value="all-transactions">All Transactions</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -1534,78 +1534,6 @@ const Dashboard = () => {
                 </ResponsiveContainer>
               )}
             </Card>
-
-            {/* Portfolio Treemap */}
-            <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Portfolio Value Treemap
-              </h3>
-              {loadingOv ? (
-                <Skeleton className="h-[400px] w-full" />
-              ) : !ov ? (
-                <div className="text-sm text-slate-500">
-                  Load an address to see portfolio treemap.
-                </div>
-              ) : treemapData.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No holdings to display.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={400}>
-                  <Treemap
-                    data={treemapData}
-                    dataKey="size"
-                    stroke="#fff"
-                    fill="#8884d8"
-                    content={(props: any) => {
-                      const { x, y, width, height, payload } = props;
-                      if (!payload || width < 5 || height < 5) return null;
-                      const size = payload.size || 0;
-                      const name = payload.name || "Unknown";
-                      return (
-                        <g>
-                          <rect
-                            x={x}
-                            y={y}
-                            width={width}
-                            height={height}
-                            fill={
-                              size > 0
-                                ? `hsl(${(size / (ov?.kpis.totalValueUsd || 1)) * 240}, 70%, 50%)`
-                                : "#ccc"
-                            }
-                            stroke="#fff"
-                            strokeWidth={2}
-                          />
-                          <text
-                            x={x + width / 2}
-                            y={y + height / 2}
-                            textAnchor="middle"
-                            fill="#fff"
-                            fontSize={12}
-                            fontWeight="bold"
-                          >
-                            {name.length > 20
-                              ? `${name.substring(0, 20)}...`
-                              : name}
-                          </text>
-                          <text
-                            x={x + width / 2}
-                            y={y + height / 2 + 16}
-                            textAnchor="middle"
-                            fill="#fff"
-                            fontSize={10}
-                          >
-                            {fmtUSD(size)}
-                          </text>
-                        </g>
-                      );
-                    }}
-                  />
-                </ResponsiveContainer>
-              )}
-            </Card>
-
             {/* Asset Performance by 24h Change */}
             <Card className="p-6 bg-white shadow-sm">
               <h3 className="text-lg font-semibold text-slate-800 mb-4">
