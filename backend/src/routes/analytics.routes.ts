@@ -2,6 +2,12 @@ import { Router } from "express";
 import { getMultiNetworkHistoricalPortfolio } from "../services/historical.service";
 import { parseNetworks } from "../config/networks";
 
+// Toggle verbose analytics/debug logs. When false only concise errors are printed.
+const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
+function dbg(...args: any[]) {
+  if (LOGS_DEBUG) console.log(...args);
+}
+
 const router = Router();
 
 /**
@@ -13,8 +19,10 @@ router.get("/historical/:address", async (req, res) => {
     const networks = parseNetworks(req.query.networks as string | undefined);
     const days = Math.min(365, Math.max(7, Number(req.query.days ?? "180")));
 
-    console.log(`[Analytics Route] GET /api/analytics/historical/${address}`);
-    console.log(`[Analytics Route] Params: networks=${networks.join(",")}, days=${days}`);
+    dbg(`[Analytics Route] GET /api/analytics/historical/${address}`);
+    dbg(
+      `[Analytics Route] Params: networks=${networks.join(",")}, days=${days}`
+    );
 
     const data = await getMultiNetworkHistoricalPortfolio(
       networks,
@@ -22,10 +30,11 @@ router.get("/historical/:address", async (req, res) => {
       days
     );
 
-    console.log(`[Analytics Route] Response: ${data.length} points for ${address}`);
-    
+    dbg(`[Analytics Route] Response: ${data.length} points for ${address}`);
+
     // Check if data is estimated (from fallback)
-    const isEstimated = data.length > 0 && (data[0] as any)._isEstimated === true;
+    const isEstimated =
+      data.length > 0 && (data[0] as any)._isEstimated === true;
 
     res.json({
       address,
@@ -35,11 +44,10 @@ router.get("/historical/:address", async (req, res) => {
       isEstimated,
     });
   } catch (err: any) {
-    console.error("[GET /api/analytics/historical/:address] error:", err);
-    console.error("[Analytics Route] Error stack:", err.stack);
+    dbg("[GET /api/analytics/historical/:address] error:", err);
+    dbg("[Analytics Route] Error stack:", err.stack);
     res.status(400).json({ ok: false, error: err?.message ?? "Bad Request" });
   }
 });
 
 export default router;
-
