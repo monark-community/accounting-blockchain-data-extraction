@@ -1937,7 +1937,7 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="all-transactions">
+          <TabsContent value="all-transactions" forceMount>
             <AllTransactionsTab address={address} />
           </TabsContent>
         </Tabs>

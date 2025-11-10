@@ -16,6 +16,9 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -115,6 +118,37 @@ const networkLabel = (network?: string) => {
   }
 };
 
+const NETWORK_OPTIONS = [
+  { id: "mainnet", label: "Ethereum" },
+  { id: "bsc", label: "BSC" },
+  { id: "polygon", label: "Polygon" },
+  { id: "optimism", label: "Optimism" },
+  { id: "base", label: "Base" },
+  { id: "arbitrum-one", label: "Arbitrum" },
+  { id: "avalanche", label: "Avalanche" },
+  { id: "unichain", label: "Unichain" },
+] as const;
+const NETWORK_IDS: string[] = NETWORK_OPTIONS.map((n) => n.id);
+const DEFAULT_NETWORKS: string[] = [NETWORK_OPTIONS[0].id];
+
+function normalizeNetworkList(list: string[]): string[] {
+  const normalized = new Set(
+    list
+      .map((n) => n.trim().toLowerCase())
+      .filter((n) => NETWORK_IDS.includes(n))
+  );
+  const ordered = NETWORK_IDS.filter((id) => normalized.has(id));
+  return ordered.length ? ordered : [...DEFAULT_NETWORKS];
+}
+
+function parseNetworkQuery(value?: string | null): string[] {
+  if (!value) return [];
+  return value
+    .split(",")
+    .map((n) => n.trim())
+    .filter(Boolean);
+}
+
 // Map UI chip → backend class= param
 function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
   if (!Array.isArray(selected) || (selected as any)[0] === "all") return null;
@@ -133,7 +167,7 @@ const PAGE_SIZE = 20;
 
 interface AllTransactionsTabProps {
   address?: string;
-  networks?: string; // comma-separated networks; omit to use backend default (all)
+  networks?: string; // comma-separated override; omit to use UI-managed selection
 }
 
 export default function AllTransactionsTab({
@@ -161,17 +195,36 @@ export default function AllTransactionsTab({
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Networks: if provided via props, use it; otherwise try URL (?networks=...); else omit to use backend default
-  const [networks, setNetworks] = useState<string | undefined>(propNetworks);
+  // Networks: default to Ethereum mainnet, allow user/URL overrides
+  const [networks, setNetworks] = useState<string[]>(() =>
+    propNetworks
+      ? normalizeNetworkList(parseNetworkQuery(propNetworks))
+      : [...DEFAULT_NETWORKS]
+  );
   useEffect(() => {
     if (propNetworks) {
-      setNetworks(propNetworks);
+      setNetworks(normalizeNetworkList(parseNetworkQuery(propNetworks)));
     } else {
       const sp = new URLSearchParams(window.location.search);
       const n = sp.get("networks");
-      setNetworks(n || undefined);
+      setNetworks(
+        normalizeNetworkList(
+          n ? parseNetworkQuery(n) : [...DEFAULT_NETWORKS]
+        )
+      );
     }
   }, [propNetworks]);
+  const networksParam = networks.length ? networks.join(",") : undefined;
+  const networksButtonLabel = useMemo(() => {
+    if (!networks.length || networks.length === NETWORK_IDS.length) {
+      return "All chains";
+    }
+    if (networks.length === 1) {
+      return networkLabel(networks[0]);
+    }
+    const primary = networkLabel(networks[0]);
+    return `${primary} +${networks.length - 1}`;
+  }, [networks]);
 
   // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
   const pageCache = useRef(
@@ -202,7 +255,7 @@ export default function AllTransactionsTab({
   // Generate cache key for current filters
   const getCacheKey = (addr: string, pageNum: number) => {
     const filterKey = JSON.stringify(selectedTypes);
-    const nets = networks || "(all)";
+    const nets = networksParam || "(all)";
     return `${addr}:${nets}:${filterKey}:${pageNum}`;
   };
 
@@ -238,7 +291,7 @@ export default function AllTransactionsTab({
         total: totalCount,
       } = await fetchTransactions(address, {
         // networks: if undefined → backend default = all supported EVM networks
-        ...(networks ? { networks } : {}),
+        ...(networksParam ? { networks: networksParam } : {}),
         page: p,
         limit: PAGE_SIZE,
         minUsd: 0,
@@ -284,7 +337,7 @@ export default function AllTransactionsTab({
         hasNext,
         total: totalCount,
       } = await fetchTransactions(address, {
-        ...(networks ? { networks } : {}),
+        ...(networksParam ? { networks: networksParam } : {}),
         page: nextPage,
         limit: PAGE_SIZE,
         minUsd: 0,
@@ -306,7 +359,7 @@ export default function AllTransactionsTab({
     pageCache.current.clear(); // Clear cache when address or filters change
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey]);
+  }, [address, refreshKey, networksParam]);
 
   // When server-side class filter changes (chips), reload current page with new filter
   useEffect(() => {
@@ -439,6 +492,20 @@ export default function AllTransactionsTab({
     );
   }
 
+  const toggleNetworkSelection = (id: string, checked: boolean) => {
+    setNetworks((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return normalizeNetworkList(Array.from(next));
+    });
+  };
+  const selectAllNetworks = () => setNetworks([...NETWORK_IDS]);
+  const resetToDefaultNetworks = () => setNetworks([...DEFAULT_NETWORKS]);
+
   // Filters UI helpers
   const toggleType = (t: TxType | "all", checked: boolean) => {
     if (t === "all") {
@@ -488,6 +555,45 @@ export default function AllTransactionsTab({
                   <span className="font-medium">Page {page}</span>
                 )}
               </div>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Networks: {networksButtonLabel}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Select networks</DropdownMenuLabel>
+                  {NETWORK_OPTIONS.map((net) => (
+                    <DropdownMenuCheckboxItem
+                      key={net.id}
+                      checked={networks.includes(net.id)}
+                      onCheckedChange={(checked) =>
+                        toggleNetworkSelection(net.id, !!checked)
+                      }
+                    >
+                      {net.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      selectAllNetworks();
+                    }}
+                  >
+                    Select all
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      resetToDefaultNetworks();
+                    }}
+                  >
+                    Reset to default
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* Columns & Export */}
               <DropdownMenu>
