@@ -25,6 +25,12 @@ type HistPoint = {
 
 type HistResponse = HistPoint[];
 
+// Toggle verbose pricing/debug logs. When false only concise errors are printed.
+const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
+function dbg(...args: any[]) {
+  if (LOGS_DEBUG) console.log(...args);
+}
+
 async function tokenApiGET<T>(
   path: string,
   qs: Record<string, string | number | undefined>
@@ -35,9 +41,9 @@ async function tokenApiGET<T>(
   });
 
   const fullUrl = url.toString();
-  console.log(`[TokenAPI] GET ${path}`, {
+  dbg(`[TokenAPI] GET ${path}`, {
     network: qs.network,
-    address: qs.address?.toString().substring(0, 10) + '...',
+    address: qs.address?.toString().substring(0, 10) + "...",
     interval: qs.interval,
     limit: qs.limit,
   });
@@ -46,24 +52,28 @@ async function tokenApiGET<T>(
     headers: { Authorization: `Bearer ${TOKEN_API_JWT}` },
   });
 
-  console.log(`[TokenAPI] Response status: ${res.status} ${res.statusText}`);
+  dbg(`[TokenAPI] Response status: ${res.status} ${res.statusText}`);
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    console.error(`[TokenAPI] Error response body:`, text);
+    dbg(`[TokenAPI] Error response body:`, text);
     throw new Error(`TokenAPI ${path} ${res.status} ${text}`.trim());
   }
 
   const json = await res.json();
-  const dataLength = Array.isArray(json.data) ? json.data.length : (json.data ? Object.keys(json.data).length : 0);
-  console.log(`[TokenAPI] Response data length: ${dataLength}`);
+  const dataLength = Array.isArray(json.data)
+    ? json.data.length
+    : json.data
+    ? Object.keys(json.data).length
+    : 0;
+  dbg(`[TokenAPI] Response data length: ${dataLength}`);
 
   if (dataLength > 0 && Array.isArray(json.data)) {
-    console.log(`[TokenAPI] First data point sample:`, {
+    dbg(`[TokenAPI] First data point sample:`, {
       timestamp: json.data[0]?.timestamp,
-      contract: json.data[0]?.contract?.substring(0, 10) + '...',
+      contract: json.data[0]?.contract?.substring(0, 10) + "...",
       symbol: json.data[0]?.symbol,
-      amount: json.data[0]?.amount?.substring(0, 20) + '...',
+      amount: json.data[0]?.amount?.substring(0, 20) + "...",
     });
   }
 
@@ -98,7 +108,7 @@ export async function getHistoricalPortfolioValue(
   address: string,
   days: number = 180
 ): Promise<HistoricalPoint[]> {
-  console.log(
+  dbg(
     `[Historical] Fetching data for ${network}:${address} (requested ${days} days)`
   );
 
@@ -107,14 +117,21 @@ export async function getHistoricalPortfolioValue(
   const targetWeeks = Math.ceil(days / 7);
   const limit = Math.min(targetWeeks, maxLimit);
 
-  console.log(
-    `[Historical] Requesting ${limit} weekly points (interval=7d) for ~${limit * 7} days coverage`
+  dbg(
+    `[Historical] Requesting ${limit} weekly points (interval=7d) for ~${
+      limit * 7
+    } days coverage`
   );
 
   let allData: HistPoint[] = [];
 
   try {
-    console.log(`[Historical] Calling Token API: network=${network}, address=${address.substring(0, 10)}..., interval=${interval}, limit=${limit}`);
+    dbg(
+      `[Historical] Calling Token API: network=${network}, address=${address.substring(
+        0,
+        10
+      )}..., interval=${interval}, limit=${limit}`
+    );
     const { data } = await tokenApiGET<HistResponse>(
       "/evm/balances/historical",
       {
@@ -125,12 +142,12 @@ export async function getHistoricalPortfolioValue(
       }
     );
 
-    console.log(`[Historical] API response type:`, typeof data);
-    console.log(`[Historical] API response isArray:`, Array.isArray(data));
+    dbg(`[Historical] API response type:`, typeof data);
+    dbg(`[Historical] API response isArray:`, Array.isArray(data));
     if (data && Array.isArray(data)) {
-      console.log(`[Historical] API returned array with ${data.length} items`);
+      dbg(`[Historical] API returned array with ${data.length} items`);
       if (data.length > 0) {
-        console.log(`[Historical] First item sample:`, {
+        dbg(`[Historical] First item sample:`, {
           timestamp: data[0].timestamp,
           contract: data[0].contract?.substring(0, 10) + "...",
           symbol: data[0].symbol,
@@ -138,23 +155,34 @@ export async function getHistoricalPortfolioValue(
         });
         allData = data;
       } else {
-        console.log(`[Historical] API returned empty array - no historical data for this address/network`);
+        dbg(
+          `[Historical] API returned empty array - no historical data for this address/network`
+        );
       }
     } else {
-      console.log(`[Historical] API returned invalid data format:`, typeof data, data ? Object.keys(data) : 'null/undefined');
+      dbg(
+        `[Historical] API returned invalid data format:`,
+        typeof data,
+        data ? Object.keys(data) : "null/undefined"
+      );
     }
   } catch (err: any) {
-    console.error(`[Historical] API request failed for ${network}:${address.substring(0, 10)}...`);
-    console.error(`[Historical] Error message:`, err.message);
-    console.error(`[Historical] Error stack:`, err.stack);
+    dbg(
+      `[Historical] API request failed for ${network}:${address.substring(
+        0,
+        10
+      )}...`
+    );
+    dbg(`[Historical] Error message:`, err.message);
+    dbg(`[Historical] Error stack:`, err.stack);
   }
 
-  console.log(
+  dbg(
     `[Historical] ${network}:${address} - Total received ${allData.length} data points`
   );
 
   if (allData.length === 0) {
-    console.log(`[Historical] No data available for ${network}:${address}`);
+    dbg(`[Historical] No data available for ${network}:${address}`);
     return [];
   }
 
@@ -170,7 +198,10 @@ export async function getHistoricalPortfolioValue(
     }
     const tsMap = byContract.get(key)!;
     const existing = tsMap.get(row.timestamp);
-    if (!existing || parseFloat(row.amount) > parseFloat(existing.amount || "0")) {
+    if (
+      !existing ||
+      parseFloat(row.amount) > parseFloat(existing.amount || "0")
+    ) {
       tsMap.set(row.timestamp, row);
     }
   }
@@ -181,7 +212,9 @@ export async function getHistoricalPortfolioValue(
   });
   const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
 
-  console.log(`[Historical] ${network}:${address} - Found ${sortedTimestamps.length} unique timestamps, ${byContract.size} unique contracts`);
+  dbg(
+    `[Historical] ${network}:${address} - Found ${sortedTimestamps.length} unique timestamps, ${byContract.size} unique contracts`
+  );
 
   const result: HistoricalPoint[] = [];
 
@@ -259,10 +292,18 @@ export async function getHistoricalPortfolioValue(
     });
   }
 
-  console.log(`[Historical] ${network}:${address} - Generated ${result.length} historical points`);
+  dbg(
+    `[Historical] ${network}:${address} - Generated ${result.length} historical points`
+  );
 
   if (result.length > 0) {
-    console.log(`[Historical] ${network}:${address} - First point: ${result[0].date} (${result[0].totalValueUsd.toFixed(2)} USD), Last: ${result[result.length - 1].date} (${result[result.length - 1].totalValueUsd.toFixed(2)} USD)`);
+    dbg(
+      `[Historical] ${network}:${address} - First point: ${
+        result[0].date
+      } (${result[0].totalValueUsd.toFixed(2)} USD), Last: ${
+        result[result.length - 1].date
+      } (${result[result.length - 1].totalValueUsd.toFixed(2)} USD)`
+    );
   }
 
   return result.sort((a, b) => a.timestamp - b.timestamp);
@@ -276,13 +317,21 @@ export async function getMultiNetworkHistoricalPortfolio(
   address: string,
   days: number = 180
 ): Promise<HistoricalPoint[]> {
-  console.log(`[Historical] Starting multi-network fetch for ${address} on networks: ${networks.join(", ")}`);
+  dbg(
+    `[Historical] Starting multi-network fetch for ${address} on networks: ${networks.join(
+      ", "
+    )}`
+  );
 
   const results = await Promise.all(
     networks.map((net) => getHistoricalPortfolioValue(net, address, days))
   );
 
-  console.log(`[Historical] Multi-network fetch complete. Results: ${results.map((r, i) => `${networks[i]}:${r.length} points`).join(", ")}`);
+  dbg(
+    `[Historical] Multi-network fetch complete. Results: ${results
+      .map((r, i) => `${networks[i]}:${r.length} points`)
+      .join(", ")}`
+  );
 
   const byTimestamp = new Map<number, HistoricalPoint>();
 
@@ -307,26 +356,38 @@ export async function getMultiNetworkHistoricalPortfolio(
     (a, b) => a.timestamp - b.timestamp
   );
 
-  console.log(`[Historical] Multi-network merge complete: ${final.length} final points`);
+  dbg(
+    `[Historical] Multi-network merge complete: ${final.length} final points`
+  );
 
   if (final.length > 0) {
-    console.log(`[Historical] Date range: ${final[0].date} to ${final[final.length - 1].date}`);
-    console.log(`[Historical] Value range: ${final[0].totalValueUsd.toFixed(2)} to ${final[final.length - 1].totalValueUsd.toFixed(2)} USD`);
+    dbg(
+      `[Historical] Date range: ${final[0].date} to ${
+        final[final.length - 1].date
+      }`
+    );
+    dbg(
+      `[Historical] Value range: ${final[0].totalValueUsd.toFixed(
+        2
+      )} to ${final[final.length - 1].totalValueUsd.toFixed(2)} USD`
+    );
   } else {
-    console.warn(
+    dbg(
       `[Historical] WARNING: No historical points generated for ${address}, using fallback`
     );
     // FALLBACK: Generate estimated history from current holdings
     const estimated = await generateEstimatedHistory(networks, address, days);
     if (estimated.length > 0) {
-      console.log(`[Historical] Fallback generated ${estimated.length} estimated points`);
+      dbg(
+        `[Historical] Fallback generated ${estimated.length} estimated points`
+      );
       // Mark as estimated
-      return estimated.map(p => ({ ...p, _isEstimated: true }));
+      return estimated.map((p) => ({ ...p, _isEstimated: true }));
     }
   }
 
   // Mark as real data
-  return final.map(p => ({ ...p, _isEstimated: false }));
+  return final.map((p) => ({ ...p, _isEstimated: false }));
 }
 
 /**
@@ -337,8 +398,10 @@ async function generateEstimatedHistory(
   address: string,
   days: number = 180
 ): Promise<HistoricalPoint[]> {
-  console.log(`[Historical] Fallback: Generating estimated history from current holdings`);
-  
+  dbg(
+    `[Historical] Fallback: Generating estimated history from current holdings`
+  );
+
   try {
     const currentHoldings = await getHoldingsOverview(
       address,
@@ -352,19 +415,25 @@ async function generateEstimatedHistory(
     );
 
     if (!currentHoldings.holdings || currentHoldings.holdings.length === 0) {
-      console.log(`[Historical] No current holdings found for fallback`);
+      dbg(`[Historical] No current holdings found for fallback`);
       return [];
     }
 
     const currentTotalValue = currentHoldings.kpis.totalValueUsd || 0;
-    
+
     if (currentTotalValue === 0) {
-      console.log(`[Historical] Current portfolio value is 0, cannot generate fallback`);
+      dbg(
+        `[Historical] Current portfolio value is 0, cannot generate fallback`
+      );
       return [];
     }
 
-    console.log(`[Historical] Current portfolio value: ${currentTotalValue.toFixed(2)} USD`);
-    console.log(`[Historical] Generating ${Math.ceil(days / 7)} weekly points`);
+    dbg(
+      `[Historical] Current portfolio value: ${currentTotalValue.toFixed(
+        2
+      )} USD`
+    );
+    dbg(`[Historical] Generating ${Math.ceil(days / 7)} weekly points`);
 
     const now = Math.floor(Date.now() / 1000);
     const weekInSeconds = 7 * 24 * 60 * 60;
@@ -373,19 +442,22 @@ async function generateEstimatedHistory(
 
     const volatility = 0.08;
     const valuePoints: number[] = [currentTotalValue];
-    
+
     for (let i = 1; i <= numWeeks; i++) {
-      const seed = (now - (i * weekInSeconds)) % 1000 / 1000;
+      const seed = ((now - i * weekInSeconds) % 1000) / 1000;
       const change = (seed - 0.5) * volatility * 2;
       const prevValue = valuePoints[i - 1] / (1 + change);
-      const bounded = Math.max(currentTotalValue * 0.2, Math.min(currentTotalValue * 2, prevValue));
+      const bounded = Math.max(
+        currentTotalValue * 0.2,
+        Math.min(currentTotalValue * 2, prevValue)
+      );
       valuePoints.push(bounded);
     }
-    
+
     valuePoints.reverse();
 
     for (let week = 0; week <= numWeeks; week++) {
-      const timestamp = now - ((numWeeks - week) * weekInSeconds);
+      const timestamp = now - (numWeeks - week) * weekInSeconds;
       const date = new Date(timestamp * 1000);
       const weekValue = valuePoints[week] || currentTotalValue;
 
@@ -395,12 +467,13 @@ async function generateEstimatedHistory(
       for (const holding of currentHoldings.holdings) {
         const proportion = (holding.valueUsd || 0) / currentTotalValue;
         const weekAssetValue = weekValue * proportion;
-        
+
         const chain = holding.chain || "unknown";
         byChain[chain] = (byChain[chain] || 0) + weekAssetValue;
-        
+
         if (holding.symbol) {
-          byAsset[holding.symbol] = (byAsset[holding.symbol] || 0) + weekAssetValue;
+          byAsset[holding.symbol] =
+            (byAsset[holding.symbol] || 0) + weekAssetValue;
         }
       }
 
@@ -415,13 +488,16 @@ async function generateEstimatedHistory(
 
     points.sort((a, b) => a.timestamp - b.timestamp);
 
-    console.log(`[Historical] Generated ${points.length} estimated historical points`);
-    console.log(`[Historical] Estimated value range: ${points[0].totalValueUsd.toFixed(2)} to ${points[points.length - 1].totalValueUsd.toFixed(2)} USD`);
+    dbg(`[Historical] Generated ${points.length} estimated historical points`);
+    dbg(
+      `[Historical] Estimated value range: ${points[0].totalValueUsd.toFixed(
+        2
+      )} to ${points[points.length - 1].totalValueUsd.toFixed(2)} USD`
+    );
 
     return points;
   } catch (err: any) {
-    console.error(`[Historical] Failed to generate estimated history:`, err.message);
+    dbg(`[Historical] Failed to generate estimated history:`, err.message);
     return [];
   }
 }
-
