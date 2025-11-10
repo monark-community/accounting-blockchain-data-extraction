@@ -26,7 +26,8 @@ type HistPoint = {
 type HistResponse = HistPoint[];
 
 // Toggle verbose pricing/debug logs. When false only concise errors are printed.
-const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
+// const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
+const LOGS_DEBUG = false;
 function dbg(...args: any[]) {
   if (LOGS_DEBUG) console.log(...args);
 }
