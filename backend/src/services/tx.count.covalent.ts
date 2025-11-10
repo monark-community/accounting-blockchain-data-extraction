@@ -68,9 +68,9 @@ export async function getTransactionCountFromCovalent(
       // Reduce noise on 429s; rely on retry and return null silently after retries
       if (firstPageResponse.status !== 429) {
         const brief = `${firstPageResponse.status} ${firstPageResponse.statusText}`;
-        console.error(
-          `[Covalent] Failed to fetch count for ${address} on ${network}: ${brief}`
-        );
+        // console.error(
+        //   `[Covalent] Failed to fetch count for ${address} on ${network}: ${brief}`
+        // );
       }
       return null;
     }
@@ -78,7 +78,7 @@ export async function getTransactionCountFromCovalent(
     const firstPageJson = (await firstPageResponse.json()) as any;
 
     if (!firstPageJson?.data) {
-      console.error(`[Covalent] Invalid response structure: missing data`);
+      // console.error(`[Covalent] Invalid response structure: missing data`);
       return null;
     }
 
@@ -113,10 +113,10 @@ export async function getTransactionCountFromCovalent(
 
     return estimatedTotal;
   } catch (error: any) {
-    console.error(
-      `[Covalent] Error fetching count for ${address} on ${network}:`,
-      error?.message || error
-    );
+    // console.error(
+    //   `[Covalent] Error fetching count for ${address} on ${network}:`,
+    //   error?.message || error
+    // );
     return null;
   }
 }
@@ -146,10 +146,10 @@ export async function testCovalentConnection(): Promise<boolean> {
     // console.log("[Covalent] Connection test failed: invalid response");
     return false;
   } catch (error: any) {
-    console.error(
-      "[Covalent] Connection test failed:",
-      error?.message || error
-    );
+    // console.error(
+    //   "[Covalent] Connection test failed:",
+    //   error?.message || error
+    // );
     return false;
   }
 }
