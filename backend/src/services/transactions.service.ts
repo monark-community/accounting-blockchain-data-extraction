@@ -13,7 +13,6 @@ import { parseNetworks, type EvmNetwork } from "../config/networks";
 import type { NormalizedLegRow, PageParams } from "../types/transactions";
 import { quoteTokenUsdAtTs, quoteNativeUsdAtTs } from "./tx.pricing";
 import { classifyLegs } from "./tx.classify";
-import { getTransactionCountFromCovalent } from "./tx.count.covalent";
 
 type ListParams = {
   address: `0x${string}`;
@@ -296,61 +295,4 @@ export async function listTransactionLegs(
     gasMetaEntries: Object.keys(gasMeta).length,
   });
   return all;
-}
-
-/**
- * Get total transaction count using Covalent API
- * Returns null if Covalent is not available or fails
- * Note: This does not account for filters (from/to, minUsd, spamFilter, class)
- * as Covalent API doesn't support these filters. The count is the total raw count.
- */
-export async function getTransactionCountTotal(
-  params: ListParams
-): Promise<number | null> {
-  const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
-
-  // Get count from Covalent for each network and sum them (limit concurrency)
-  const maxConc = Math.max(
-    1,
-    Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2)
-  );
-  const queue = [...nets];
-  const results: Array<number | null> = new Array(nets.length).fill(null);
-
-  async function worker() {
-    while (queue.length) {
-      const network = queue.shift()!;
-      const idx = nets.indexOf(network);
-      try {
-        results[idx] = await getTransactionCountFromCovalent(
-          params.address,
-          network
-        );
-      } catch (error: any) {
-        if (process.env.NODE_ENV !== "production") {
-          console.error(
-            `[Transactions] Failed to get count from Covalent for ${network}:`,
-            error?.message || error
-          );
-        }
-        results[idx] = null;
-      }
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () =>
-    worker()
-  );
-  await Promise.all(workers);
-  const counts = results;
-
-  // Sum all valid counts
-  const validCounts = counts.filter((c): c is number => c !== null && c >= 0);
-
-  if (validCounts.length === 0) {
-    return null; // No valid counts
-  }
-
-  const total = validCounts.reduce((sum, count) => sum + count, 0);
-  return total;
 }
