@@ -54,6 +54,7 @@ const Dashboard = () => {
   const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
+  const overviewReady = !!ov && !loadingOv;
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -162,10 +163,13 @@ const Dashboard = () => {
 
   // Fetch historical data for 6-month graph
   useEffect(() => {
-    if (!address) {
-      console.log("[Dashboard] No address, skipping historical data fetch");
+    if (!address || !overviewReady) {
+      console.log(
+        "[Dashboard] Historical data fetch postponed until overview is ready"
+      );
       return;
     }
+    let cancelled = false;
     console.log(
       `[Dashboard] Fetching historical data for ${address}, networks: ${networks}`
     );
@@ -175,6 +179,7 @@ const Dashboard = () => {
       days: 180,
     })
       .then((response) => {
+        if (cancelled) return;
         console.log(
           `[Dashboard] Historical data received: ${response.data.length} points`
         );
@@ -187,13 +192,19 @@ const Dashboard = () => {
         setIsHistoricalEstimated(response.isEstimated || false);
       })
       .catch((e) => {
+        if (cancelled) return;
         console.error("[Dashboard] Failed to load historical data:", e);
       })
       .finally(() => {
+        if (cancelled) return;
         setLoadingHistorical(false);
         console.log("[Dashboard] Historical data fetch completed");
       });
-  }, [address, networks]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address, networks, overviewReady]);
 
   const historicalChartData = useMemo(() => {
     console.log(
@@ -511,7 +522,7 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab address={address} />
+            <AllTransactionsTab address={address} isReady={overviewReady} />
           </TabsContent>
         </Tabs>
       </main>
