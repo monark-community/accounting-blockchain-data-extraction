@@ -631,13 +631,11 @@ const Dashboard = () => {
               quality={quality}
               concentration={concentration}
               concentrationExtras={concentrationExtras}
-              allocationData={allocationData}
               topHoldingsLive={topHoldingsLive}
               errorOv={errorOv}
               showChange={showChange}
               setShowChange={setShowChange}
               movers={movers}
-              stableVsRisk={stableVsRisk}
               minUsdFilter={minUsdFilter}
               setMinUsdFilter={setMinUsdFilter}
               hideStables={hideStables}
