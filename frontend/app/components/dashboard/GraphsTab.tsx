@@ -13,6 +13,11 @@ interface PnlRow { label: string; pnl: number; value: number }
 interface StableVsRisk { stable: number; nonStable: number }
 interface Movers { gainers: PricedHolding[]; losers: PricedHolding[] }
 interface HistoricalChartPoint { date: string; value: number; timestamp: number }
+interface NetFlowPoint { date: string; delta: number }
+interface ChainHistorySeries {
+  data: Record<string, number | string>[];
+  series: Array<{ key: string; label: string; color: string }>;
+}
 
 interface GraphsTabProps {
   address?: string;
@@ -28,6 +33,8 @@ interface GraphsTabProps {
   allocationData: AllocationRow[];
   stableVsRisk: StableVsRisk;
   movers: Movers;
+  netFlowData: NetFlowPoint[];
+  chainHistory: ChainHistorySeries;
 }
 
 const GraphsTab = ({
@@ -44,6 +51,8 @@ const GraphsTab = ({
   allocationData,
   stableVsRisk,
   movers,
+  netFlowData,
+  chainHistory,
 }: GraphsTabProps) => (
   <div className="space-y-6">
     {/* 6-Month Portfolio Fluctuation Chart */}
@@ -189,6 +198,83 @@ const GraphsTab = ({
             </div>
           )}
         </>
+      )}
+    </Card>
+
+    {/* Net Portfolio Flow */}
+    <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-slate-800">
+          Net Portfolio Change (Period over Period)
+        </h3>
+      </div>
+      {netFlowData.length === 0 ? (
+        <div className="text-sm text-slate-500">
+          Not enough historical points to compute flows.
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={netFlowData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis tickFormatter={(v) => fmtUSD(v)} />
+            <RechartsTooltip
+              formatter={(value: number) => fmtUSD(value)}
+              labelFormatter={(label) => `Date: ${label}`}
+            />
+            <Bar dataKey="delta">
+              {netFlowData.map((entry, index) => (
+                <Cell
+                  key={`flow-${index}`}
+                  fill={entry.delta >= 0 ? "#10b981" : "#ef4444"}
+                />
+              ))}
+            </Bar>
+            <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </Card>
+
+    {/* Chain Allocation over Time */}
+    <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-semibold text-slate-800">
+          Chain Allocation Over Time
+        </h3>
+        <span className="text-xs text-slate-500">
+          Percentage of portfolio by chain (stacked).
+        </span>
+      </div>
+      {chainHistory.data.length === 0 ? (
+        <div className="text-sm text-slate-500">
+          Not enough historical data to visualize chain rotation.
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={320}>
+          <AreaChart data={chainHistory.data} stackOffset="expand">
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" />
+            <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} />
+            <RechartsTooltip
+              formatter={(value: number, name: string) => [
+                `${value.toFixed(1)}%`,
+                chainHistory.series.find((s) => s.key === name)?.label || name,
+              ]}
+            />
+            {chainHistory.series.map((series) => (
+              <Area
+                key={series.key}
+                type="monotone"
+                dataKey={series.key}
+                stackId="1"
+                stroke={series.color}
+                fill={series.color}
+                strokeWidth={1.5}
+              />
+            ))}
+          </AreaChart>
+        </ResponsiveContainer>
       )}
     </Card>
 

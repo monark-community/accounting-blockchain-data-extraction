@@ -24,8 +24,58 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { useWallets } from "@/hooks/use-wallets";
 import { OverviewResponse } from "@/lib/types/portfolio";
-import { CHAIN_LABEL, computeHHI, isStable } from "@/lib/portfolioUtils";
+import {
+  CHAIN_LABEL,
+  computeHHI,
+  isStable,
+  classifyRiskBucket,
+  type RiskBucketId,
+} from "@/lib/portfolioUtils";
 import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
+
+const RISK_BUCKET_META: Record<
+  RiskBucketId,
+  {
+    label: string;
+    description: string;
+    criteria: string;
+    accent: string;
+    barColor: string;
+  }
+> = {
+  stable: {
+    label: "Stablecoins",
+    description: "Capital parked in USD-pegged assets.",
+    criteria: "Symbols matching USDT, USDC, DAI, FRAX, LUSD, PYUSD, etc.",
+    accent: "bg-emerald-100 text-emerald-800",
+    barColor: "#10b981",
+  },
+  bluechip: {
+    label: "Blue Chip",
+    description: "ETH, BTC, and liquid staking derivatives.",
+    criteria: "ETH/WETH, BTC/WBTC, and LSDs like stETH, rETH, cbETH.",
+    accent: "bg-blue-100 text-blue-800",
+    barColor: "#3b82f6",
+  },
+  longtail: {
+    label: "Long Tail",
+    description: "Higher-beta tokens and niche assets.",
+    criteria: "All other ERC20 / token holdings outside the above buckets.",
+    accent: "bg-amber-100 text-amber-800",
+    barColor: "#f97316",
+  },
+};
+
+const CHAIN_STACK_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f97316",
+  "#a855f7",
+  "#06b6d4",
+  "#e11d48",
+  "#facc15",
+  "#0ea5e9",
+];
 
 const Dashboard = () => {
   const {
@@ -228,6 +278,66 @@ const Dashboard = () => {
     return processed;
   }, [historicalData]);
 
+  const netFlowData = useMemo(() => {
+    if (historicalData.length < 2) return [];
+    const sorted = [...historicalData].sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
+    const flows: Array<{ date: string; delta: number }> = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const current = sorted[i];
+      const delta = current.totalValueUsd - prev.totalValueUsd;
+      flows.push({
+        date: new Date(current.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+        delta,
+      });
+    }
+    return flows;
+  }, [historicalData]);
+
+  const chainHistory = useMemo(() => {
+    if (historicalData.length === 0) {
+      return { data: [] as Record<string, number | string>[], series: [] as Array<{ key: string; label: string; color: string }> };
+    }
+    const sorted = [...historicalData].sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
+    const chainSet = new Set<string>();
+    for (const point of sorted) {
+      Object.keys(point.byChain ?? {}).forEach((chain) =>
+        chainSet.add(chain)
+      );
+    }
+    const seriesKeys = Array.from(chainSet);
+    if (!seriesKeys.length) {
+      return { data: [], series: [] };
+    }
+    const data = sorted.map((point) => {
+      const row: Record<string, number | string> = {
+        date: new Date(point.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+      };
+      const total = point.totalValueUsd || 0;
+      seriesKeys.forEach((chain) => {
+        const usd = point.byChain?.[chain] ?? 0;
+        row[chain] = total > 0 ? (usd / total) * 100 : 0;
+      });
+      return row;
+    });
+    const series = seriesKeys.map((chain, idx) => ({
+      key: chain,
+      label: CHAIN_LABEL[chain] ?? chain,
+      color: CHAIN_STACK_COLORS[idx % CHAIN_STACK_COLORS.length],
+    }));
+    return { data, series };
+  }, [historicalData]);
+
   const allocationData = useMemo(() => {
     if (!ov) return [];
     // keep only priced tokens (value > 0)
@@ -332,6 +442,39 @@ const Dashboard = () => {
       .reduce((s, h) => s + (h.valueUsd || 0), 0);
     const total = ov.kpis.totalValueUsd || 0;
     return { stable, nonStable: Math.max(total - stable, 0) };
+  }, [ov]);
+
+  const riskBuckets = useMemo(() => {
+    const totals: Record<RiskBucketId, number> = {
+      stable: 0,
+      bluechip: 0,
+      longtail: 0,
+    };
+    const counts: Record<RiskBucketId, number> = {
+      stable: 0,
+      bluechip: 0,
+      longtail: 0,
+    };
+    for (const holding of ov?.holdings ?? []) {
+      const bucket = classifyRiskBucket(holding.symbol);
+      const value = holding.valueUsd || 0;
+      totals[bucket] += value;
+      if (value > 0) counts[bucket] += 1;
+    }
+    const totalValue = ov?.kpis.totalValueUsd || 0;
+    return (Object.entries(RISK_BUCKET_META) as Array<
+      [RiskBucketId, (typeof RISK_BUCKET_META)[RiskBucketId]]
+    >).map(([id, meta]) => ({
+      id,
+      label: meta.label,
+      description: meta.description,
+      criteria: meta.criteria,
+      accent: meta.accent,
+      barColor: meta.barColor,
+      usd: totals[id],
+      pct: totalValue > 0 ? (totals[id] / totalValue) * 100 : 0,
+      assetCount: counts[id],
+    }));
   }, [ov]);
 
   const effectiveN = (weightsPct: number[]) => {
@@ -500,6 +643,7 @@ const Dashboard = () => {
               hideStables={hideStables}
               setHideStables={setHideStables}
               filteredHoldings={filteredHoldings}
+              riskBuckets={riskBuckets}
             />
           </TabsContent>
 
@@ -518,6 +662,8 @@ const Dashboard = () => {
               allocationData={allocationData}
               stableVsRisk={stableVsRisk}
               movers={movers}
+              netFlowData={netFlowData}
+              chainHistory={chainHistory}
             />
           </TabsContent>
 

@@ -16,6 +16,17 @@ interface Concentration { hhi: number; label: string; stableSharePct: number }
 interface ConcentrationExtras { effN: number; top1: number; top3: number }
 interface StableVsRisk { stable: number; nonStable: number }
 interface QualityMetrics { volProxy: number; bluechipShare: number; chainSpread: number }
+interface RiskBucket {
+  id: string;
+  label: string;
+  description: string;
+  criteria: string;
+  accent: string;
+  barColor: string;
+  usd: number;
+  pct: number;
+  assetCount: number;
+}
 
 interface OverviewTabProps {
   loadingOv: boolean;
@@ -37,6 +48,7 @@ interface OverviewTabProps {
   hideStables: boolean;
   setHideStables: (value: boolean) => void;
   filteredHoldings: PricedHolding[];
+  riskBuckets: RiskBucket[];
 }
 
 const OverviewTab = ({
@@ -59,6 +71,7 @@ const OverviewTab = ({
   hideStables,
   setHideStables,
   filteredHoldings,
+  riskBuckets,
 }: OverviewTabProps) => (
   <div className="space-y-6">
     {/* Portfolio Summary Cards */}
@@ -494,6 +507,78 @@ const OverviewTab = ({
           </div>
           <DollarSign className="w-12 h-12 text-orange-500" />
         </div>
+      </Card>
+
+      <Card className="p-6 bg-white shadow-sm lg:col-span-2">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <p className="text-sm font-medium text-slate-600">
+              Risk Buckets
+            </p>
+            <p className="text-xs text-slate-500">
+              Distribution across stablecoins, blue chips, and long-tail assets.
+            </p>
+          </div>
+        </div>
+        {riskBuckets.every((b) => b.usd === 0) ? (
+          <div className="text-sm text-slate-500">
+            Load an address to see risk distribution.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {riskBuckets.map((bucket) => (
+              <div key={bucket.id} className="space-y-2">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <HoverCard>
+                      <HoverCardTrigger asChild>
+                        <div
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-help ${bucket.accent}`}
+                        >
+                          {bucket.label}
+                        </div>
+                      </HoverCardTrigger>
+                      <HoverCardContent className="w-64">
+                        <p className="text-xs font-medium text-slate-700 mb-1">
+                          {bucket.label}
+                        </p>
+                        <p className="text-xs text-slate-500 mb-2">
+                          {bucket.criteria}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Assets in bucket: {bucket.assetCount}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Share: {bucket.pct.toFixed(1)}% ({fmtUSD(bucket.usd)})
+                        </p>
+                      </HoverCardContent>
+                    </HoverCard>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {bucket.description}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-slate-800">
+                      {bucket.pct.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {fmtUSD(bucket.usd)}
+                    </p>
+                  </div>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${bucket.pct}%`,
+                      backgroundColor: bucket.barColor,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </div>
 
