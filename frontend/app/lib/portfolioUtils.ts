@@ -37,6 +37,18 @@ export const chainBadgeClass: Record<string, string> = {
   unichain: "bg-emerald-100 text-emerald-700",
 };
 
+const BLUE_CHIP_SYMBOLS = [
+  "ETH",
+  "WETH",
+  "WBTC",
+  "BTC",
+  "STETH",
+  "RETH",
+  "CBETH",
+  "OSMO",
+  "BNB",
+];
+
 // Herfindahl–Hirschman Index (concentration)
 export function computeHHI(weightsPct: number[]) {
   const shares = weightsPct.map((w) => w / 100);
@@ -59,4 +71,18 @@ export function isStable(symbol?: string) {
     "GUSD",
     "PYUSD",
   ].some((x) => s.startsWith(x));
+}
+
+export function isBlueChip(symbol?: string) {
+  if (!symbol) return false;
+  const s = symbol.toUpperCase();
+  return BLUE_CHIP_SYMBOLS.some((name) => s.startsWith(name));
+}
+
+export type RiskBucketId = "stable" | "bluechip" | "longtail";
+
+export function classifyRiskBucket(symbol?: string): RiskBucketId {
+  if (isStable(symbol)) return "stable";
+  if (isBlueChip(symbol)) return "bluechip";
+  return "longtail";
 }
