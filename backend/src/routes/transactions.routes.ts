@@ -1,10 +1,7 @@
 // backend/src/routes/transactions.routes.ts
 
 import { Router } from "express";
-import {
-  listTransactionLegs,
-  getTransactionCountTotal,
-} from "../services/transactions.service";
+import { listTransactionLegs } from "../services/transactions.service";
 import { parseNetworks } from "../config/networks";
 import { applyLegFilters } from "../utils/tx.filters";
 import { buildSummary } from "../services/tx.aggregate";
@@ -84,17 +81,6 @@ router.get("/:address", async (req, res) => {
     const classParam = (req.query.class as string | undefined)?.trim();
     const hasClassFilter = !!classParam;
 
-    // Get total count from Covalent ONLY if no class filter is applied
-    // (Covalent doesn't support our custom class filters like expenses/incomes)
-    const totalCountPromise = hasClassFilter
-      ? Promise.resolve(null) // Don't use Covalent when filters are active
-      : getTransactionCountTotal({
-          address: addr,
-          networks: req.query.networks as string | string[] | undefined,
-          from: req.query.from as string | undefined,
-          to: req.query.to as string | undefined,
-        });
-
     const legsRaw = await listTransactionLegs({
       address: addr,
       networks: req.query.networks as string | string[] | undefined,
@@ -126,15 +112,11 @@ router.get("/:address", async (req, res) => {
     const start = (page - 1) * limit;
     const pagedLegs = legsFilteredByClass.slice(start, start + limit);
 
-    // Get total count (null if filters are active or Covalent fails)
-    const totalCount = await totalCountPromise;
-
     res.json({
       data: pagedLegs,
       meta: { gasUsdByTx: gasMeta ?? {} },
       page,
       limit,
-      total: totalCount, // Total count from Covalent (null if unavailable)
     });
     logDebug("list:success", {
       address: addr,

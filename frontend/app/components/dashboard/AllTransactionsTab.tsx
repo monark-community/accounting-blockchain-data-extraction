@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,9 +16,6 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -49,11 +46,11 @@ const shortAddr = (a?: string | null) =>
   a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—";
 const typeColor = (t: TxType) =>
   ({
-    income: "text-emerald-600",
-    expense: "text-rose-600",
-    swap: "text-indigo-600",
-    gas: "text-sky-600",
-  }[t] ?? "text-slate-600");
+    income: "text-green-600",
+    expense: "text-red-600",
+    swap: "text-blue-600",
+    gas: "text-amber-600",
+  }[t]);
 const typeIcon = (t: TxType) =>
   t === "income" ? (
     <TrendingUp className="w-4 h-4" />
@@ -118,37 +115,6 @@ const networkLabel = (network?: string) => {
   }
 };
 
-const NETWORK_OPTIONS = [
-  { id: "mainnet", label: "Ethereum" },
-  { id: "bsc", label: "BSC" },
-  { id: "polygon", label: "Polygon" },
-  { id: "optimism", label: "Optimism" },
-  { id: "base", label: "Base" },
-  { id: "arbitrum-one", label: "Arbitrum" },
-  { id: "avalanche", label: "Avalanche" },
-  { id: "unichain", label: "Unichain" },
-] as const;
-const NETWORK_IDS: string[] = NETWORK_OPTIONS.map((n) => n.id);
-const DEFAULT_NETWORKS: string[] = [NETWORK_OPTIONS[0].id];
-
-function normalizeNetworkList(list: string[]): string[] {
-  const normalized = new Set(
-    list
-      .map((n) => n.trim().toLowerCase())
-      .filter((n) => NETWORK_IDS.includes(n))
-  );
-  const ordered = NETWORK_IDS.filter((id) => normalized.has(id));
-  return ordered.length ? ordered : [...DEFAULT_NETWORKS];
-}
-
-function parseNetworkQuery(value?: string | null): string[] {
-  if (!value) return [];
-  return value
-    .split(",")
-    .map((n) => n.trim())
-    .filter(Boolean);
-}
-
 // Map UI chip → backend class= param
 function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
   if (!Array.isArray(selected) || (selected as any)[0] === "all") return null;
@@ -159,20 +125,37 @@ function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
     classes.push("transfer_in", "nft_transfer_in", "nft_buy", "income");
   if (set.has("expense"))
     classes.push("transfer_out", "nft_transfer_out", "nft_sell", "expense");
-  if (set.has("gas")) classes.push("gas");
+  // NOTE: "gas" isn’t a leg row today; we show fees per tx in the row. Leaving out.
   return classes.length ? classes.join(",") : null;
 }
 
 const PAGE_SIZE = 20;
 
+export interface AllTransactionsTabPersistedState {
+  rows: TxRow[];
+  page: number;
+  hasNext: boolean;
+  selectedTypes: TxType[] | ["all"];
+  visibleColumns: Record<
+    "type" | "date" | "network" | "asset" | "qty" | "usd" | "counterparty" | "tx",
+    boolean
+  >;
+  filteredCacheEntries: Array<[string, { rows: TxRow[]; hasNext: boolean }]>;
+  rawCacheEntries?: Array<[string, { rows: TxRow[]; hasNext: boolean }]>;
+  refreshKey: number;
+  error: string | null;
+}
+
 interface AllTransactionsTabProps {
   address?: string;
-  networks?: string; // comma-separated override; omit to use UI-managed selection
+  persistedState?: AllTransactionsTabPersistedState | null;
+  onPersist?: (address: string, state: AllTransactionsTabPersistedState) => void;
 }
 
 export default function AllTransactionsTab({
   address: propAddress,
-  networks: propNetworks,
+  persistedState,
+  onPersist,
 }: AllTransactionsTabProps) {
   // Use prop address if provided, otherwise read from URL
   const [address, setAddress] = useState<string>(propAddress || "");
@@ -187,54 +170,37 @@ export default function AllTransactionsTab({
   }, [propAddress]);
 
   // Server data & pagination
-  const [rows, setRows] = useState<TxRow[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
-  const [total, setTotal] = useState<number | null>(null); // Total count from backend (Covalent)
+  const [rows, setRows] = useState<TxRow[]>(() => persistedState?.rows ?? []);
+  const [page, setPage] = useState(() => persistedState?.page ?? 1);
+  const [hasNext, setHasNext] = useState<boolean>(
+    () => persistedState?.hasNext ?? false
+  );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  // Networks: default to Ethereum mainnet, allow user/URL overrides
-  const [networks, setNetworks] = useState<string[]>(() =>
-    propNetworks
-      ? normalizeNetworkList(parseNetworkQuery(propNetworks))
-      : [...DEFAULT_NETWORKS]
+  const [error, setError] = useState<string | null>(
+    () => persistedState?.error ?? null
   );
-  useEffect(() => {
-    if (propNetworks) {
-      setNetworks(normalizeNetworkList(parseNetworkQuery(propNetworks)));
-    } else {
-      const sp = new URLSearchParams(window.location.search);
-      const n = sp.get("networks");
-      setNetworks(
-        normalizeNetworkList(
-          n ? parseNetworkQuery(n) : [...DEFAULT_NETWORKS]
-        )
-      );
-    }
-  }, [propNetworks]);
-  const networksParam = networks.length ? networks.join(",") : undefined;
-  const networksButtonLabel = useMemo(() => {
-    if (!networks.length || networks.length === NETWORK_IDS.length) {
-      return "All chains";
-    }
-    if (networks.length === 1) {
-      return networkLabel(networks[0]);
-    }
-    const primary = networkLabel(networks[0]);
-    return `${primary} +${networks.length - 1}`;
-  }, [networks]);
-
-  // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
-  const pageCache = useRef(
-    new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>()
+  const [refreshKey, setRefreshKey] = useState(
+    () => persistedState?.refreshKey ?? 0
   );
+
+  // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext }
+  const filteredPageCache = useRef(
+    new Map<string, { rows: TxRow[]; hasNext: boolean }>(
+      persistedState?.filteredCacheEntries ?? []
+    )
+  );
+  const rawPageCache = useRef(
+    new Map<string, { rows: TxRow[]; hasNext: boolean }>(
+      persistedState?.rawCacheEntries ?? []
+    )
+  );
+  const skipInitialLoadRef = useRef<number>(persistedState ? 2 : 0);
+  const skipFilterLoadRef = useRef<number>(persistedState ? 2 : 0);
 
   // Simple filter chip state
-  const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
-    "all",
-  ] as any);
+  const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>(
+    () => persistedState?.selectedTypes ?? (["all"] as any)
+  );
 
   // Visible columns
   const visibleColumnsInit = {
@@ -244,77 +210,216 @@ export default function AllTransactionsTab({
     asset: true,
     qty: true,
     usd: true,
-    fee: true,
     counterparty: true,
     tx: true,
   } as const;
   const [visibleColumns, setVisibleColumns] = useState<
     Record<keyof typeof visibleColumnsInit, boolean>
-  >({ ...visibleColumnsInit });
+  >(
+    () =>
+      persistedState?.visibleColumns
+        ? { ...persistedState.visibleColumns }
+        : { ...visibleColumnsInit }
+  );
 
   // Generate cache key for current filters
-  const getCacheKey = (addr: string, pageNum: number) => {
-    const filterKey = JSON.stringify(selectedTypes);
-    const nets = networksParam || "(all)";
-    return `${addr}:${nets}:${filterKey}:${pageNum}`;
+  const getFilterKey = () => JSON.stringify(selectedTypes);
+  const getFilteredCacheKey = (addr: string, filterKey: string, pageNum: number) =>
+    `${addr}:${filterKey}:${pageNum}`;
+  const getRawCacheKey = (addr: string, pageNum: number) => `${addr}:${pageNum}`;
+  const getCacheKey = (addr: string, pageNum: number) =>
+    getFilteredCacheKey(addr, getFilterKey(), pageNum);
+  const getFilteredPage = (addr: string, filterKey: string, pageNum: number) =>
+    filteredPageCache.current.get(getFilteredCacheKey(addr, filterKey, pageNum));
+  const setFilteredPage = (
+    addr: string,
+    filterKey: string,
+    pageNum: number,
+    value: { rows: TxRow[]; hasNext: boolean }
+  ) => {
+    filteredPageCache.current.set(
+      getFilteredCacheKey(addr, filterKey, pageNum),
+      value
+    );
+  };
+  const ensureRawPage = async (
+    addr: string,
+    pageNum: number
+  ): Promise<{ rows: TxRow[]; hasNext: boolean }> => {
+    const cacheKey = getRawCacheKey(addr, pageNum);
+    const cached = rawPageCache.current.get(cacheKey);
+    if (cached) return cached;
+
+    const { rows: rawRows, hasNext: rawHasNext } = await fetchTransactions(
+      addr,
+      {
+        networks: "mainnet",
+        page: pageNum,
+        limit: PAGE_SIZE,
+        minUsd: 0,
+        spamFilter: "soft",
+      }
+    );
+    const stored = { rows: rawRows, hasNext: rawHasNext };
+    rawPageCache.current.set(cacheKey, stored);
+    return stored;
+  };
+  const collectFilteredPage = async (
+    addr: string,
+    pageNum: number
+  ): Promise<{ rows: TxRow[]; hasNext: boolean }> => {
+    const filterKey = getFilterKey();
+    const cached = getFilteredPage(addr, filterKey, pageNum);
+    if (cached) return cached;
+
+    const isAllSelected =
+      !Array.isArray(selectedTypes) || (selectedTypes as any)[0] === "all";
+
+    if (isAllSelected) {
+      const rawPage = await ensureRawPage(addr, pageNum);
+      setFilteredPage(addr, filterKey, pageNum, rawPage);
+      return rawPage;
+    }
+
+    const selectedSet = new Set(
+      Array.isArray(selectedTypes) && (selectedTypes as any)[0] !== "all"
+        ? (selectedTypes as TxType[])
+        : []
+    );
+
+    const rowsAccum: TxRow[] = [];
+    const limit = PAGE_SIZE;
+    let remainingToSkip = Math.max(0, (pageNum - 1) * limit);
+    let rawPageIndex = 1;
+    let hasMoreFiltered = false;
+    let lastRawHasNext = false;
+
+    while (rowsAccum.length < limit) {
+      const { rows: rawRows, hasNext: rawHasNext } = await ensureRawPage(
+        addr,
+        rawPageIndex
+      );
+      lastRawHasNext = rawHasNext;
+      const filtered = rawRows.filter((row) => selectedSet.has(row.type));
+
+      if (remainingToSkip > 0) {
+        if (remainingToSkip >= filtered.length) {
+          remainingToSkip -= filtered.length;
+        } else {
+          const sliceStart = remainingToSkip;
+          remainingToSkip = 0;
+          const available = filtered.slice(sliceStart);
+          const slots = limit - rowsAccum.length;
+          if (available.length > slots) {
+            rowsAccum.push(...available.slice(0, slots));
+            hasMoreFiltered = true;
+            break;
+          } else {
+            rowsAccum.push(...available);
+          }
+        }
+      } else if (filtered.length) {
+        const slots = limit - rowsAccum.length;
+        if (filtered.length > slots) {
+          rowsAccum.push(...filtered.slice(0, slots));
+          hasMoreFiltered = true;
+          break;
+        } else {
+          rowsAccum.push(...filtered);
+        }
+      }
+
+      if (!rawHasNext) {
+        break;
+      }
+      rawPageIndex += 1;
+    }
+
+    let hasNextFiltered = false;
+    if (hasMoreFiltered) {
+      hasNextFiltered = true;
+    } else if (rowsAccum.length === limit) {
+      if (lastRawHasNext) {
+        let probeIndex = rawPageIndex;
+        while (true) {
+          const { rows: probeRows, hasNext: probeHasNext } = await ensureRawPage(
+            addr,
+            probeIndex
+          );
+          const probeFiltered = probeRows.filter((row) =>
+            selectedSet.has(row.type)
+          );
+          if (probeFiltered.length > 0) {
+            hasNextFiltered = true;
+            break;
+          }
+          if (!probeHasNext) {
+            hasNextFiltered = false;
+            break;
+          }
+          probeIndex += 1;
+        }
+      } else {
+        hasNextFiltered = false;
+      }
+    } else {
+      hasNextFiltered = false;
+    }
+
+    const payload = { rows: rowsAccum, hasNext: hasNextFiltered };
+    setFilteredPage(addr, filterKey, pageNum, payload);
+    return payload;
   };
 
   // Load current page (with cache check)
-  async function load(p: number) {
+  async function load(
+    p: number,
+    options: {
+      forceHasNext?: boolean;
+    } = {}
+  ) {
     if (!address) return;
-
+    
     // Check cache first
-    const cacheKey = getCacheKey(address, p);
-    const cached = pageCache.current.get(cacheKey);
-
-    if (cached) {
-      // Use cached data immediately (no loading state)
-      setRows(cached.rows);
-      setHasNext(cached.hasNext);
-      setTotal(cached.total);
-
-      // Prefetch next page in background (if available)
-      if (cached.hasNext) {
-        preloadNextPage(p + 1);
-      }
-      return;
-    }
-
-    // Not in cache, fetch from API
     setLoading(true);
     setError(null);
     try {
-      const classParam = uiTypesToClassParam(selectedTypes);
-      const {
-        rows,
-        hasNext,
-        total: totalCount,
-      } = await fetchTransactions(address, {
-        // networks: if undefined → backend default = all supported EVM networks
-        ...(networksParam ? { networks: networksParam } : {}),
-        page: p,
-        limit: PAGE_SIZE,
-        minUsd: 0,
-        spamFilter: "hard",
-        ...(classParam ? { class: classParam } : {}),
-      });
+      const { rows: filteredRows, hasNext: filteredHasNext } =
+        await collectFilteredPage(address, p);
+      const finalHasNext =
+        typeof options.forceHasNext === "boolean"
+          ? options.forceHasNext
+          : filteredHasNext;
 
-      // Store in cache
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      if (filteredRows.length === 0 && p > 1) {
+        const prevPage = p - 1;
+        const prevKey = getCacheKey(address, prevPage);
+        const prevCached = filteredPageCache.current.get(prevKey);
+        filteredPageCache.current.delete(prevKey);
+        setHasNext(false);
+        setPage(prevPage);
+        if (prevCached) {
+          filteredPageCache.current.set(prevKey, {
+            rows: prevCached.rows,
+            hasNext: false,
+          });
+          setRows(prevCached.rows);
+          return;
+        }
+        return load(prevPage, { forceHasNext: false });
+      }
 
-      setRows(rows);
-      setHasNext(hasNext);
-      setTotal(totalCount); // Store total count from backend
-
+      setRows(filteredRows);
+      setHasNext(finalHasNext);
+      
       // Prefetch next page in background (if available)
-      if (hasNext) {
+      if (finalHasNext) {
         preloadNextPage(p + 1);
       }
     } catch (e: any) {
       setError(e?.message || "Failed to load transactions");
       setRows([]);
       setHasNext(false);
-      setTotal(null);
     } finally {
       setLoading(false);
     }
@@ -323,47 +428,41 @@ export default function AllTransactionsTab({
   // Preload next page in background (silent, no loading state)
   async function preloadNextPage(nextPage: number) {
     if (!address) return;
-
+    
     // Check if already cached
     const cacheKey = getCacheKey(address, nextPage);
-    if (pageCache.current.has(cacheKey)) {
+    if (filteredPageCache.current.has(cacheKey)) {
       return; // Already cached
     }
-
+    
     try {
-      const classParam = uiTypesToClassParam(selectedTypes);
-      const {
-        rows,
-        hasNext,
-        total: totalCount,
-      } = await fetchTransactions(address, {
-        ...(networksParam ? { networks: networksParam } : {}),
-        page: nextPage,
-        limit: PAGE_SIZE,
-        minUsd: 0,
-        spamFilter: "hard",
-        ...(classParam ? { class: classParam } : {}),
-      });
-
-      // Store in cache (silently, no state updates)
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      await collectFilteredPage(address, nextPage);
     } catch (e) {
-      // Silent failure - prefetch errors should not affect UI
       console.debug("[Prefetch] Failed to preload page", nextPage, e);
     }
   }
 
   // Initial/refresh - clear cache when address or filters change
   useEffect(() => {
+    if (!address) return;
+    if (skipInitialLoadRef.current > 0) {
+      skipInitialLoadRef.current -= 1;
+      return;
+    }
     setPage(1);
-    pageCache.current.clear(); // Clear cache when address or filters change
+    filteredPageCache.current.clear(); // Clear cache when address or filters change
+    rawPageCache.current.clear();
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey, networksParam]);
+  }, [address, refreshKey]);
 
   // When server-side class filter changes (chips), reload current page with new filter
   useEffect(() => {
     if (!address) return;
+    if (skipFilterLoadRef.current > 0) {
+      skipFilterLoadRef.current -= 1;
+      return;
+    }
     // Don't clear cache - it's already organized by filter via getCacheKey
     // This allows instant navigation when returning to previously visited filters
     // Load current page with new filter (if page doesn't exist, backend will handle it)
@@ -371,31 +470,55 @@ export default function AllTransactionsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
 
-  // Use total from backend (Covalent) if available, otherwise fallback to estimation
-  const totalCount = useMemo(() => {
-    if (total !== null) return total; // Use real total from backend
-    // Fallback to estimation if backend total not available
-    if (rows.length === 0) return null;
-    if (hasNext) {
-      return page * PAGE_SIZE; // At least this many
-    } else {
-      return (page - 1) * PAGE_SIZE + rows.length; // Exact count
-    }
-  }, [total, page, hasNext, rows.length]);
+  // Persist state whenever key pieces change
+  useEffect(() => {
+    if (!onPersist || !address) return;
+    const snapshotSelectedTypes = Array.isArray(selectedTypes)
+      ? ([...selectedTypes] as TxType[] | ["all"])
+      : (["all"] as ["all"]);
+    const snapshotVisibleColumns = { ...visibleColumns };
+    const snapshotFilteredCache = Array.from(
+      filteredPageCache.current.entries()
+    ).map(
+      ([key, value]) =>
+        [
+          key,
+          { rows: value.rows, hasNext: value.hasNext },
+        ] as [string, { rows: TxRow[]; hasNext: boolean }]
+    );
+    const snapshotRawCache = Array.from(rawPageCache.current.entries()).map(
+      ([key, value]) =>
+        [
+          key,
+          { rows: value.rows, hasNext: value.hasNext },
+        ] as [string, { rows: TxRow[]; hasNext: boolean }]
+    );
+    onPersist(address, {
+      rows,
+      page,
+      hasNext,
+      selectedTypes: snapshotSelectedTypes,
+      visibleColumns: snapshotVisibleColumns,
+      filteredCacheEntries: snapshotFilteredCache,
+      rawCacheEntries: snapshotRawCache,
+      refreshKey,
+      error,
+    });
+  }, [
+    onPersist,
+    address,
+    rows,
+    page,
+    hasNext,
+    selectedTypes,
+    visibleColumns,
+    refreshKey,
+    error,
+  ]);
 
-  const totalPages = useMemo(() => {
-    if (!totalCount) return null;
-    return Math.ceil(totalCount / PAGE_SIZE);
-  }, [totalCount]);
-
-  // Check if any filter is active (not "all")
-  const hasActiveFilter = useMemo(() => {
-    return !Array.isArray(selectedTypes) || (selectedTypes as any)[0] !== "all";
-  }, [selectedTypes]);
-
-  // Block navigation buttons when filters are active
-  const canPrev = !hasActiveFilter && page > 1;
-  const canNext = !hasActiveFilter && hasNext;
+  // Navigation controls (optimistic pagination)
+  const canPrev = page > 1;
+  const canNext = hasNext;
   const goPrev = () => {
     const p = Math.max(1, page - 1);
     setPage(p);
@@ -492,20 +615,6 @@ export default function AllTransactionsTab({
     );
   }
 
-  const toggleNetworkSelection = (id: string, checked: boolean) => {
-    setNetworks((prev) => {
-      const next = new Set(prev);
-      if (checked) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return normalizeNetworkList(Array.from(next));
-    });
-  };
-  const selectAllNetworks = () => setNetworks([...NETWORK_IDS]);
-  const resetToDefaultNetworks = () => setNetworks([...DEFAULT_NETWORKS]);
-
   // Filters UI helpers
   const toggleType = (t: TxType | "all", checked: boolean) => {
     if (t === "all") {
@@ -534,66 +643,15 @@ export default function AllTransactionsTab({
             </h3>
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-                {hasActiveFilter ? (
-                  loading ? (
-                    <span className="font-medium">Loading...</span>
-                  ) : (
-                    <span className="font-medium">
-                      {rows.length} transaction{rows.length !== 1 ? "s" : ""}
-                    </span>
-                  )
-                ) : totalCount && totalPages ? (
-                  <span className="font-medium">
-                    Page {page} of {totalPages} ({totalCount.toLocaleString()}{" "}
-                    total)
-                  </span>
-                ) : totalCount ? (
-                  <span className="font-medium">
-                    Page {page} ({totalCount.toLocaleString()}+ transactions)
-                  </span>
+                {loading ? (
+                  <span className="font-medium">Loading...</span>
                 ) : (
-                  <span className="font-medium">Page {page}</span>
+                  <span className="font-medium">
+                    Page {page}
+                    {!hasNext && rows.length > 0 ? " (end of list)" : ""}
+                  </span>
                 )}
               </div>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    Networks: {networksButtonLabel}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Select networks</DropdownMenuLabel>
-                  {NETWORK_OPTIONS.map((net) => (
-                    <DropdownMenuCheckboxItem
-                      key={net.id}
-                      checked={networks.includes(net.id)}
-                      onCheckedChange={(checked) =>
-                        toggleNetworkSelection(net.id, !!checked)
-                      }
-                    >
-                      {net.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      selectAllNetworks();
-                    }}
-                  >
-                    Select all
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      resetToDefaultNetworks();
-                    }}
-                  >
-                    Reset to default
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
 
               {/* Columns & Export */}
               <DropdownMenu>
@@ -671,7 +729,7 @@ export default function AllTransactionsTab({
                       goPrev();
                     }
                   }}
-                  disabled={!canPrev}
+                  disabled={!canPrev || loading}
                 >
                   Prev
                 </Button>
@@ -683,7 +741,7 @@ export default function AllTransactionsTab({
                       goNext();
                     }
                   }}
-                  disabled={!canNext}
+                  disabled={!canNext || loading}
                 >
                   Next
                 </Button>
@@ -755,7 +813,6 @@ export default function AllTransactionsTab({
                   {visibleColumns.asset && <TableHead>Asset</TableHead>}
                   {visibleColumns.qty && <TableHead>Qty</TableHead>}
                   {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
-                  {visibleColumns.fee && <TableHead>Gas (USD)</TableHead>}
                   {visibleColumns.counterparty && (
                     <TableHead>Counterparty</TableHead>
                   )}
@@ -794,7 +851,6 @@ export default function AllTransactionsTab({
                   {visibleColumns.asset && <TableHead>Asset</TableHead>}
                   {visibleColumns.qty && <TableHead>Qty</TableHead>}
                   {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
-                  {visibleColumns.fee && <TableHead>Gas (USD)</TableHead>}
                   {visibleColumns.counterparty && (
                     <TableHead>Counterparty</TableHead>
                   )}
@@ -830,24 +886,10 @@ export default function AllTransactionsTab({
                     )}
                     {visibleColumns.asset && (
                       <TableCell className="font-mono">
-                        {tx.type === "swap" && tx.swapLabel ? (
-                          <div className="flex flex-col">
-                            <span className="text-xs font-semibold text-indigo-600">
-                              {tx.swapLabel}
-                            </span>
-                            <span className="text-[11px] text-slate-500">
-                              {tx.asset?.symbol ||
-                                (tx.asset?.contract
-                                  ? shortAddr(tx.asset.contract)
-                                  : "—")}
-                            </span>
-                          </div>
-                        ) : (
-                          tx.asset?.symbol ||
+                        {tx.asset?.symbol ||
                           (tx.asset?.contract
                             ? shortAddr(tx.asset.contract)
-                            : "—")
-                        )}
+                            : "—")}
                       </TableCell>
                     )}
                     {visibleColumns.qty && (
@@ -864,11 +906,6 @@ export default function AllTransactionsTab({
                     {visibleColumns.usd && (
                       <TableCell className="font-mono">
                         {fmtUSD(tx.usdAtTs)}
-                      </TableCell>
-                    )}
-                    {visibleColumns.fee && (
-                      <TableCell className="font-mono">
-                        {fmtUSD(tx.fee?.usdAtTs ?? null)}
                       </TableCell>
                     )}
                     {visibleColumns.counterparty && (

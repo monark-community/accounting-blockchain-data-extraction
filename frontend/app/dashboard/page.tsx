@@ -35,35 +35,23 @@ import {
   Cell,
   Legend,
   Treemap,
-  Tooltip as RechartsTooltip,
-  AreaChart,
-  Area,
-  ReferenceLine,
 } from "recharts";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
 import ExpensesTab from "@/components/dashboard/ExpensesTab";
 import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
-import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
+import AllTransactionsTab, {
+  AllTransactionsTabPersistedState,
+} from "@/components/dashboard/AllTransactionsTab";
 import {
   type CapitalGainEntry,
   type AccountingMethod,
 } from "@/utils/capitalGains";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useReducer } from "react";
+import { Tooltip } from "recharts";
 import { useWallets } from "@/hooks/use-wallets";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  TooltipProvider,
-} from "@/components/ui/tooltip";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import { OverviewResponse, PricedHolding } from "@/lib/types/portfolio";
+import { OverviewResponse, PricedHolding } from "@/lib/portfolioTypes";
 import {
   fmtUSD,
   fmtPct,
@@ -72,7 +60,6 @@ import {
   computeHHI,
   isStable,
 } from "@/lib/portfolioUtils";
-import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
 
 const Dashboard = () => {
   const {
@@ -97,10 +84,11 @@ const Dashboard = () => {
   const [selectedWallet, setSelectedWallet] = useState<string>("");
   const [minUsdFilter, setMinUsdFilter] = useState(5);
   const [hideStables, setHideStables] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
-  const [loadingHistorical, setLoadingHistorical] = useState(false);
-  const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
+  const transactionsPersistRef = useRef<
+    Map<string, AllTransactionsTabPersistedState>
+  >(new Map());
+  const persistSignatureRef = useRef<Map<string, string>>(new Map());
+  const [, forcePersistRender] = useReducer((x: number) => x + 1, 0);
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -110,18 +98,16 @@ const Dashboard = () => {
     setUrlReady(true);
   }, []);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  // Use URL address if available, otherwise use connected wallet address
+  // Use URL address if available, otherwise use selected wallet, otherwise use connected wallet address
   const address = useMemo(
     () =>
-      urlAddress
-        ? urlAddress
-        : selectedWallet || (isConnected && userWallet ? userWallet : ""),
+      urlAddress ? urlAddress : selectedWallet || (isConnected && userWallet ? userWallet : ""),
     [urlAddress, selectedWallet, isConnected, userWallet]
   );
+
+  const persistedTransactionsState = address
+    ? transactionsPersistRef.current.get(address) ?? null
+    : null;
 
   // Get all wallets from backend (main wallet from users table + secondary wallets from user_wallets table)
   const allWallets = useMemo(() => {
@@ -129,18 +115,17 @@ const Dashboard = () => {
     // 1. Main wallet (from users table) with up-to-date name
     // 2. Secondary wallets (from user_wallets table)
     // Just identify which is the main wallet
-    return userWallets.map((w) => ({
+    return userWallets.map(w => ({
       ...w,
-      isMain: w.address.toLowerCase() === userWallet?.toLowerCase(),
+      isMain: w.address.toLowerCase() === userWallet?.toLowerCase()
     }));
   }, [userWallet, userWallets]);
 
   // Calculate width based on longest wallet name
   const maxWalletWidth = useMemo(() => {
     if (allWallets.length === 0) return 280;
-    const longestName = allWallets.reduce(
-      (longest, wallet) =>
-        wallet.name.length > longest.length ? wallet.name : longest,
+    const longestName = allWallets.reduce((longest, wallet) => 
+      wallet.name.length > longest.length ? wallet.name : longest, 
       allWallets[0].name
     );
     // Account for: checkmark space (32px) + crown icon (16px) + gap (8px) + name + address format "(0x...10...8)" (~28 chars) + padding (40px left + 16px right) + arrow (32px)
@@ -150,13 +135,7 @@ const Dashboard = () => {
     const padding = 40 + 16; // left (pl-10) + right (pr-4) padding
     const arrowSpace = 32;
     // Rough estimation: ~8px per character for font-medium, ~6px for monospace
-    const estimatedWidth =
-      checkmarkSpace +
-      iconSpace +
-      longestName.length * 8 +
-      addressChars * 6 +
-      padding +
-      arrowSpace;
+    const estimatedWidth = checkmarkSpace + iconSpace + (longestName.length * 8) + (addressChars * 6) + padding + arrowSpace;
     return Math.max(280, estimatedWidth);
   }, [allWallets]);
 
@@ -206,63 +185,6 @@ const Dashboard = () => {
       .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
       .finally(() => setLoadingOv(false));
   }, [address, networks, userWallet, isConnected]);
-
-  // Fetch historical data for 6-month graph
-  useEffect(() => {
-    if (!address) {
-      console.log("[Dashboard] No address, skipping historical data fetch");
-      return;
-    }
-    console.log(
-      `[Dashboard] Fetching historical data for ${address}, networks: ${networks}`
-    );
-    setLoadingHistorical(true);
-    fetchHistoricalData(address, {
-      networks,
-      days: 180,
-    })
-      .then((response) => {
-        console.log(
-          `[Dashboard] Historical data received: ${response.data.length} points`
-        );
-        // Clean data by removing internal _isEstimated field
-        const cleanData = response.data.map((point: any) => {
-          const { _isEstimated, ...rest } = point;
-          return rest;
-        });
-        setHistoricalData(cleanData);
-        setIsHistoricalEstimated(response.isEstimated || false);
-      })
-      .catch((e) => {
-        console.error("[Dashboard] Failed to load historical data:", e);
-      })
-      .finally(() => {
-        setLoadingHistorical(false);
-        console.log("[Dashboard] Historical data fetch completed");
-      });
-  }, [address, networks]);
-
-  const historicalChartData = useMemo(() => {
-    console.log(
-      `[Dashboard] Processing historical data: ${historicalData.length} points`
-    );
-    if (historicalData.length === 0) {
-      console.log("[Dashboard] No historical data to process");
-      return [];
-    }
-    const processed = historicalData
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .map((point) => ({
-        date: new Date(point.date).toLocaleDateString("fr-FR", {
-          month: "short",
-          day: "numeric",
-        }),
-        value: point.totalValueUsd,
-        timestamp: point.timestamp,
-      }));
-    console.log(`[Dashboard] Processed chart data: ${processed.length} points`);
-    return processed;
-  }, [historicalData]);
 
   const allocationData = useMemo(() => {
     if (!ov) return [];
@@ -457,19 +379,14 @@ const Dashboard = () => {
             </div>
             {isConnected && allWallets.length > 1 && (
               <div className="relative inline-block">
-                <Select
-                  value={selectedWallet}
-                  onValueChange={setSelectedWallet}
-                >
-                  <SelectTrigger
+                <Select value={selectedWallet} onValueChange={setSelectedWallet}>
+                  <SelectTrigger 
                     className="h-12 pl-10 pr-4 border-2 border-slate-200 rounded-xl bg-white shadow-md hover:border-blue-400 focus:ring-2 focus:ring-blue-500 transition-all duration-200 text-slate-800 font-medium"
                     style={{ width: `${maxWalletWidth}px` }}
                   >
                     <div className="flex items-center gap-2">
                       {(() => {
-                        const selected = allWallets.find(
-                          (w) => w.address === selectedWallet
-                        );
+                        const selected = allWallets.find(w => w.address === selectedWallet);
                         if (!selected) return null;
                         return (
                           <>
@@ -478,8 +395,7 @@ const Dashboard = () => {
                             )}
                             <span className="font-medium">{selected.name}</span>
                             <span className="text-slate-500 font-mono text-sm">
-                              ({selected.address.slice(0, 10)}...
-                              {selected.address.slice(-8)})
+                              ({selected.address.slice(0, 10)}...{selected.address.slice(-8)})
                             </span>
                           </>
                         );
@@ -488,8 +404,8 @@ const Dashboard = () => {
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-2 shadow-lg w-[var(--radix-select-trigger-width)]">
                     {allWallets.map((wallet) => (
-                      <SelectItem
-                        key={wallet.address}
+                      <SelectItem 
+                        key={wallet.address} 
                         value={wallet.address}
                         className="py-3 pl-10 pr-4 text-slate-800 font-medium cursor-pointer hover:bg-blue-50 focus:bg-blue-50"
                       >
@@ -499,8 +415,7 @@ const Dashboard = () => {
                           )}
                           <span className="font-medium">{wallet.name}</span>
                           <span className="text-slate-500 font-mono text-sm">
-                            ({wallet.address.slice(0, 10)}...
-                            {wallet.address.slice(-8)})
+                            ({wallet.address.slice(0, 10)}...{wallet.address.slice(-8)})
                           </span>
                         </div>
                       </SelectItem>
@@ -513,16 +428,9 @@ const Dashboard = () => {
         </div>
 
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="flex w-full gap-2">
-            <TabsTrigger className="flex-1" value="overview">
-              Overview
-            </TabsTrigger>
-            <TabsTrigger className="flex-1" value="graphs">
-              Graphs
-            </TabsTrigger>
-            <TabsTrigger className="flex-1" value="all-transactions">
-              All Transactions
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
@@ -577,202 +485,30 @@ const Dashboard = () => {
                     <TrendingDown className="w-12 h-12 text-red-500" />
                   )}
                 </div>
-                {quality &&
-                  (mounted ? (
-                    <div className="flex flex-wrap gap-2">
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-xs text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-help">
-                            <span>
-                              Vol (24h proxy): {quality.volProxy.toFixed(2)}%
-                            </span>
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
-                          </span>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80">
-                          <p className="text-sm font-medium mb-2">
-                            Volatility (24h proxy)
-                          </p>
-                          <p className="text-xs text-slate-600 mb-2">
-                            Absolute value of 24h P&L divided by total portfolio
-                            value. Higher = more volatile.
-                          </p>
-                          <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formula:
-                            </p>
-                            <p className="text-xs text-slate-700 font-mono">
-                              |Δ24h USD| / TVL × 100%
-                            </p>
-                            <p className="text-xs text-slate-500 mt-2">
-                              Where Δ24h = absolute change in USD over 24h, TVL
-                              = total portfolio value.
-                            </p>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-xs text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-help">
-                            <span>
-                              Blue-chip: {quality.bluechipShare.toFixed(1)}%
-                            </span>
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
-                          </span>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80">
-                          <p className="text-sm font-medium mb-2">
-                            Blue-chip share
-                          </p>
-                          <p className="text-xs text-slate-600 mb-2">
-                            Portion of portfolio held in ETH, WETH, BTC, or
-                            WBTC.
-                          </p>
-                          <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formula:
-                            </p>
-                            <p className="text-xs text-slate-700 font-mono">
-                              (Σ value ETH/WETH/BTC/WBTC) / TVL × 100%
-                            </p>
-                            <p className="text-xs text-slate-500 mt-2">
-                              Sum of USD values of all ETH, WETH, BTC, WBTC
-                              tokens divided by total value.
-                            </p>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-200 bg-white text-xs text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-help">
-                            <span>Chains ≥2%: {quality.chainSpread}</span>
-                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
-                          </span>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80">
-                          <p className="text-sm font-medium mb-2">
-                            Chain breadth
-                          </p>
-                          <p className="text-xs text-slate-600 mb-2">
-                            Number of chains representing at least 2% of
-                            portfolio value.
-                          </p>
-                          <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">
-                              Calculation:
-                            </p>
-                            <p className="text-xs text-slate-700 font-mono">
-                              count(chains where chain_value / TVL ≥ 0.02)
-                            </p>
-                            <p className="text-xs text-slate-500 mt-2">
-                              Multi-chain diversification indicator. Higher =
-                              better distribution.
-                            </p>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    </div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
-                        Vol (24h proxy): {quality.volProxy.toFixed(2)}%
-                      </span>
-                      <span className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
-                        Blue-chip: {quality.bluechipShare.toFixed(1)}%
-                      </span>
-                      <span className="text-xs px-2 py-1 rounded-full border border-slate-200 bg-white">
-                        Chains ≥2%: {quality.chainSpread}
-                      </span>
-                    </div>
-                  ))}
+                {quality && (
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
+                      Vol (24h proxy): {quality.volProxy.toFixed(2)}%
+                    </span>
+                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
+                      Blue-chip: {quality.bluechipShare.toFixed(1)}%
+                    </span>
+                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
+                      Chains ≥2%: {quality.chainSpread}
+                    </span>
+                  </div>
+                )}
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    {mounted ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <p className="text-slate-600 text-sm font-medium cursor-help">
-                            Diversification (HHI)
-                          </p>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80">
-                          <p className="text-sm font-medium mb-2">
-                            Herfindahl–Hirschman Index (HHI)
-                          </p>
-                          <p className="text-xs text-slate-600 mb-3">
-                            Concentration measure calculated on asset weights in
-                            the portfolio. Lower = better diversification.
-                          </p>
-                          <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formula:
-                            </p>
-                            <p className="text-xs text-slate-700 font-mono mb-2">
-                              HHI = Σ(w_i)² × 100
-                            </p>
-                            <p className="text-xs text-slate-600 mb-2">
-                              Where w_i = percentage weight of asset i divided
-                              by 100.
-                            </p>
-                          </div>
-                          <div className="mt-3 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-medium text-slate-700 mb-1">
-                              Interpretation:
-                            </p>
-                            <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
-                              <li>
-                                &lt; 15 : Well diversified (multiple balanced
-                                assets)
-                              </li>
-                              <li>
-                                15-25 : Moderately concentrated (few dominant
-                                assets)
-                              </li>
-                              <li>
-                                &gt; 25 : Highly concentrated (high
-                                concentration risk)
-                              </li>
-                            </ul>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <p className="text-slate-600 text-sm font-medium">
-                        Diversification (HHI)
-                      </p>
-                    )}
+                    <p className="text-slate-600 text-sm font-medium">
+                      Diversification (HHI)
+                    </p>
                     {loadingOv ? (
                       <div className="mt-2">
                         <Skeleton className="h-8 w-28" />
-                      </div>
-                    ) : mounted ? (
-                      <div className="mt-2">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
-                            <p className="text-xl font-semibold text-slate-800 cursor-help">
-                              {concentration.hhi.toFixed(1)}
-                            </p>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="w-72">
-                            <p className="text-xs font-medium text-slate-700 mb-1">
-                              Current HHI value
-                            </p>
-                            <p className="text-xs text-slate-600 mb-2">
-                              Concentration index calculated on{" "}
-                              {ov?.allocation?.length || 0} assets in the
-                              portfolio.
-                            </p>
-                            <p className="text-xs text-slate-500 italic">
-                              Hover over the title for more details on the
-                              calculation.
-                            </p>
-                          </HoverCardContent>
-                        </HoverCard>
-                        <p className="text-xs text-slate-500">
-                          {concentration.label}
-                        </p>
                       </div>
                     ) : (
                       <div className="mt-2">
@@ -787,164 +523,24 @@ const Dashboard = () => {
                   </div>
                   <BarChart3 className="w-12 h-12 text-purple-500" />
                 </div>
-                {!loadingOv &&
-                  (mounted ? (
-                    <HoverCard>
-                      <HoverCardTrigger asChild>
-                        <p className="text-xs text-slate-500 mt-1 cursor-help">
-                          Eff. assets: {concentrationExtras.effN.toFixed(1)} •
-                          Top-1: {concentrationExtras.top1.toFixed(1)}% • Top-3:{" "}
-                          {concentrationExtras.top3.toFixed(1)}%
-                        </p>
-                      </HoverCardTrigger>
-                      <HoverCardContent className="w-80">
-                        <p className="text-sm font-medium mb-2">
-                          Concentration details
-                        </p>
-                        <div className="text-xs text-slate-600 mb-3 space-y-2">
-                          <div>
-                            <p className="font-medium text-slate-700 mb-0.5">
-                              Eff. assets (effective assets):
-                            </p>
-                            <p>
-                              Effective number of equivalent assets ≈ 1/∑w².
-                              Indicates how many balanced assets compose the
-                              portfolio.
-                            </p>
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-700 mb-0.5">
-                              Top-1:
-                            </p>
-                            <p>
-                              Percentage weight of the largest asset in the
-                              portfolio.
-                            </p>
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-700 mb-0.5">
-                              Top-3:
-                            </p>
-                            <p>
-                              Cumulative sum of weights of the 3 largest
-                              positions.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-3 pt-2 border-t border-slate-200">
-                          <p className="text-xs font-mono text-slate-500 mb-1">
-                            Formula:
-                          </p>
-                          <p className="text-xs text-slate-700 font-mono mb-2">
-                            Eff. assets = 1 / Σ(w_i)²
-                          </p>
-                          <p className="text-xs text-slate-600">
-                            Where w_i = normalized weight (weight % / 100). If
-                            all assets are equal, Eff. assets = number of
-                            assets.
-                          </p>
-                        </div>
-                      </HoverCardContent>
-                    </HoverCard>
-                  ) : (
-                    <p className="text-xs text-slate-500 mt-1">
-                      Eff. assets: {concentrationExtras.effN.toFixed(1)} •
-                      Top-1: {concentrationExtras.top1.toFixed(1)}% • Top-3:{" "}
-                      {concentrationExtras.top3.toFixed(1)}%
-                    </p>
-                  ))}
+                {!loadingOv && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Eff. assets: {concentrationExtras.effN.toFixed(1)} • Top-1:{" "}
+                    {concentrationExtras.top1.toFixed(1)}% • Top-3:{" "}
+                    {concentrationExtras.top3.toFixed(1)}%
+                  </p>
+                )}
               </Card>
 
               <Card className="p-6 bg-white shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    {mounted ? (
-                      <HoverCard>
-                        <HoverCardTrigger asChild>
-                          <p className="text-slate-600 text-sm font-medium cursor-help">
-                            Stablecoin Share
-                          </p>
-                        </HoverCardTrigger>
-                        <HoverCardContent className="w-80">
-                          <p className="text-sm font-medium mb-2">
-                            Stablecoin exposure
-                          </p>
-                          <p className="text-xs text-slate-600 mb-3">
-                            Percentage of total portfolio value held in
-                            stablecoins. Indicator of currency risk and
-                            liquidity.
-                          </p>
-                          <div className="mt-2 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-mono text-slate-500 mb-1">
-                              Formula:
-                            </p>
-                            <p className="text-xs text-slate-700 font-mono mb-2">
-                              Stablecoin Share = (Σ stablecoins_value_USD) / TVL
-                              × 100%
-                            </p>
-                            <p className="text-xs text-slate-600 mb-2">
-                              Where TVL = total portfolio value in USD.
-                            </p>
-                          </div>
-                          <div className="mt-3 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-medium text-slate-700 mb-1">
-                              Detected tokens:
-                            </p>
-                            <p className="text-xs text-slate-600">
-                              USDT, USDC, DAI, FRAX, TUSD, USDD, LUSD, GUSD,
-                              PYUSD and variants.
-                            </p>
-                          </div>
-                          <div className="mt-3 pt-2 border-t border-slate-200">
-                            <p className="text-xs font-medium text-slate-700 mb-1">
-                              Interpretation:
-                            </p>
-                            <ul className="text-xs text-slate-600 space-y-0.5 list-disc list-inside">
-                              <li>0-20% : Low exposure (volatile portfolio)</li>
-                              <li>
-                                20-50% : Moderate exposure (risk/stable balance)
-                              </li>
-                              <li>
-                                &gt; 50% : High exposure (defensive portfolio)
-                              </li>
-                            </ul>
-                          </div>
-                        </HoverCardContent>
-                      </HoverCard>
-                    ) : (
-                      <p className="text-slate-600 text-sm font-medium">
-                        Stablecoin Share
-                      </p>
-                    )}
+                    <p className="text-slate-600 text-sm font-medium">
+                      Stablecoin Share
+                    </p>
                     {loadingOv ? (
                       <div className="mt-2">
                         <Skeleton className="h-8 w-24" />
-                      </div>
-                    ) : mounted ? (
-                      <div className="mt-2">
-                        <HoverCard>
-                          <HoverCardTrigger asChild>
-                            <p className="text-xl font-semibold text-slate-800 cursor-help">
-                              {concentration.stableSharePct.toFixed(1)}%
-                            </p>
-                          </HoverCardTrigger>
-                          <HoverCardContent className="w-72">
-                            <p className="text-xs font-medium text-slate-700 mb-1">
-                              Current stablecoin exposure
-                            </p>
-                            <p className="text-xs text-slate-600 mb-2">
-                              {concentration.stableSharePct.toFixed(1)}% of the
-                              portfolio is held in stablecoins.
-                            </p>
-                            <p className="text-xs text-slate-500 italic">
-                              Hover over the title for more details on the
-                              calculation.
-                            </p>
-                          </HoverCardContent>
-                        </HoverCard>
-                        <p className="text-xs text-slate-500">
-                          Of total portfolio
-                        </p>
                       </div>
                     ) : (
                       <div className="mt-2">
@@ -988,7 +584,7 @@ const Dashboard = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <RechartsTooltip
+                      <Tooltip
                         formatter={(
                           value: unknown,
                           _name: string,
@@ -1045,6 +641,88 @@ const Dashboard = () => {
                 )}
               </Card>
 
+              <Card className="p-6 bg-white shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-semibold text-slate-800">
+                    Allocation by Chain
+                  </h3>
+                </div>
+
+                {loadingOv ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-[300px] w-full" />
+                  </div>
+                ) : !ov ? (
+                  <div className="text-sm text-slate-500">
+                    Load an address to see allocation by chain.
+                  </div>
+                ) : chainBreakdown.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No priced tokens to display.
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={chainBreakdown}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" />
+                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+                      <Tooltip
+                        formatter={(
+                          value: unknown,
+                          _name: string,
+                          entry: { payload?: { pct: number; usd: number } }
+                        ) => {
+                          if (entry?.payload) {
+                            const row = entry.payload;
+                            return [
+                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
+                              "Allocation",
+                            ];
+                          }
+                          return [value, "Allocation"];
+                        }}
+                        labelFormatter={(label) => String(label)}
+                      />
+                      <Bar dataKey="pct" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </Card>
+
+              <Card className="p-6 bg-white shadow-sm">
+                <h3 className="text-lg font-semibold text-slate-800 mb-4">
+                  24h P&L by Chain
+                </h3>
+                {loadingOv || !ov ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : pnlByChain.length === 0 ? (
+                  <div className="text-sm text-slate-500">No 24h data.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={pnlByChain}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="label" />
+                      <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                      <Tooltip
+                        formatter={(v: any, _n: any, e: any) => [
+                          fmtUSD(v),
+                          "24h Δ",
+                        ]}
+                      />
+                      <Bar dataKey="pnl" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+                {!loadingOv && !!ov && (
+                  <p className="text-xs text-slate-500 mt-2">
+                    Weighted move:{" "}
+                    {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over
+                    24h.
+                  </p>
+                )}
+              </Card>
+
               <Card className="p-6 bg-white shadow-sm lg:col-span-2">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">
                   Performance Heatmap
@@ -1062,14 +740,9 @@ const Dashboard = () => {
                         .filter((h) => (h.valueUsd || 0) > minUsdFilter)
                         .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
                         .slice(0, 12)
-                        .map((h, idx) => (
+                        .map((h) => (
                           <div
-                            key={
-                              h.contract ||
-                              `${h.symbol || "unknown"}-${
-                                (h as any).chain || "unknown"
-                              }-${idx}`
-                            }
+                            key={h.contract || h.symbol}
                             className={`p-4 rounded-lg ${
                               !h.delta24hPct
                                 ? "bg-slate-100"
@@ -1195,12 +868,7 @@ const Dashboard = () => {
                         : "text-red-600";
                     return (
                       <div
-                        key={
-                          h.contract ||
-                          `${h.symbol || "unknown"}-${
-                            (h as any).chain || "unknown"
-                          }-${index}`
-                        }
+                        key={`${h.contract ?? 'native'}-${h.symbol ?? 'unknown'}-${index}`}
                         className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
                       >
                         <div className="flex items-center gap-3">
@@ -1416,9 +1084,7 @@ const Dashboard = () => {
                         .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
                         .map((h, i) => (
                           <tr
-                            key={`${h.contract || "no-contract"}-${
-                              (h as any).chain || "unknown"
-                            }-${i}`}
+                            key={`${h.contract ?? h.symbol ?? i}`}
                             className="border-t"
                           >
                             <td className="px-2 py-2 font-medium text-slate-800">
@@ -1469,476 +1135,35 @@ const Dashboard = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="graphs" className="space-y-6">
-            {/* 6-Month Portfolio Fluctuation Chart */}
-            <Card className="p-6 bg-white shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-slate-800">
-                  Portfolio Evolution (Last 6 Months)
-                </h3>
-                {loadingHistorical && (
-                  <span className="text-xs text-slate-500">Loading...</span>
-                )}
-              </div>
-              {loadingHistorical ? (
-                <div className="space-y-4">
-                  <Skeleton className="h-[400px] w-full" />
-                  <p className="text-sm text-slate-500 text-center">
-                    Fetching historical data, this may take a few seconds...
-                  </p>
-                </div>
-              ) : historicalChartData.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-sm text-slate-500 mb-2">
-                    No historical data available for this address.
-                  </p>
-                  <p className="text-xs text-slate-400 mb-4">
-                    Historical data requires transactions over the last 6
-                    months.
-                  </p>
-                  <details className="text-xs text-slate-400 text-left max-w-md mx-auto">
-                    <summary className="cursor-pointer text-slate-500 mb-2">
-                      Debug Information
-                    </summary>
-                    <div className="bg-slate-50 p-3 rounded mt-2 space-y-1">
-                      <p>Address: {address?.substring(0, 10)}...</p>
-                      <p>
-                        Networks: {networks?.split(",").length || 0} network(s)
-                      </p>
-                      <p>Points received: {historicalData.length}</p>
-                      <p>Check backend logs for more details.</p>
-                    </div>
-                  </details>
-                </div>
-              ) : (
-                <>
-                  {isHistoricalEstimated && (
-                    <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                      <div className="flex items-start">
-                        <div className="flex-shrink-0">
-                          <svg
-                            className="h-5 w-5 text-amber-400"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                        <div className="ml-3 flex-1">
-                          <h3 className="text-sm font-medium text-amber-800">
-                            Estimated Data
-                          </h3>
-                          <div className="mt-1 text-sm text-amber-700">
-                            <p>
-                              Real historical data is not available via the API.
-                              This chart displays an estimation based on your
-                              current portfolio composition. Values may not
-                              accurately reflect actual history.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <ResponsiveContainer width="100%" height={400}>
-                    <AreaChart data={historicalChartData}>
-                      <defs>
-                        <linearGradient
-                          id="colorPortfolio"
-                          x1="0"
-                          y1="0"
-                          x2="0"
-                          y2="1"
-                        >
-                          <stop
-                            offset="5%"
-                            stopColor="#3b82f6"
-                            stopOpacity={0.3}
-                          />
-                          <stop
-                            offset="95%"
-                            stopColor="#3b82f6"
-                            stopOpacity={0}
-                          />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 11 }}
-                        angle={-45}
-                        textAnchor="end"
-                        height={80}
-                        interval="preserveStartEnd"
-                      />
-                      <YAxis
-                        tickFormatter={(v) => fmtUSD(v)}
-                        tick={{ fontSize: 11 }}
-                        domain={["dataMin", "dataMax"]}
-                      />
-                      <RechartsTooltip
-                        formatter={(value: number) => fmtUSD(value)}
-                        labelFormatter={(label) => `Date: ${label}`}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#colorPortfolio)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                  {!loadingHistorical && historicalChartData.length > 0 && (
-                    <div className="mt-4 text-xs text-slate-500">
-                      <p>
-                        Weekly data over {historicalChartData.length} points
-                        {historicalChartData.length > 0 && (
-                          <>
-                            {" • "}
-                            From {historicalChartData[0].date} to{" "}
-                            {
-                              historicalChartData[
-                                historicalChartData.length - 1
-                              ].date
-                            }
-                          </>
-                        )}
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-            </Card>
-
-            {/* Allocation by Chain */}
-            <Card className="p-6 bg-white shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-semibold text-slate-800">
-                  Allocation by Chain
-                </h3>
-              </div>
-
-              {loadingOv ? (
-                <div className="space-y-4">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-[300px] w-full" />
-                </div>
-              ) : !ov ? (
-                <div className="text-sm text-slate-500">
-                  Load an address to see allocation by chain.
-                </div>
-              ) : chainBreakdown.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No priced tokens to display.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={chainBreakdown}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" />
-                    <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                    <RechartsTooltip
-                      formatter={(
-                        value: unknown,
-                        _name: string,
-                        entry: { payload?: { pct: number; usd: number } }
-                      ) => {
-                        if (entry?.payload) {
-                          const row = entry.payload;
-                          return [
-                            `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
-                            "Allocation",
-                          ];
-                        }
-                        return [value, "Allocation"];
-                      }}
-                      labelFormatter={(label) => String(label)}
-                    />
-                    <Bar dataKey="pct" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </Card>
-
-            {/* 24h P&L by Chain */}
-            <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                24h P&L by Chain
-              </h3>
-              {loadingOv || !ov ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : pnlByChain.length === 0 ? (
-                <div className="text-sm text-slate-500">No 24h data.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={pnlByChain}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" />
-                    <YAxis
-                      tickFormatter={(v) => fmtUSD(v)}
-                      domain={["auto", "auto"]}
-                    />
-                    <RechartsTooltip
-                      formatter={(v: any, _n: any, e: any) => [
-                        fmtUSD(v),
-                        "24h Δ",
-                      ]}
-                    />
-                    <Bar dataKey="pnl">
-                      {pnlByChain.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={entry.pnl >= 0 ? "#10b981" : "#ef4444"}
-                        />
-                      ))}
-                    </Bar>
-                    <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-              {!loadingOv && !!ov && (
-                <p className="text-xs text-slate-500 mt-2">
-                  Weighted move:{" "}
-                  {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over 24h.
-                </p>
-              )}
-            </Card>
-
-            {/* Asset Distribution Pie Chart */}
-            <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Asset Distribution
-              </h3>
-              {loadingOv ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : !ov ? (
-                <div className="text-sm text-slate-500">
-                  Load an address to see asset distribution.
-                </div>
-              ) : allocationData.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No assets to display.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <RPieChart>
-                    <Pie
-                      data={allocationData}
-                      dataKey="usd"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={100}
-                      label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
-                    >
-                      {allocationData.map((entry, index) => {
-                        const colors = [
-                          "#3b82f6",
-                          "#10b981",
-                          "#f59e0b",
-                          "#ef4444",
-                          "#8b5cf6",
-                          "#ec4899",
-                          "#06b6d4",
-                          "#84cc16",
-                        ];
-                        return (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={colors[index % colors.length]}
-                          />
-                        );
-                      })}
-                    </Pie>
-                    <RechartsTooltip
-                      formatter={(value: number, name: string, props: any) => [
-                        fmtUSD(value),
-                        `${name} (${fmtPct(props.payload.pct)})`,
-                      ]}
-                    />
-                    <Legend />
-                  </RPieChart>
-                </ResponsiveContainer>
-              )}
-            </Card>
-
-            {/* Stablecoin vs Risk Assets */}
-            <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Stablecoin vs Risk Assets
-              </h3>
-              {loadingOv || !ov ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
-                <div className="text-sm text-slate-500">No data available.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <RPieChart>
-                    <Pie
-                      data={[
-                        { name: "Stablecoins", value: stableVsRisk.stable },
-                        { name: "Risk Assets", value: stableVsRisk.nonStable },
-                      ]}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={100}
-                      label={(entry) =>
-                        `${entry.name}: ${fmtPct(
-                          (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
-                        )}`
-                      }
-                    >
-                      <Cell fill="#10b981" />
-                      <Cell fill="#f59e0b" />
-                    </Pie>
-                    <RechartsTooltip
-                      formatter={(value: number) => fmtUSD(value)}
-                    />
-                    <Legend />
-                  </RPieChart>
-                </ResponsiveContainer>
-              )}
-            </Card>
-
-            {/* Top Gainers vs Losers Comparison */}
-            <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Top Gainers vs Losers (24h)
-              </h3>
-              {loadingOv || !ov ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : movers.gainers.length === 0 && movers.losers.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No 24h change data available.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart
-                    data={[
-                      ...movers.gainers.map((h, i) => ({
-                        name: h.symbol || "Unknown",
-                        value: h.delta24hUsd || 0,
-                        pct: h.delta24hPct || 0,
-                        type: "Gainer",
-                      })),
-                      ...movers.losers.map((h, i) => ({
-                        name: h.symbol || "Unknown",
-                        value: h.delta24hUsd || 0,
-                        pct: h.delta24hPct || 0,
-                        type: "Loser",
-                      })),
-                    ]}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis tickFormatter={(v) => fmtUSD(v)} />
-                    <RechartsTooltip
-                      formatter={(value: number, _name: string, props: any) => [
-                        `${fmtUSD(value)} (${
-                          props.payload.pct >= 0 ? "+" : ""
-                        }${fmtPct(props.payload.pct)})`,
-                        "24h Change",
-                      ]}
-                    />
-                    <Bar dataKey="value">
-                      {[...movers.gainers, ...movers.losers].map((h, index) => (
-                        <Cell
-                          key={`mover-cell-${index}`}
-                          fill={
-                            (h.delta24hUsd || 0) >= 0 ? "#10b981" : "#ef4444"
-                          }
-                        />
-                      ))}
-                    </Bar>
-                    <ReferenceLine y={0} stroke="#666" strokeDasharray="2 2" />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </Card>
-            {/* Asset Performance by 24h Change */}
-            <Card className="p-6 bg-white shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Asset Performance (24h % Change)
-              </h3>
-              {loadingOv || !ov ? (
-                <Skeleton className="h-[300px] w-full" />
-              ) : (
-                (() => {
-                  const performanceData = (ov.holdings ?? [])
-                    .filter((h) => typeof h.delta24hPct === "number")
-                    .sort((a, b) => (b.delta24hPct || 0) - (a.delta24hPct || 0))
-                    .slice(0, 15)
-                    .map((h) => ({
-                      name: h.symbol || "Unknown",
-                      change: h.delta24hPct || 0,
-                      value: h.valueUsd || 0,
-                    }));
-                  return performanceData.length === 0 ? (
-                    <div className="text-sm text-slate-500">
-                      No 24h performance data available.
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart
-                        data={performanceData}
-                        margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis
-                          dataKey="name"
-                          angle={-45}
-                          textAnchor="end"
-                          height={80}
-                          tick={{ fontSize: 10 }}
-                        />
-                        <YAxis tickFormatter={(v) => `${v}%`} />
-                        <RechartsTooltip
-                          formatter={(
-                            value: number,
-                            _name: string,
-                            props: any
-                          ) => [
-                            `${value >= 0 ? "+" : ""}${value.toFixed(
-                              2
-                            )}% (${fmtUSD(props.payload.value)})`,
-                            "24h Change",
-                          ]}
-                        />
-                        <Bar dataKey="change">
-                          {performanceData.map((entry, index) => (
-                            <Cell
-                              key={`perf-cell-${index}`}
-                              fill={entry.change >= 0 ? "#10b981" : "#ef4444"}
-                            />
-                          ))}
-                        </Bar>
-                        <ReferenceLine
-                          y={0}
-                          stroke="#666"
-                          strokeDasharray="2 2"
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  );
-                })()
-              )}
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab address={address} />
+          <TabsContent value="all-transactions">
+            <AllTransactionsTab
+              key={address || "__no_addr__"}
+              address={address}
+              persistedState={persistedTransactionsState}
+              onPersist={(addr, state) => {
+                if (!addr) return;
+                const signature = JSON.stringify({
+                  page: state.page,
+                  hasNext: state.hasNext,
+                  refreshKey: state.refreshKey,
+                  error: state.error,
+                  selectedTypes: state.selectedTypes,
+                  visibleColumns: Object.entries(state.visibleColumns).sort(),
+                  cacheFilteredKeys: (state.filteredCacheEntries ?? []).map(
+                    ([key, value]) => [key, value.hasNext, value.rows.length]
+                  ),
+                  cacheRawKeys: (state.rawCacheEntries ?? []).map(
+                    ([key, value]) => [key, value.hasNext, value.rows.length]
+                  ),
+                });
+                if (persistSignatureRef.current.get(addr) === signature) {
+                  return;
+                }
+                persistSignatureRef.current.set(addr, signature);
+                transactionsPersistRef.current.set(addr, state);
+                forcePersistRender();
+              }}
+            />
           </TabsContent>
         </Tabs>
       </main>
