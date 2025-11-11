@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -101,6 +102,46 @@ const Dashboard = () => {
   const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
+  
+  // Chart visibility state
+  const [visibleCharts, setVisibleCharts] = useState({
+    portfolioEvolution: true,
+    allocationByChain: true,
+    pnlByChain: true,
+    assetDistribution: true,
+    stableVsRisk: true,
+    gainersLosers: true,
+    assetPerformance: true,
+  });
+
+  // Toggle chart visibility
+  const toggleChart = (chartKey: keyof typeof visibleCharts) => {
+    setVisibleCharts((prev) => {
+      const newState = {
+        ...prev,
+        [chartKey]: !prev[chartKey],
+      };
+      // Save to localStorage
+      localStorage.setItem("chartVisibilityPreferences", JSON.stringify(newState));
+      return newState;
+    });
+  };
+
+  // Toggle all charts
+  const toggleAllCharts = (visible: boolean) => {
+    const newState = {
+      portfolioEvolution: visible,
+      allocationByChain: visible,
+      pnlByChain: visible,
+      assetDistribution: visible,
+      stableVsRisk: visible,
+      gainersLosers: visible,
+      assetPerformance: visible,
+    };
+    setVisibleCharts(newState);
+    // Save to localStorage
+    localStorage.setItem("chartVisibilityPreferences", JSON.stringify(newState));
+  };
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -112,6 +153,16 @@ const Dashboard = () => {
 
   useEffect(() => {
     setMounted(true);
+    // Load saved chart preferences from localStorage
+    const savedPreferences = localStorage.getItem("chartVisibilityPreferences");
+    if (savedPreferences) {
+      try {
+        const parsedPreferences = JSON.parse(savedPreferences);
+        setVisibleCharts(parsedPreferences);
+      } catch (e) {
+        console.error("Failed to parse chart preferences:", e);
+      }
+    }
   }, []);
 
   // Use URL address if available, otherwise use connected wallet address
@@ -1470,8 +1521,101 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="graphs" className="space-y-6">
-            {/* 6-Month Portfolio Fluctuation Chart */}
+            {/* Chart Selection Panel */}
             <Card className="p-6 bg-white shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">
+                  Select Charts to Display
+                </h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => toggleAllCharts(true)}
+                    className="text-sm px-3 py-1 rounded-md border border-slate-200 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    onClick={() => toggleAllCharts(false)}
+                    className="text-sm px-3 py-1 rounded-md border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {[
+                  {
+                    key: "portfolioEvolution",
+                    label: "Portfolio Evolution",
+                    icon: TrendingUp,
+                  },
+                  {
+                    key: "allocationByChain",
+                    label: "Allocation by Chain",
+                    icon: BarChart3,
+                  },
+                  { key: "pnlByChain", label: "24h P&L by Chain", icon: BarChart3 },
+                  {
+                    key: "assetDistribution",
+                    label: "Asset Distribution",
+                    icon: PieChart,
+                  },
+                  {
+                    key: "stableVsRisk",
+                    label: "Stablecoin vs Risk",
+                    icon: DollarSign,
+                  },
+                  {
+                    key: "gainersLosers",
+                    label: "Top Gainers vs Losers",
+                    icon: TrendingUp,
+                  },
+                  {
+                    key: "assetPerformance",
+                    label: "Asset Performance",
+                    icon: BarChart3,
+                  },
+                ].map(({ key, label, icon: Icon }) => (
+                  <div
+                    key={key}
+                    className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                      visibleCharts[key as keyof typeof visibleCharts]
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                    onClick={() => toggleChart(key as keyof typeof visibleCharts)}
+                  >
+                    <Checkbox
+                      checked={visibleCharts[key as keyof typeof visibleCharts]}
+                      onCheckedChange={() =>
+                        toggleChart(key as keyof typeof visibleCharts)
+                      }
+                      className="pointer-events-none"
+                    />
+                    <Icon
+                      className={`w-5 h-5 ${
+                        visibleCharts[key as keyof typeof visibleCharts]
+                          ? "text-blue-600"
+                          : "text-slate-400"
+                      }`}
+                    />
+                    <span
+                      className={`text-sm font-medium ${
+                        visibleCharts[key as keyof typeof visibleCharts]
+                          ? "text-blue-900"
+                          : "text-slate-600"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* 6-Month Portfolio Fluctuation Chart */}
+            {visibleCharts.portfolioEvolution && (
+              <Card className="p-6 bg-white shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-800">
                   Portfolio Evolution (Last 6 Months)
@@ -1614,10 +1758,12 @@ const Dashboard = () => {
                   )}
                 </>
               )}
-            </Card>
+              </Card>
+            )}
 
             {/* Allocation by Chain */}
-            <Card className="p-6 bg-white shadow-sm">
+            {visibleCharts.allocationByChain && (
+              <Card className="p-6 bg-white shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-lg font-semibold text-slate-800">
                   Allocation by Chain
@@ -1664,10 +1810,12 @@ const Dashboard = () => {
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </Card>
+              </Card>
+            )}
 
             {/* 24h P&L by Chain */}
-            <Card className="p-6 bg-white shadow-sm">
+            {visibleCharts.pnlByChain && (
+              <Card className="p-6 bg-white shadow-sm">
               <h3 className="text-lg font-semibold text-slate-800 mb-4">
                 24h P&L by Chain
               </h3>
@@ -1711,10 +1859,12 @@ const Dashboard = () => {
                   {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over 24h.
                 </p>
               )}
-            </Card>
+              </Card>
+            )}
 
             {/* Asset Distribution Pie Chart */}
-            <Card className="p-6 bg-white shadow-sm">
+            {visibleCharts.assetDistribution && (
+              <Card className="p-6 bg-white shadow-sm">
               <h3 className="text-lg font-semibold text-slate-800 mb-4">
                 Asset Distribution
               </h3>
@@ -1769,10 +1919,12 @@ const Dashboard = () => {
                   </RPieChart>
                 </ResponsiveContainer>
               )}
-            </Card>
+              </Card>
+            )}
 
             {/* Stablecoin vs Risk Assets */}
-            <Card className="p-6 bg-white shadow-sm">
+            {visibleCharts.stableVsRisk && (
+              <Card className="p-6 bg-white shadow-sm">
               <h3 className="text-lg font-semibold text-slate-800 mb-4">
                 Stablecoin vs Risk Assets
               </h3>
@@ -1809,10 +1961,12 @@ const Dashboard = () => {
                   </RPieChart>
                 </ResponsiveContainer>
               )}
-            </Card>
+              </Card>
+            )}
 
             {/* Top Gainers vs Losers Comparison */}
-            <Card className="p-6 bg-white shadow-sm">
+            {visibleCharts.gainersLosers && (
+              <Card className="p-6 bg-white shadow-sm">
               <h3 className="text-lg font-semibold text-slate-800 mb-4">
                 Top Gainers vs Losers (24h)
               </h3>
@@ -1866,9 +2020,12 @@ const Dashboard = () => {
                   </BarChart>
                 </ResponsiveContainer>
               )}
-            </Card>
+              </Card>
+            )}
+            
             {/* Asset Performance by 24h Change */}
-            <Card className="p-6 bg-white shadow-sm">
+            {visibleCharts.assetPerformance && (
+              <Card className="p-6 bg-white shadow-sm">
               <h3 className="text-lg font-semibold text-slate-800 mb-4">
                 Asset Performance (24h % Change)
               </h3>
@@ -1934,7 +2091,8 @@ const Dashboard = () => {
                   );
                 })()
               )}
-            </Card>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="all-transactions" forceMount>
