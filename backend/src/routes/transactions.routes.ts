@@ -13,8 +13,10 @@ const router = Router();
 
 const TX_DEFAULT_LIMIT = Number(process.env.TX_DEFAULT_LIMIT ?? 20);
 const TX_MAX_LIMIT = Number(process.env.TX_MAX_LIMIT ?? 40);
-const LOGS_DEBUG =
-  String(process.env.LOGS_DEBUG ?? "false").toLowerCase() === "false";
+// const LOGS_DEBUG =
+//   String(process.env.LOGS_DEBUG ?? "false").toLowerCase() === "false";
+const LOGS_DEBUG = false;
+
 const logDebug = (...args: any[]) => {
   if (LOGS_DEBUG) {
     console.log("[transactions]", ...args);

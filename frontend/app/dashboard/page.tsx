@@ -17,9 +17,11 @@ import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
 import OverviewTab from "@/components/dashboard/OverviewTab";
 import GraphsTab from "@/components/dashboard/GraphsTab";
 import {
+  CapitalGainsCalculator,
   type CapitalGainEntry,
   type AccountingMethod,
 } from "@/utils/capitalGains";
+import { fetchTransactions } from "@/lib/api/transactions";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useMemo } from "react";
 import { useWallets } from "@/hooks/use-wallets";
@@ -32,6 +34,7 @@ import {
   type RiskBucketId,
 } from "@/lib/portfolioUtils";
 import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
+import type { TxRow } from "@/lib/types/transactions";
 
 const RISK_BUCKET_META: Record<
   RiskBucketId,
@@ -105,6 +108,22 @@ const Dashboard = () => {
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
   const overviewReady = !!ov && !loadingOv;
+  const [capitalGainsData, setCapitalGainsData] = useState<{
+    realized: CapitalGainEntry[];
+    unrealized: CapitalGainEntry[];
+    totalRealizedGains: number;
+    totalUnrealizedGains: number;
+    shortTermGains: number;
+    longTermGains: number;
+  }>({
+    realized: [],
+    unrealized: [],
+    totalRealizedGains: 0,
+    totalUnrealizedGains: 0,
+    shortTermGains: 0,
+    longTermGains: 0,
+  });
+  const [loadingCapitalGains, setLoadingCapitalGains] = useState(false);
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -256,6 +275,165 @@ const Dashboard = () => {
     };
   }, [address, networks, overviewReady]);
 
+  useEffect(() => {
+    if (!address || !overviewReady) {
+      return;
+    }
+    let cancelled = false;
+    async function loadCapitalGains() {
+      setLoadingCapitalGains(true);
+      try {
+        const calculator = new CapitalGainsCalculator(accountingMethod);
+        const rows: TxRow[] = [];
+        const MAX_PAGES = 3;
+        for (let page = 1; page <= MAX_PAGES; page++) {
+          const resp = await fetchTransactions(address, {
+            networks,
+            page,
+            limit: 40,
+            minUsd: 0,
+            spamFilter: "hard",
+          });
+          rows.push(...resp.rows);
+          if (!resp.hasNext) break;
+        }
+        rows.sort(
+          (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+        );
+        const assetLabels = new Map<string, string>();
+        const getAssetKey = (row: TxRow) =>
+          row.asset.contract?.toLowerCase() ??
+          row.asset.symbol?.toUpperCase() ??
+          "UNKNOWN";
+        const formatLabel = (row: TxRow, key: string) =>
+          row.asset.symbol ||
+          (row.asset.contract
+            ? `${row.asset.contract.slice(0, 6)}…${row.asset.contract.slice(
+                -4
+              )}`
+            : key);
+
+        const realizedEntries: CapitalGainEntry[] = [];
+
+        rows.forEach((row, idx) => {
+          const totalValue = row.usdAtTs ?? null;
+          const qty = Math.abs(parseFloat(row.qty || "0"));
+          if (!totalValue || !Number.isFinite(totalValue) || !qty) return;
+          const unitPrice = totalValue / qty;
+          if (!Number.isFinite(unitPrice) || unitPrice === 0) return;
+
+          const assetKey = getAssetKey(row);
+          const label = formatLabel(row, assetKey);
+          assetLabels.set(assetKey, label);
+          const day = row.ts.split("T")[0];
+
+          if (row.direction === "in") {
+            calculator.addToCostBasis({
+              id: `${row.hash}-${idx}`,
+              asset: assetKey,
+              quantity: qty,
+              costBasis: totalValue,
+              purchaseDate: day,
+              purchasePrice: unitPrice,
+            });
+          } else {
+            const gains = calculator.calculateGains(
+              assetKey,
+              qty,
+              unitPrice,
+              day,
+              row.hash
+            );
+            if (gains.length === 0) {
+              realizedEntries.push({
+                id: `${row.hash}-${idx}`,
+                asset: label,
+                quantity: qty,
+                salePrice: unitPrice,
+                costBasis: 0,
+                gain: totalValue,
+                gainPercent: 100,
+                holdingPeriod: 0,
+                isLongTerm: false,
+                saleDate: day,
+                purchaseDate: day,
+                transactionId: row.hash,
+              });
+              return;
+            }
+            gains.forEach((g) =>
+              realizedEntries.push({
+                ...g,
+                asset: assetLabels.get(g.asset) ?? label,
+              })
+            );
+          }
+        });
+
+        const currentPriceMap = new Map<string, number>();
+        (ov?.holdings ?? []).forEach((holding) => {
+          const key =
+            holding.contract?.toLowerCase() ?? holding.symbol?.toUpperCase();
+          if (!key) return;
+          currentPriceMap.set(key, holding.priceUsd ?? 0);
+          if (!assetLabels.has(key)) assetLabels.set(key, holding.symbol);
+        });
+
+        const unrealizedEntries = calculator
+          .getUnrealizedGains(currentPriceMap)
+          .map((entry) => ({
+            ...entry,
+            asset: assetLabels.get(entry.asset) ?? entry.asset,
+          }));
+
+        const totalRealizedGains = realizedEntries.reduce(
+          (sum, item) => sum + (item.gain ?? 0),
+          0
+        );
+        const totalUnrealizedGains = unrealizedEntries.reduce(
+          (sum, item) => sum + (item.gain ?? 0),
+          0
+        );
+        const shortTermGains = realizedEntries
+          .filter((item) => !item.isLongTerm)
+          .reduce((sum, item) => sum + item.gain, 0);
+        const longTermGains = realizedEntries
+          .filter((item) => item.isLongTerm)
+          .reduce((sum, item) => sum + item.gain, 0);
+
+        if (!cancelled) {
+          setCapitalGainsData({
+            realized: realizedEntries,
+            unrealized: unrealizedEntries,
+            totalRealizedGains,
+            totalUnrealizedGains,
+            shortTermGains,
+            longTermGains,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("[Dashboard] Failed to compute capital gains:", err);
+          setCapitalGainsData((prev) => ({
+            ...prev,
+            realized: [],
+            unrealized: [],
+            totalRealizedGains: 0,
+            totalUnrealizedGains: 0,
+            shortTermGains: 0,
+            longTermGains: 0,
+          }));
+        }
+      } finally {
+        if (!cancelled) setLoadingCapitalGains(false);
+      }
+    }
+    loadCapitalGains();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, networks, accountingMethod, overviewReady, ov]);
+
   const historicalChartData = useMemo(() => {
     console.log(
       `[Dashboard] Processing historical data: ${historicalData.length} points`
@@ -301,16 +479,17 @@ const Dashboard = () => {
 
   const chainHistory = useMemo(() => {
     if (historicalData.length === 0) {
-      return { data: [] as Record<string, number | string>[], series: [] as Array<{ key: string; label: string; color: string }> };
+      return {
+        data: [] as Record<string, number | string>[],
+        series: [] as Array<{ key: string; label: string; color: string }>,
+      };
     }
     const sorted = [...historicalData].sort(
       (a, b) => a.timestamp - b.timestamp
     );
     const chainSet = new Set<string>();
     for (const point of sorted) {
-      Object.keys(point.byChain ?? {}).forEach((chain) =>
-        chainSet.add(chain)
-      );
+      Object.keys(point.byChain ?? {}).forEach((chain) => chainSet.add(chain));
     }
     const seriesKeys = Array.from(chainSet);
     if (!seriesKeys.length) {
@@ -462,9 +641,11 @@ const Dashboard = () => {
       if (value > 0) counts[bucket] += 1;
     }
     const totalValue = ov?.kpis.totalValueUsd || 0;
-    return (Object.entries(RISK_BUCKET_META) as Array<
-      [RiskBucketId, (typeof RISK_BUCKET_META)[RiskBucketId]]
-    >).map(([id, meta]) => ({
+    return (
+      Object.entries(RISK_BUCKET_META) as Array<
+        [RiskBucketId, (typeof RISK_BUCKET_META)[RiskBucketId]]
+      >
+    ).map(([id, meta]) => ({
       id,
       label: meta.label,
       description: meta.description,
@@ -617,6 +798,9 @@ const Dashboard = () => {
             <TabsTrigger className="flex-1" value="graphs">
               Graphs
             </TabsTrigger>
+            <TabsTrigger className="flex-1" value="capital-gains">
+              Capital Gains
+            </TabsTrigger>
             <TabsTrigger className="flex-1" value="all-transactions">
               All Transactions
             </TabsTrigger>
@@ -662,6 +846,16 @@ const Dashboard = () => {
               movers={movers}
               netFlowData={netFlowData}
               chainHistory={chainHistory}
+            />
+          </TabsContent>
+
+          <TabsContent value="capital-gains" className="space-y-6">
+            <CapitalGainsTab
+              loading={loadingCapitalGains}
+              capitalGainsData={capitalGainsData}
+              accountingMethod={accountingMethod}
+              setAccountingMethod={setAccountingMethod}
+              currency={userPreferences.currency}
             />
           </TabsContent>
 
