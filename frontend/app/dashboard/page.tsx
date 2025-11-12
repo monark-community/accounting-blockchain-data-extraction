@@ -8,7 +8,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Crown } from "lucide-react";
 import { useWallet } from "@/contexts/WalletContext";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
@@ -29,7 +28,6 @@ import { useWallets } from "@/hooks/use-wallets";
 import { OverviewResponse } from "@/lib/types/portfolio";
 import {
   CHAIN_LABEL,
-  CHAIN_STACK_COLORS,
   computeHHI,
   isStable,
   classifyRiskBucket,
@@ -70,6 +68,17 @@ const RISK_BUCKET_META: Record<
     barColor: "#f97316",
   },
 };
+
+const CHAIN_STACK_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f97316",
+  "#a855f7",
+  "#06b6d4",
+  "#e11d48",
+  "#facc15",
+  "#0ea5e9",
+];
 
 const Dashboard = () => {
   const {
