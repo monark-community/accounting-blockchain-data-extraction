@@ -25,6 +25,9 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { CurrencyDisplay } from "@/components/ui/currency-display";
 import {
@@ -44,6 +47,19 @@ import {
 } from "recharts";
 import { PieChart as RPieChart, Pie, Cell } from "recharts";
 
+const NETWORK_OPTIONS = [
+  { id: "mainnet", label: "Ethereum" },
+  { id: "bsc", label: "BSC" },
+  { id: "polygon", label: "Polygon" },
+  { id: "optimism", label: "Optimism" },
+  { id: "base", label: "Base" },
+  { id: "arbitrum-one", label: "Arbitrum" },
+  { id: "avalanche", label: "Avalanche" },
+  { id: "unichain", label: "Unichain" },
+] as const;
+
+const NETWORK_IDS = NETWORK_OPTIONS.map((n) => n.id);
+
 interface CapitalGainsTabProps {
   capitalGainsData: {
     realized: CapitalGainEntry[];
@@ -57,6 +73,8 @@ interface CapitalGainsTabProps {
   setAccountingMethod: (method: AccountingMethod) => void;
   currency: string;
   loading: boolean;
+  networks: string[];
+  onNetworksChange: (nets: string[]) => void;
 }
 
 const CapitalGainsTab = ({
@@ -65,6 +83,8 @@ const CapitalGainsTab = ({
   setAccountingMethod,
   currency,
   loading,
+  networks,
+  onNetworksChange,
 }: CapitalGainsTabProps) => {
   const [visibleColumns, setVisibleColumns] = useState({
     asset: true,
@@ -108,6 +128,35 @@ const CapitalGainsTab = ({
       .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
       .slice(0, 6);
   }, [capitalGainsData.realized]);
+
+  const networksButtonLabel = useMemo(() => {
+    if (!networks.length || networks.length === NETWORK_IDS.length) {
+      return "All chains";
+    }
+    if (networks.length === 1) {
+      const n = NETWORK_OPTIONS.find((opt) => opt.id === networks[0]);
+      return n ? n.label : networks[0];
+    }
+    const primary =
+      NETWORK_OPTIONS.find((opt) => opt.id === networks[0])?.label ??
+      networks[0];
+    return `${primary} +${networks.length - 1}`;
+  }, [networks]);
+
+  const applyNetworks = (list: string[]) => {
+    const normalized = NETWORK_IDS.filter((id) => list.includes(id));
+    onNetworksChange(normalized.length ? normalized : ["mainnet"]);
+  };
+
+  const toggleNetworkSelection = (id: string, checked: boolean) => {
+    const set = new Set(networks);
+    if (checked) set.add(id);
+    else set.delete(id);
+    applyNetworks(Array.from(set));
+  };
+
+  const selectAllNetworks = () => applyNetworks([...NETWORK_IDS]);
+  const resetNetworks = () => applyNetworks(["mainnet"]);
 
   return (
     <div className="space-y-6">
@@ -388,31 +437,71 @@ const CapitalGainsTab = ({
             <h3 className="text-xl font-bold text-slate-800">
               Capital Gains & Losses
             </h3>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Eye className="w-4 h-4 mr-2" />
-                  Columns
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {Object.entries(visibleColumns).map(([key, visible]) => (
-                  <DropdownMenuCheckboxItem
-                    key={key}
-                    checked={visible}
-                    onCheckedChange={(checked) =>
-                      setVisibleColumns((prev) => ({
-                        ...prev,
-                        [key]: !!checked,
-                      }))
-                    }
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    Networks: {networksButtonLabel}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Select networks</DropdownMenuLabel>
+                  {NETWORK_OPTIONS.map((net) => (
+                    <DropdownMenuCheckboxItem
+                      key={net.id}
+                      checked={networks.includes(net.id)}
+                      onCheckedChange={(checked) =>
+                        toggleNetworkSelection(net.id, !!checked)
+                      }
+                    >
+                      {net.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      selectAllNetworks();
+                    }}
                   >
-                    {key.charAt(0).toUpperCase() +
-                      key.slice(1).replace(/([A-Z])/g, " $1")}
-                  </DropdownMenuCheckboxItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    Select all
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      resetNetworks();
+                    }}
+                  >
+                    Reset to mainnet
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Eye className="w-4 h-4 mr-2" />
+                    Columns
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {Object.entries(visibleColumns).map(([key, visible]) => (
+                    <DropdownMenuCheckboxItem
+                      key={key}
+                      checked={visible}
+                      onCheckedChange={(checked) =>
+                        setVisibleColumns((prev) => ({
+                          ...prev,
+                          [key]: !!checked,
+                        }))
+                      }
+                    >
+                      {key.charAt(0).toUpperCase() +
+                        key.slice(1).replace(/([A-Z])/g, " $1")}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </div>
 

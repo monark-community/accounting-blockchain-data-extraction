@@ -81,6 +81,8 @@ const CHAIN_STACK_COLORS = [
   "#0ea5e9",
 ];
 
+const GAINS_DEFAULT_NETWORKS = ["mainnet"];
+
 const Dashboard = () => {
   const {
     connectedWallets,
@@ -125,6 +127,12 @@ const Dashboard = () => {
     longTermGains: 0,
   });
   const [loadingCapitalGains, setLoadingCapitalGains] = useState(false);
+  const [capitalGainsNetworks, setCapitalGainsNetworks] = useState<string[]>([
+    ...GAINS_DEFAULT_NETWORKS,
+  ]);
+  const capitalGainsNetworksParam = capitalGainsNetworks.length
+    ? capitalGainsNetworks.join(",")
+    : GAINS_DEFAULT_NETWORKS.join(",");
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -289,7 +297,7 @@ const Dashboard = () => {
         const MAX_PAGES = 3;
         for (let page = 1; page <= MAX_PAGES; page++) {
           const resp = await fetchTransactions(address, {
-            networks,
+            networks: capitalGainsNetworksParam,
             page,
             limit: 40,
             minUsd: 0,
@@ -433,7 +441,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [address, networks, accountingMethod, overviewReady, ov]);
+  }, [address, capitalGainsNetworksParam, accountingMethod, overviewReady, ov]);
 
   const historicalChartData = useMemo(() => {
     console.log(
@@ -799,9 +807,9 @@ const Dashboard = () => {
             <TabsTrigger className="flex-1" value="graphs">
               Graphs
             </TabsTrigger>
-            {/* <TabsTrigger className="flex-1" value="capital-gains">
+            <TabsTrigger className="flex-1" value="capital-gains">
               Capital Gains
-            </TabsTrigger> */}
+            </TabsTrigger>
             <TabsTrigger className="flex-1" value="all-transactions">
               All Transactions
             </TabsTrigger>
@@ -850,15 +858,17 @@ const Dashboard = () => {
             />
           </TabsContent>
 
-          {/* <TabsContent value="capital-gains" className="space-y-6">
+          <TabsContent value="capital-gains" className="space-y-6">
             <CapitalGainsTab
               loading={loadingCapitalGains}
               capitalGainsData={capitalGainsData}
               accountingMethod={accountingMethod}
               setAccountingMethod={setAccountingMethod}
               currency={userPreferences.currency}
+              networks={capitalGainsNetworks}
+              onNetworksChange={setCapitalGainsNetworks}
             />
-          </TabsContent> */}
+          </TabsContent>
 
           <TabsContent value="all-transactions" forceMount>
             <AllTransactionsTab address={address} isReady={overviewReady} />
