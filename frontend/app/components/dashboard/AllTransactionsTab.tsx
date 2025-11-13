@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,7 +32,6 @@ import {
 } from "lucide-react";
 
 import type { TxRow, TxType } from "@/lib/types/transactions";
-import { fetchTransactions } from "@/lib/api/transactions";
 import {
   NETWORK_OPTIONS,
   NETWORK_IDS,
@@ -40,6 +39,7 @@ import {
   networkLabel,
   normalizeNetworkList,
 } from "@/lib/networks";
+import { useTransactionPagination } from "@/hooks/use-transaction-pagination";
 
 // --- UI helpers
 const fmtUSD = (n: number | null | undefined) =>
@@ -108,8 +108,6 @@ function parseNetworkQuery(value?: string | null): string[] {
     .filter(Boolean);
 }
 
-const PAGE_SIZE = 20;
-
 interface AllTransactionsTabProps {
   address?: string;
   networks?: string; // comma-separated override; omit to use UI-managed selection
@@ -131,12 +129,6 @@ export default function AllTransactionsTab({
     }
   }, [propAddress]);
 
-  // Server data & pagination
-  const [rows, setRows] = useState<TxRow[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Networks: default to Ethereum mainnet, allow user/URL overrides
@@ -169,25 +161,7 @@ export default function AllTransactionsTab({
     return `${primary} +${networks.length - 1}`;
   }, [networks]);
 
-  type RawPagePayload = { rows: TxRow[]; hasNext: boolean };
-  type FilteredPagePayload = {
-    rows: TxRow[];
-    hasNext: boolean;
-    resolvedPage: number;
-    exhausted?: boolean;
-    totalFiltered?: number;
-  };
-  interface ComboState {
-    networks: string[];
-    rawPages: Map<number, RawPagePayload>;
-    rawPromises: Map<number, Promise<RawPagePayload>>;
-    filteredPages: Map<string, FilteredPagePayload>;
-    filteredTotals: Map<string, { total: number; maxPage: number }>;
-  }
-  const comboCacheRef = useRef(new Map<string, ComboState>());
-  const loadTokenRef = useRef(0);
-
-  // Simple filter chip state
+  // Filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
     "all",
   ] as any);
@@ -208,374 +182,28 @@ export default function AllTransactionsTab({
     Record<keyof typeof visibleColumnsInit, boolean>
   >({ ...visibleColumnsInit });
 
-  // Generate cache key for current filters
-  const makeNetworkKey = (list: string[]) => {
-    if (!list.length) return "(none)";
-    return [...list].sort().join(",");
-  };
-  const currentNetworkKey = useMemo(
-    () => makeNetworkKey(networks),
-    [networks]
-  );
-
-  const getComboKey = (addr: string, networkKey: string) =>
-    `${addr.toLowerCase()}::${networkKey}`;
-
-  const ensureComboState = (addr: string, networkList: string[]) => {
-    const comboKey = getComboKey(addr, makeNetworkKey(networkList));
-    let state = comboCacheRef.current.get(comboKey);
-    if (!state) {
-      state = {
-        networks: [...networkList],
-        rawPages: new Map(),
-        rawPromises: new Map(),
-        filteredPages: new Map(),
-        filteredTotals: new Map(),
-      };
-      comboCacheRef.current.set(comboKey, state);
-    }
-    return state;
-  };
-
-  const getFilteredBaseKey = (types: TxType[] | ["all"]) => {
-    if (!Array.isArray(types) || (types as any)[0] === "all") {
-      return "all";
-    }
-    const sorted = [...(types as TxType[])].sort();
-    return sorted.join(",");
-  };
-  const getFilteredKey = (types: TxType[] | ["all"], pageNum: number) =>
-    `${getFilteredBaseKey(types)}:${pageNum}`;
-
-  const findLastCachedPageForFilter = (
-    comboState: ComboState,
-    types: TxType[] | ["all"]
-  ): number => {
-    const baseKey = getFilteredBaseKey(types);
-    let maxPage = 0;
-    for (const key of Array.from(comboState.filteredPages.keys())) {
-      if (key.startsWith(`${baseKey}:`)) {
-        const pageNum = parseInt(key.split(":")[1] || "0", 10);
-        if (pageNum > maxPage) {
-          maxPage = pageNum;
-        }
-      }
-    }
-    return maxPage;
-  };
-
-  const clearComboStatesForAddress = (addr: string) => {
-    const prefix = `${addr.toLowerCase()}::`;
-    const entries = Array.from(comboCacheRef.current.entries());
-    const toDelete: string[] = [];
-    for (const [key] of entries) {
-      if (key.startsWith(prefix)) {
-        toDelete.push(key);
-      }
-    }
-    toDelete.forEach((key) => comboCacheRef.current.delete(key));
-  };
-
-  const ensureRawPage = async (
-    addr: string,
-    comboState: ComboState,
-    pageNum: number
-  ): Promise<RawPagePayload> => {
-    if (comboState.rawPages.has(pageNum)) {
-      return comboState.rawPages.get(pageNum)!;
-    }
-    if (comboState.rawPromises.has(pageNum)) {
-      return comboState.rawPromises.get(pageNum)!;
-    }
-
-    const promise = fetchTransactions(addr, {
-      ...(comboState.networks.length
-        ? { networks: comboState.networks.join(",") }
-        : {}),
-      page: pageNum,
-      limit: PAGE_SIZE,
-      minUsd: 0,
-      spamFilter: "hard",
-    })
-      .then(({ rows, hasNext }) => {
-        const payload = { rows, hasNext };
-        comboState.rawPages.set(pageNum, payload);
-        comboState.rawPromises.delete(pageNum);
-        return payload;
-      })
-      .catch((error) => {
-        comboState.rawPromises.delete(pageNum);
-        throw error;
-      });
-
-    comboState.rawPromises.set(pageNum, promise);
-    return promise;
-  };
-
-  const collectFilteredPage = async (
-    addr: string,
-    comboState: ComboState,
-    types: TxType[] | ["all"],
-    pageNum: number
-  ): Promise<FilteredPagePayload> => {
-    const cacheKey = getFilteredKey(types, pageNum);
-    const cached = comboState.filteredPages.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const baseKey = getFilteredBaseKey(types);
-
-    if (!Array.isArray(types) || (types as any)[0] === "all") {
-      const raw = await ensureRawPage(addr, comboState, pageNum);
-      const payload: FilteredPagePayload = {
-        rows: raw.rows,
-        hasNext: raw.hasNext,
-        resolvedPage: pageNum,
-      };
-      comboState.filteredPages.set(cacheKey, payload);
-      return payload;
-    }
-
-    const selectedSet = new Set(types as TxType[]);
-    const rowsAccum: TxRow[] = [];
-    const limit = PAGE_SIZE;
-    let rawPageIndex = 1;
-    let remainingToSkip = Math.max(0, (pageNum - 1) * limit);
-    let hasMoreFiltered = false;
-    let lastRawHasNext = false;
-    let filteredSeen = 0;
-
-    while (rowsAccum.length < limit) {
-      const { rows: rawRows, hasNext: rawHasNext } = await ensureRawPage(
-        addr,
-        comboState,
-        rawPageIndex
-      );
-      lastRawHasNext = rawHasNext;
-      const filtered = rawRows.filter((row) => selectedSet.has(row.type));
-      filteredSeen += filtered.length;
-
-      if (remainingToSkip > 0) {
-        if (remainingToSkip >= filtered.length) {
-          remainingToSkip -= filtered.length;
-        } else {
-          const sliceStart = remainingToSkip;
-          remainingToSkip = 0;
-          const available = filtered.slice(sliceStart);
-          const slots = limit - rowsAccum.length;
-          if (available.length > slots) {
-            rowsAccum.push(...available.slice(0, slots));
-            hasMoreFiltered = true;
-            break;
-          } else {
-            rowsAccum.push(...available);
-          }
-        }
-      } else if (filtered.length) {
-        const slots = limit - rowsAccum.length;
-        if (filtered.length > slots) {
-          rowsAccum.push(...filtered.slice(0, slots));
-          hasMoreFiltered = true;
-          break;
-        } else {
-          rowsAccum.push(...filtered);
-        }
-      }
-
-      if (!rawHasNext) {
-        break;
-      }
-      rawPageIndex += 1;
-    }
-
-    let hasNextFiltered = false;
-    if (hasMoreFiltered) {
-      hasNextFiltered = true;
-    } else if (rowsAccum.length === limit) {
-      if (lastRawHasNext) {
-        let probeIndex = rawPageIndex;
-        while (true) {
-          const { rows: probeRows, hasNext: probeHasNext } =
-            await ensureRawPage(addr, comboState, probeIndex);
-          const probeFiltered = probeRows.filter((row) =>
-            selectedSet.has(row.type)
-          );
-          if (probeFiltered.length > 0) {
-            hasNextFiltered = true;
-            break;
-          }
-          if (!probeHasNext) {
-            hasNextFiltered = false;
-            break;
-          }
-          probeIndex += 1;
-        }
-      } else {
-        hasNextFiltered = false;
-      }
-    } else {
-      hasNextFiltered = false;
-    }
-
-    const exhausted = remainingToSkip > 0 && !lastRawHasNext;
-
-    if (exhausted) {
-      const totalFiltered = filteredSeen;
-      const maxPage =
-        totalFiltered === 0
-          ? 1
-          : Math.max(1, Math.ceil(totalFiltered / limit));
-      comboState.filteredTotals.set(baseKey, {
-        total: totalFiltered,
-        maxPage,
-      });
-      const fallbackPage = Math.min(pageNum, maxPage);
-
-      if (fallbackPage < pageNum) {
-        const fallbackKey = getFilteredKey(types, fallbackPage);
-        let fallbackPayload = comboState.filteredPages.get(fallbackKey);
-        if (!fallbackPayload) {
-          fallbackPayload = await collectFilteredPage(
-            addr,
-            comboState,
-            types,
-            fallbackPage
-          );
-        }
-        const payload: FilteredPagePayload = {
-          rows: fallbackPayload.rows,
-          hasNext: fallbackPayload.hasNext,
-          resolvedPage: fallbackPayload.resolvedPage,
-          exhausted: true,
-          totalFiltered,
-        };
-        comboState.filteredPages.set(cacheKey, payload);
-        return payload;
-      }
-    }
-
-    const payload: FilteredPagePayload = {
-      rows: rowsAccum,
-      hasNext: hasNextFiltered,
-      resolvedPage: pageNum,
-      exhausted,
-      totalFiltered: exhausted ? filteredSeen : undefined,
-    };
-    comboState.filteredPages.set(cacheKey, payload);
-    return payload;
-  };
-
-  
-  async function load(p: number) {
-    if (!address) return;
-
-    const networkList = [...networks];
-    const comboState = ensureComboState(address, networkList);
-    const filteredKey = getFilteredKey(selectedTypes, p);
-    const cached = comboState.filteredPages.get(filteredKey);
-
-    const token = ++loadTokenRef.current;
-
-    if (cached) {
-      const resolvedPage = cached.resolvedPage ?? p;
-      if (resolvedPage !== page) {
-        setPage(resolvedPage);
-      }
-      setRows(cached.rows);
-      setHasNext(cached.hasNext);
-      if (cached.hasNext) {
-        preloadNextPage(resolvedPage + 1, comboState);
-      }
-      return;
-    }
-
-    // If requested page is not cached, find the last cached page for this filter
-    // and load the next page after it
-    const lastCachedPage = findLastCachedPageForFilter(comboState, selectedTypes);
-    const pageToLoad = lastCachedPage > 0 ? lastCachedPage + 1 : 1;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await collectFilteredPage(
-        address,
-        comboState,
-        selectedTypes,
-        pageToLoad
-      );
-      if (loadTokenRef.current !== token) {
-        return;
-      }
-      const resolvedPage = result.resolvedPage ?? pageToLoad;
-      setRows(result.rows);
-      setHasNext(result.hasNext);
-      if (resolvedPage !== page) {
-        setPage(resolvedPage);
-      }
-      if (result.hasNext) {
-        preloadNextPage(resolvedPage + 1, comboState);
-      }
-    } catch (e: any) {
-      if (loadTokenRef.current !== token) {
-        return;
-      }
-      setError(e?.message || "Failed to load transactions");
-      setRows([]);
-      setHasNext(false);
-    } finally {
-      if (loadTokenRef.current === token) {
-        setLoading(false);
-      }
-    }
-  };
-
-  const preloadNextPage = async (nextPage: number, comboState?: ComboState) => {
-    if (!address) return;
-    const state =
-      comboState ?? ensureComboState(address, [...networks]);
-    const cacheKey = getFilteredKey(selectedTypes, nextPage);
-    if (state.filteredPages.has(cacheKey)) {
-      return;
-    }
-
-    try {
-      await collectFilteredPage(address, state, selectedTypes, nextPage);
-    } catch (e) {
-      console.debug("[Prefetch] Failed to preload page", nextPage, e);
-    }
-  };
-
-  useEffect(() => {
-    if (!address) return;
-    setPage(1);
-    load(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey]);
-
-  useEffect(() => {
-    if (!address) return;
-    // Don't clear cache - it's already organized by filter via getCacheKey
-    // This allows instant navigation when returning to previously visited filters
-    // Load current page with new filter (if page doesn't exist, backend will handle it)
-    load(page);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(selectedTypes)]);
+  // Use pagination hook
+  const {
+    rows,
+    page,
+    hasNext,
+    loading,
+    error,
+    setPage,
+    goPrev,
+    goNext,
+    refresh,
+  } = useTransactionPagination({
+    address,
+    networks,
+    selectedTypes,
+    refreshKey,
+  });
 
   const filterIsAll =
     !Array.isArray(selectedTypes) || (selectedTypes as any)[0] === "all";
   const canPrev = page > 1;
   const canNext = hasNext;
-  const goPrev = () => {
-    const p = Math.max(1, page - 1);
-    setPage(p);
-    load(p);
-  };
-  const goNext = () => {
-    const p = page + 1;
-    setPage(p);
-    load(p);
-  };
 
   // Export helpers (unchanged from your file)
   const nowStamp = () => {
@@ -856,10 +484,8 @@ export default function AllTransactionsTab({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  if (address) {
-                    clearComboStatesForAddress(address);
-                  }
                   setRefreshKey((k) => k + 1);
+                  refresh();
                 }}
                 disabled={loading}
               >
