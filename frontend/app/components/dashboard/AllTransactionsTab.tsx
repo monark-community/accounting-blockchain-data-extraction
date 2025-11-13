@@ -33,6 +33,13 @@ import {
 
 import type { TxRow, TxType } from "@/lib/types/transactions";
 import { fetchTransactions } from "@/lib/api/transactions";
+import {
+  NETWORK_OPTIONS,
+  NETWORK_IDS,
+  PRIMARY_NETWORK_ID,
+  networkLabel,
+  normalizeNetworkList,
+} from "@/lib/networks";
 
 // --- UI helpers
 const fmtUSD = (n: number | null | undefined) =>
@@ -91,55 +98,7 @@ const explorerBase = (network?: string) => {
 };
 const etherscanTxUrl = (hash: string, network?: string) =>
   `${explorerBase(network)}/tx/${hash}`;
-const networkLabel = (network?: string) => {
-  switch ((network || "").toLowerCase()) {
-    case "mainnet":
-    case "ethereum":
-      return "Ethereum";
-    case "sepolia":
-    case "eth-sepolia":
-      return "Sepolia";
-    case "base":
-      return "Base";
-    case "polygon":
-      return "Polygon";
-    case "bsc":
-      return "BSC";
-    case "optimism":
-      return "Optimism";
-    case "arbitrum-one":
-      return "Arbitrum";
-    case "avalanche":
-      return "Avalanche";
-    case "unichain":
-      return "Unichain";
-    default:
-      return network || "Unknown";
-  }
-};
-
-const NETWORK_OPTIONS = [
-  { id: "mainnet", label: "Ethereum" },
-  { id: "bsc", label: "BSC" },
-  { id: "polygon", label: "Polygon" },
-  { id: "optimism", label: "Optimism" },
-  { id: "base", label: "Base" },
-  { id: "arbitrum-one", label: "Arbitrum" },
-  { id: "avalanche", label: "Avalanche" },
-  { id: "unichain", label: "Unichain" },
-] as const;
-const NETWORK_IDS: string[] = NETWORK_OPTIONS.map((n) => n.id);
-const DEFAULT_NETWORKS: string[] = [NETWORK_OPTIONS[0].id];
-
-function normalizeNetworkList(list: string[]): string[] {
-  const normalized = new Set(
-    list
-      .map((n) => n.trim().toLowerCase())
-      .filter((n) => NETWORK_IDS.includes(n))
-  );
-  const ordered = NETWORK_IDS.filter((id) => normalized.has(id));
-  return ordered.length ? ordered : [...DEFAULT_NETWORKS];
-}
+const DEFAULT_NETWORKS: string[] = [PRIMARY_NETWORK_ID];
 
 function parseNetworkQuery(value?: string | null): string[] {
   if (!value) return [];
@@ -154,13 +113,11 @@ const PAGE_SIZE = 20;
 interface AllTransactionsTabProps {
   address?: string;
   networks?: string; // comma-separated override; omit to use UI-managed selection
-  isReady?: boolean; // allow parent to delay initial fetch
 }
 
 export default function AllTransactionsTab({
   address: propAddress,
   networks: propNetworks,
-  isReady = true,
 }: AllTransactionsTabProps) {
   // Use prop address if provided, otherwise read from URL
   const [address, setAddress] = useState<string>(propAddress || "");
@@ -282,7 +239,7 @@ export default function AllTransactionsTab({
 
   const clearComboStatesForAddress = (addr: string) => {
     const prefix = `${addr.toLowerCase()}::`;
-    const entries = comboCacheRef.current.entries();
+    const entries = Array.from(comboCacheRef.current.entries());
     const toDelete: string[] = [];
     for (const [key] of entries) {
       if (key.startsWith(prefix)) {
@@ -430,8 +387,9 @@ export default function AllTransactionsTab({
     return payload;
   };
 
-  const load = async (p: number) => {
-    if (!address || !isReady) return;
+  
+  async function load(p: number) {
+    if (!address) return;
 
     const networkList = [...networks];
     const comboState = ensureComboState(address, networkList);
@@ -497,14 +455,17 @@ export default function AllTransactionsTab({
   };
 
   useEffect(() => {
-    if (!address || !isReady) return;
+    if (!address) return;
     setPage(1);
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey, currentNetworkKey, isReady]);
+  }, [address, refreshKey]);
 
   useEffect(() => {
-    if (!address || !isReady) return;
+    if (!address) return;
+    // Don't clear cache - it's already organized by filter via getCacheKey
+    // This allows instant navigation when returning to previously visited filters
+    // Load current page with new filter (if page doesn't exist, backend will handle it)
     load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
@@ -808,7 +769,7 @@ export default function AllTransactionsTab({
                   }
                   setRefreshKey((k) => k + 1);
                 }}
-                disabled={loading || !isReady}
+                disabled={loading}
               >
                 <RefreshCw
                   className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
