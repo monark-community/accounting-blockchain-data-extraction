@@ -18,6 +18,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -108,6 +110,37 @@ function parseNetworkQuery(value?: string | null): string[] {
     .filter(Boolean);
 }
 
+function startOfYearIso(year: number): string {
+  return new Date(Date.UTC(year, 0, 1, 0, 0, 0, 0)).toISOString();
+}
+
+function endOfYearIso(year: number): string {
+  return new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999)).toISOString();
+}
+
+function isoFromDateInput(value: string, opts?: { endOfDay?: boolean }) {
+  if (!value) return undefined;
+  const parts = value.split("-").map((p) => Number(p));
+  if (parts.length !== 3) return undefined;
+  const [y, m, d] = parts;
+  if ([y, m, d].some((n) => Number.isNaN(n))) return undefined;
+  return new Date(
+    Date.UTC(
+      y,
+      (m || 1) - 1,
+      d || 1,
+      opts?.endOfDay ? 23 : 0,
+      opts?.endOfDay ? 59 : 0,
+      opts?.endOfDay ? 59 : 0,
+      opts?.endOfDay ? 999 : 0
+    )
+  ).toISOString();
+}
+
+function toDateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
 // Map UI chip → backend class= param
 function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
   if (!Array.isArray(selected) || (selected as any)[0] === "all") return null;
@@ -128,6 +161,8 @@ interface AllTransactionsTabProps {
   address?: string;
   networks?: string; // comma-separated override; omit to use UI-managed selection
 }
+
+type DatePreset = "all" | "current" | "previous" | "custom";
 
 export default function AllTransactionsTab({
   address: propAddress,
@@ -186,6 +221,52 @@ export default function AllTransactionsTab({
     return `${primary} +${networks.length - 1}`;
   }, [networks]);
 
+  const currentYear = useMemo(() => new Date().getUTCFullYear(), []);
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const dateRange = useMemo(() => {
+    if (datePreset === "current") {
+      return {
+        from: startOfYearIso(currentYear),
+        to: endOfYearIso(currentYear),
+        label: `Tax year ${currentYear}`,
+      };
+    }
+    if (datePreset === "previous") {
+      const year = currentYear - 1;
+      return {
+        from: startOfYearIso(year),
+        to: endOfYearIso(year),
+        label: `Tax year ${year}`,
+      };
+    }
+    if (datePreset === "custom") {
+      const from = isoFromDateInput(customFrom);
+      const to = isoFromDateInput(customTo, { endOfDay: true });
+      const label =
+        customFrom || customTo
+          ? `${customFrom || "…"} → ${customTo || "…"}`
+          : "Custom range";
+      return { from, to, label };
+    }
+    return { from: undefined, to: undefined, label: "All time" };
+  }, [datePreset, customFrom, customTo, currentYear]);
+  const fromParam = dateRange.from;
+  const toParam = dateRange.to;
+  const dateRangeLabel = dateRange.label;
+  const dateRangeKey =
+    fromParam || toParam ? `${fromParam ?? ""}:${toParam ?? ""}` : "(all)";
+
+  useEffect(() => {
+    if (datePreset !== "custom") return;
+    if (customFrom || customTo) return;
+    const start = toDateInputValue(new Date(Date.UTC(currentYear, 0, 1)));
+    const today = toDateInputValue(new Date());
+    setCustomFrom(start);
+    setCustomTo(today);
+  }, [datePreset, customFrom, customTo, currentYear]);
+
   // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
   const pageCache = useRef(
     new Map<
@@ -225,7 +306,7 @@ export default function AllTransactionsTab({
   const getBaseCacheKey = (addr: string) => {
     const filterKey = JSON.stringify(selectedTypes);
     const nets = networksParam || "(all)";
-    return `${addr}:${nets}:${filterKey}`;
+    return `${addr}:${nets}:${filterKey}:${dateRangeKey}`;
   };
   const getCacheKey = (addr: string, pageNum: number) =>
     `${getBaseCacheKey(addr)}:${pageNum}`;
@@ -283,6 +364,8 @@ export default function AllTransactionsTab({
         spamFilter: "hard",
         ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
+        ...(fromParam ? { from: fromParam } : {}),
+        ...(toParam ? { to: toParam } : {}),
       });
 
       // Store in cache
@@ -351,6 +434,8 @@ export default function AllTransactionsTab({
         spamFilter: "hard",
         ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
+        ...(fromParam ? { from: fromParam } : {}),
+        ...(toParam ? { to: toParam } : {}),
       });
 
       // Store in cache (silently, no state updates)
@@ -376,7 +461,7 @@ export default function AllTransactionsTab({
     setMaxLoadedPage(0);
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey, networksParam]);
+  }, [address, refreshKey, networksParam, dateRangeKey]);
 
   useEffect(() => {
     if (!pageStatus || pageStatus.state === "loading") return;
@@ -604,6 +689,36 @@ export default function AllTransactionsTab({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm">
+                    Date: {dateRangeLabel}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Date range</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={datePreset}
+                    onValueChange={(value) =>
+                      setDatePreset(value as DatePreset)
+                    }
+                  >
+                    <DropdownMenuRadioItem value="all">
+                      All time
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="current">
+                      Tax year {currentYear}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="previous">
+                      Tax year {currentYear - 1}
+                    </DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="custom">
+                      Custom range
+                    </DropdownMenuRadioItem>
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
                     Networks: {networksButtonLabel}
                   </Button>
                 </DropdownMenuTrigger>
@@ -747,6 +862,29 @@ export default function AllTransactionsTab({
               </Button>
             </div>
           </div>
+
+          {datePreset === "custom" && (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <label className="text-xs text-slate-600 font-medium flex flex-col gap-1">
+                <span>From</span>
+                <input
+                  type="date"
+                  value={customFrom}
+                  onChange={(event) => setCustomFrom(event.currentTarget.value)}
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
+                />
+              </label>
+              <label className="text-xs text-slate-600 font-medium flex flex-col gap-1">
+                <span>To</span>
+                <input
+                  type="date"
+                  value={customTo}
+                  onChange={(event) => setCustomTo(event.currentTarget.value)}
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
+                />
+              </label>
+            </div>
+          )}
 
           {/* Filter chips (server-side class filter) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
