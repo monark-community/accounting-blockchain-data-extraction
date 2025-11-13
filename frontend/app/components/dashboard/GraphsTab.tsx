@@ -4,20 +4,114 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { OverviewResponse, PricedHolding } from "@/lib/types/portfolio";
 import type { HistoricalPoint } from "@/lib/api/analytics";
-import { fmtUSD, fmtPct } from "@/lib/portfolioUtils";
-import { ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, BarChart, Bar, ReferenceLine, PieChart as RPieChart, Pie, Cell, Legend } from "recharts";
+import { fmtUSD, fmtPct, CHAIN_LABEL, CHAIN_STACK_COLORS } from "@/lib/portfolioUtils";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  BarChart,
+  Bar,
+  ReferenceLine,
+  PieChart as RPieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
+import { useEffect, useState, type ReactElement } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { TrendingUp, BarChart3, PieChart, DollarSign, Activity, Briefcase, Calendar, Link2, AlertTriangle, HelpCircle } from "lucide-react";
 
-interface AllocationRow { name: string; pct: number; usd: number }
-interface ChainBreakdownRow { chain: string; label: string; usd: number; pct: number }
-interface PnlRow { label: string; pnl: number; value: number }
-interface StableVsRisk { stable: number; nonStable: number }
-interface Movers { gainers: PricedHolding[]; losers: PricedHolding[] }
-interface HistoricalChartPoint { date: string; value: number; timestamp: number }
-interface NetFlowPoint { date: string; delta: number }
+interface AllocationRow {
+  name: string;
+  pct: number;
+  usd: number;
+}
+interface ChainBreakdownRow {
+  chain: string;
+  label: string;
+  usd: number;
+  pct: number;
+}
+interface PnlRow {
+  label: string;
+  pnl: number;
+  value: number;
+}
+interface StableVsRisk {
+  stable: number;
+  nonStable: number;
+}
+interface Movers {
+  gainers: PricedHolding[];
+  losers: PricedHolding[];
+}
+interface HistoricalChartPoint {
+  date: string;
+  value: number;
+  timestamp: number;
+}
+interface NetFlowPoint {
+  date: string;
+  delta: number;
+}
 interface ChainHistorySeries {
   data: Record<string, number | string>[];
   series: Array<{ key: string; label: string; color: string }>;
 }
+
+const STABLE_SYMBOLS = new Set([
+  "USDT",
+  "USDC",
+  "DAI",
+  "FRAX",
+  "LUSD",
+  "PYUSD",
+  "BUSD",
+]);
+
+const InfoHover = ({ description }: { description: string }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <button
+        type="button"
+        className="p-1 rounded-full text-slate-400 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 transition-colors"
+        aria-label="More info"
+      >
+        <HelpCircle className="h-4 w-4" />
+      </button>
+    </TooltipTrigger>
+    <TooltipContent className="max-w-xs text-xs leading-5">
+      {description}
+    </TooltipContent>
+  </Tooltip>
+);
+
+const chartVisibilityDefaults = {
+  portfolioEvolution: true,
+  netPortfolioChange: true,
+  chainAllocationTime: true,
+  allocationByChain: true,
+  pnlByChain: true,
+  assetDistribution: true,
+  stableVsRisk: true,
+  gainersLosers: true,
+  assetPerformance: true,
+  liquidityManagement: true,
+  accountingClassification: true,
+  pricingSourceQuality: true,
+  taxReserveCoverage: true,
+  taxPlanning: true,
+  crossChainReconciliation: true,
+  portfolioRiskEvaluation: true,
+} as const;
+
+type ChartVisibilityKey = keyof typeof chartVisibilityDefaults;
+type ChartVisibilityState = Record<ChartVisibilityKey, boolean>;
 
 interface GraphsTabProps {
   address?: string;
@@ -53,10 +147,394 @@ const GraphsTab = ({
   movers,
   netFlowData,
   chainHistory,
-}: GraphsTabProps) => (
-  <div className="space-y-6">
-    {/* 6-Month Portfolio Fluctuation Chart */}
-    <Card className="p-6 bg-white shadow-sm">
+}: GraphsTabProps) => {
+  const [visibleCharts, setVisibleCharts] = useState<ChartVisibilityState>({
+    ...chartVisibilityDefaults,
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem("chartVisibilityPreferences");
+    if (!stored) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(stored) as Partial<ChartVisibilityState>;
+      setVisibleCharts((prev) => ({
+        ...prev,
+        ...parsed,
+      }));
+    } catch {
+      setVisibleCharts({ ...chartVisibilityDefaults });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(
+      "chartVisibilityPreferences",
+      JSON.stringify(visibleCharts)
+    );
+  }, [visibleCharts]);
+
+  const toggleChart = (chartKey: ChartVisibilityKey) => {
+    setVisibleCharts((prev) => ({
+      ...prev,
+      [chartKey]: !prev[chartKey],
+    }));
+  };
+
+  const toggleAllCharts = (visible: boolean) => {
+    setVisibleCharts(
+      Object.keys(chartVisibilityDefaults).reduce((acc, key) => {
+        acc[key as ChartVisibilityKey] = visible;
+        return acc;
+      }, {} as ChartVisibilityState)
+    );
+  };
+
+  const pieCards: ReactElement[] = [];
+
+  if (visibleCharts.assetDistribution) {
+    pieCards.push(
+      <Card
+        key="assetDistribution"
+        className="p-6 bg-white shadow-sm h-full"
+      >
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">
+          Asset Distribution
+        </h3>
+        {loadingOv ? (
+          <Skeleton className="h-[300px] w-full" />
+        ) : !ov ? (
+          <div className="text-sm text-slate-500">
+            Load an address to see asset distribution.
+          </div>
+        ) : allocationData.length === 0 ? (
+          <div className="text-sm text-slate-500">No assets to display.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <RPieChart>
+              <Pie
+                data={allocationData}
+                dataKey="usd"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
+              >
+                {allocationData.map((entry, index) => {
+                  const colors = [
+                    "#3b82f6",
+                    "#10b981",
+                    "#f59e0b",
+                    "#ef4444",
+                    "#8b5cf6",
+                    "#ec4899",
+                    "#06b6d4",
+                    "#84cc16",
+                  ];
+                  return (
+                    <Cell
+                      key={`asset-dist-${index}`}
+                      fill={colors[index % colors.length]}
+                    />
+                  );
+                })}
+              </Pie>
+              <RechartsTooltip
+                formatter={(value: number, name: string, props: any) => [
+                  fmtUSD(value),
+                  `${name} (${fmtPct(props.payload.pct)})`,
+                ]}
+              />
+              <Legend />
+            </RPieChart>
+          </ResponsiveContainer>
+        )}
+      </Card>
+    );
+  }
+
+  if (visibleCharts.stableVsRisk) {
+    pieCards.push(
+      <Card key="stableVsRisk" className="p-6 bg-white shadow-sm h-full">
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">
+          Stablecoin vs Risk Assets
+        </h3>
+        {loadingOv || !ov ? (
+          <Skeleton className="h-[300px] w-full" />
+        ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
+          <div className="text-sm text-slate-500">No data available.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <RPieChart>
+              <Pie
+                data={[
+                  { name: "Stablecoins", value: stableVsRisk.stable },
+                  { name: "Risk Assets", value: stableVsRisk.nonStable },
+                ]}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                label={(entry) =>
+                  `${entry.name}: ${fmtPct(
+                    (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
+                  )}`
+                }
+              >
+                <Cell fill="#10b981" />
+                <Cell fill="#f59e0b" />
+              </Pie>
+              <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
+              <Legend />
+            </RPieChart>
+          </ResponsiveContainer>
+        )}
+      </Card>
+    );
+  }
+
+  if (visibleCharts.accountingClassification) {
+    pieCards.push(
+      <Card
+        key="accountingClassification"
+        className="p-6 bg-white shadow-sm h-full"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-slate-800">
+              Accounting Classification
+            </h3>
+            <InfoHover description="Breaks down holdings into accounting buckets so auditors can reconcile stablecoins, majors, and staking receipts quickly." />
+          </div>
+          <span className="text-xs text-slate-500">
+            Distribution by asset type
+          </span>
+        </div>
+        {loadingOv || !ov ? (
+          <Skeleton className="h-[300px] w-full" />
+        ) : (
+          (() => {
+            const classify = (symbol: string) => {
+              const s = (symbol || "").toUpperCase();
+              if (STABLE_SYMBOLS.has(s)) return "Stablecoins";
+              if (["ETH", "WETH"].includes(s)) return "Ethereum";
+              if (["BTC", "WBTC"].includes(s)) return "Bitcoin";
+              if (["STETH", "RETH", "CBETH", "WSTETH"].includes(s))
+                return "Liquid Staking";
+              return "Other Tokens";
+            };
+
+            const categoryMap = new Map<string, number>();
+            for (const h of ov.holdings ?? []) {
+              const cat = classify(h.symbol);
+              categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + (h.valueUsd || 0));
+            }
+
+            const accountingData = Array.from(categoryMap.entries()).map(
+              ([name, value]) => ({
+                name,
+                value,
+                percentage:
+                  ((value / (ov.kpis.totalValueUsd || 1)) * 100).toFixed(1) +
+                  "%",
+              })
+            );
+
+            return accountingData.length === 0 ? (
+              <div className="text-sm text-slate-500">
+                No classification data available.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={320}>
+                <RPieChart>
+                  <Pie
+                    data={accountingData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={110}
+                    label={(entry) => `${entry.name} (${entry.percentage})`}
+                  >
+                    {accountingData.map((entry, index) => {
+                      const colors = [
+                        "#10b981",
+                        "#3b82f6",
+                        "#f59e0b",
+                        "#8b5cf6",
+                        "#ec4899",
+                        "#06b6d4",
+                      ];
+                      return (
+                        <Cell
+                          key={`acc-cell-${index}`}
+                          fill={colors[index % colors.length]}
+                        />
+                      );
+                    })}
+                  </Pie>
+                  <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
+                  <Legend />
+                </RPieChart>
+              </ResponsiveContainer>
+            );
+          })()
+        )}
+      </Card>
+    );
+  }
+  return (
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-6">
+      {/* Chart Selection Panel */}
+      <Card className="p-6 bg-white shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Select Charts to Display
+          </h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => toggleAllCharts(true)}
+              className="text-sm px-3 py-1 rounded-md border border-slate-200 bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+            >
+              Select All
+            </button>
+            <button
+              onClick={() => toggleAllCharts(false)}
+              className="text-sm px-3 py-1 rounded-md border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              Deselect All
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[
+            {
+              key: "portfolioEvolution",
+              label: "Portfolio Evolution",
+              icon: TrendingUp,
+            },
+            {
+              key: "netPortfolioChange",
+              label: "Net Portfolio Change",
+              icon: Activity,
+            },
+            {
+              key: "chainAllocationTime",
+              label: "Chain Allocation Over Time",
+              icon: Link2,
+            },
+            {
+              key: "allocationByChain",
+              label: "Allocation by Chain",
+              icon: BarChart3,
+            },
+            { key: "pnlByChain", label: "24h P&L by Chain", icon: BarChart3 },
+            {
+              key: "assetDistribution",
+              label: "Asset Distribution",
+              icon: PieChart,
+            },
+            {
+              key: "stableVsRisk",
+              label: "Stablecoin vs Risk",
+              icon: DollarSign,
+            },
+            {
+              key: "gainersLosers",
+              label: "Top Gainers vs Losers",
+              icon: TrendingUp,
+            },
+            {
+              key: "assetPerformance",
+              label: "Asset Performance",
+              icon: BarChart3,
+            },
+            {
+              key: "liquidityManagement",
+              label: "Liquidity Management",
+              icon: DollarSign,
+            },
+            {
+              key: "accountingClassification",
+              label: "Accounting Classification",
+              icon: Briefcase,
+            },
+            {
+              key: "pricingSourceQuality",
+              label: "Pricing Source Quality",
+              icon: PieChart,
+            },
+            {
+              key: "taxReserveCoverage",
+              label: "Tax Reserve Coverage",
+              icon: DollarSign,
+            },
+            {
+              key: "taxPlanning",
+              label: "Tax Planning",
+              icon: Calendar,
+            },
+            {
+              key: "crossChainReconciliation",
+              label: "Cross-Chain Reconciliation",
+              icon: Link2,
+            },
+            {
+              key: "portfolioRiskEvaluation",
+              label: "Portfolio Risk Evaluation",
+              icon: AlertTriangle,
+            },
+          ].map(({ key, label, icon: Icon }) => (
+            <div
+              key={key}
+              className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                visibleCharts[key as keyof typeof visibleCharts]
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-slate-200 bg-white hover:bg-slate-50"
+              }`}
+              onClick={() => toggleChart(key as keyof typeof visibleCharts)}
+            >
+              <Checkbox
+                checked={visibleCharts[key as keyof typeof visibleCharts]}
+                onCheckedChange={() =>
+                  toggleChart(key as keyof typeof visibleCharts)
+                }
+                className="pointer-events-none"
+              />
+              <Icon
+                className={`w-5 h-5 ${
+                  visibleCharts[key as keyof typeof visibleCharts]
+                    ? "text-blue-600"
+                    : "text-slate-400"
+                }`}
+              />
+              <span
+                className={`text-sm font-medium ${
+                  visibleCharts[key as keyof typeof visibleCharts]
+                    ? "text-blue-900"
+                    : "text-slate-600"
+                }`}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* 6-Month Portfolio Fluctuation Chart */}
+      {visibleCharts.portfolioEvolution && (
+        <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-slate-800">
           Portfolio Evolution (Last 6 Months)
@@ -199,10 +677,12 @@ const GraphsTab = ({
           )}
         </>
       )}
-    </Card>
+        </Card>
+      )}
 
     {/* Net Portfolio Flow */}
-    <Card className="p-6 bg-white shadow-sm">
+    {visibleCharts.netPortfolioChange && (
+      <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-slate-800">
           Net Portfolio Change (Period over Period)
@@ -234,10 +714,12 @@ const GraphsTab = ({
           </BarChart>
         </ResponsiveContainer>
       )}
-    </Card>
+      </Card>
+    )}
 
     {/* Chain Allocation over Time */}
-    <Card className="p-6 bg-white shadow-sm">
+    {visibleCharts.chainAllocationTime && (
+      <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-semibold text-slate-800">
           Chain Allocation Over Time
@@ -276,10 +758,12 @@ const GraphsTab = ({
           </AreaChart>
         </ResponsiveContainer>
       )}
-    </Card>
+      </Card>
+    )}
 
     {/* Allocation by Chain */}
-    <Card className="p-6 bg-white shadow-sm">
+    {visibleCharts.allocationByChain && (
+      <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-semibold text-slate-800">
           Allocation by Chain
@@ -326,10 +810,12 @@ const GraphsTab = ({
           </BarChart>
         </ResponsiveContainer>
       )}
-    </Card>
+      </Card>
+    )}
 
     {/* 24h P&L by Chain */}
-    <Card className="p-6 bg-white shadow-sm">
+    {visibleCharts.pnlByChain && (
+      <Card className="p-6 bg-white shadow-sm">
       <h3 className="text-lg font-semibold text-slate-800 mb-4">
         24h P&L by Chain
       </h3>
@@ -372,109 +858,25 @@ const GraphsTab = ({
           Weighted move:{" "}
           {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over 24h.
         </p>
-      )}
-    </Card>
+    )}
+      </Card>
+    )}
 
-    {/* Asset Distribution Pie Chart */}
-    <Card className="p-6 bg-white shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4">
-        Asset Distribution
-      </h3>
-      {loadingOv ? (
-        <Skeleton className="h-[300px] w-full" />
-      ) : !ov ? (
-        <div className="text-sm text-slate-500">
-          Load an address to see asset distribution.
-        </div>
-      ) : allocationData.length === 0 ? (
-        <div className="text-sm text-slate-500">
-          No assets to display.
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <RPieChart>
-            <Pie
-              data={allocationData}
-              dataKey="usd"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
-            >
-              {allocationData.map((entry, index) => {
-                const colors = [
-                  "#3b82f6",
-                  "#10b981",
-                  "#f59e0b",
-                  "#ef4444",
-                  "#8b5cf6",
-                  "#ec4899",
-                  "#06b6d4",
-                  "#84cc16",
-                ];
-                return (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={colors[index % colors.length]}
-                  />
-                );
-              })}
-            </Pie>
-            <RechartsTooltip
-              formatter={(value: number, name: string, props: any) => [
-                fmtUSD(value),
-                `${name} (${fmtPct(props.payload.pct)})`,
-              ]}
-            />
-            <Legend />
-          </RPieChart>
-        </ResponsiveContainer>
-      )}
-    </Card>
-
-    {/* Stablecoin vs Risk Assets */}
-    <Card className="p-6 bg-white shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4">
-        Stablecoin vs Risk Assets
-      </h3>
-      {loadingOv || !ov ? (
-        <Skeleton className="h-[300px] w-full" />
-      ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
-        <div className="text-sm text-slate-500">No data available.</div>
-      ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <RPieChart>
-            <Pie
-              data={[
-                { name: "Stablecoins", value: stableVsRisk.stable },
-                { name: "Risk Assets", value: stableVsRisk.nonStable },
-              ]}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              label={(entry) =>
-                `${entry.name}: ${fmtPct(
-                  (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
-                )}`
-              }
-            >
-              <Cell fill="#10b981" />
-              <Cell fill="#f59e0b" />
-            </Pie>
-            <RechartsTooltip
-              formatter={(value: number) => fmtUSD(value)}
-            />
-            <Legend />
-          </RPieChart>
-        </ResponsiveContainer>
-      )}
-    </Card>
+    {pieCards.length === 0 ? null : pieCards.length === 1 ? (
+      pieCards[0]
+    ) : (
+      <div
+        className={`grid gap-6 lg:grid-cols-2 ${
+          pieCards.length > 2 ? "xl:grid-cols-3" : ""
+        }`}
+      >
+        {pieCards}
+      </div>
+    )}
 
     {/* Top Gainers vs Losers Comparison */}
-    <Card className="p-6 bg-white shadow-sm">
+    {visibleCharts.gainersLosers && (
+      <Card className="p-6 bg-white shadow-sm">
       <h3 className="text-lg font-semibold text-slate-800 mb-4">
         Top Gainers vs Losers (24h)
       </h3>
@@ -528,9 +930,12 @@ const GraphsTab = ({
           </BarChart>
         </ResponsiveContainer>
       )}
-    </Card>
+      </Card>
+    )}
+    
     {/* Asset Performance by 24h Change */}
-    <Card className="p-6 bg-white shadow-sm">
+    {visibleCharts.assetPerformance && (
+      <Card className="p-6 bg-white shadow-sm">
       <h3 className="text-lg font-semibold text-slate-800 mb-4">
         Asset Performance (24h % Change)
       </h3>
@@ -596,8 +1001,767 @@ const GraphsTab = ({
           );
         })()
       )}
-    </Card>
-  </div>
-);
+      </Card>
+    )}
+
+    {/* Liquidity Management */}
+    {visibleCharts.liquidityManagement && (
+      <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Liquidity Management
+          </h3>
+          <InfoHover description="Tracks how much of the portfolio is sitting in stablecoins versus harder-to-unwind assets so you can meet fiat settlement needs." />
+        </div>
+        <span className="text-xs text-slate-500">Cash Flow Analysis</span>
+      </div>
+      {loadingOv || !ov ? (
+        <Skeleton className="h-[300px] w-full" />
+      ) : (
+        (() => {
+          const stablecoins = (ov.holdings ?? []).filter((h) =>
+            STABLE_SYMBOLS.has((h.symbol || "").toUpperCase())
+          );
+          const totalStable = stablecoins.reduce(
+            (s, h) => s + (h.valueUsd || 0),
+            0
+          );
+          const totalPortfolio = ov.kpis.totalValueUsd || 1;
+          const liquidityRatio = (totalStable / totalPortfolio) * 100;
+
+          const liquidityData = stablecoins.map((h) => ({
+            name: h.symbol || "Unknown",
+            value: h.valueUsd || 0,
+            percentage:
+              totalStable === 0 ? 0 : ((h.valueUsd || 0) / totalStable) * 100,
+          }));
+
+          return (
+            <>
+              <div className="mb-4 grid grid-cols-3 gap-4">
+                <div className="bg-emerald-50 p-4 rounded-lg">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Total liquid assets
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-700">
+                    {fmtUSD(totalStable)}
+                  </p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Liquidity ratio
+                  </p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {liquidityRatio.toFixed(1)}%
+                  </p>
+                </div>
+                <div className="bg-amber-50 p-4 rounded-lg">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Illiquid assets
+                  </p>
+                  <p className="text-2xl font-bold text-amber-700">
+                    {fmtUSD(totalPortfolio - totalStable)}
+                  </p>
+                </div>
+              </div>
+              {liquidityData.length === 0 ? (
+                <div className="text-sm text-slate-500">
+                  No stablecoins detected in your portfolio.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={liquidityData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                    <RechartsTooltip
+                      formatter={(value: number, _name: string, props: any) => [
+                        `${fmtUSD(value)} (${props.payload.percentage.toFixed(
+                          1
+                        )}%)`,
+                        "Liquidity",
+                      ]}
+                    />
+                    <Bar dataKey="value" fill="#10b981" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </>
+          );
+        })()
+      )}
+      </Card>
+    )}
+
+    {/* Pricing Source Quality */}
+    {visibleCharts.pricingSourceQuality && (
+      <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Pricing Source Quality
+          </h3>
+          <InfoHover description="Highlights how much of the portfolio relies on on-chain DEX quotes vs. internal mappings or external APIs so you know which values are safest for reporting." />
+        </div>
+        <span className="text-xs text-slate-500">Valuation coverage</span>
+      </div>
+      {loadingOv || !ov ? (
+        <Skeleton className="h-[300px] w-full" />
+      ) : (
+        (() => {
+          const priceSourceMeta: Record<
+            NonNullable<PricedHolding["priceSource"]>,
+            { label: string; color: string }
+          > = {
+            native: { label: "On-chain DEX", color: "#10b981" },
+            map: { label: "Internal Map", color: "#6366f1" },
+            tokenapi: { label: "Token API", color: "#06b6d4" },
+            unknown: { label: "Unknown", color: "#94a3b8" },
+          };
+
+          const totals = new Map<string, number>();
+          for (const holding of ov.holdings ?? []) {
+            const key = holding.priceSource ?? "unknown";
+            totals.set(key, (totals.get(key) ?? 0) + (holding.valueUsd || 0));
+          }
+
+          const priceSourceData = Object.entries(priceSourceMeta)
+            .map(([key, meta]) => ({
+              key,
+              label: meta.label,
+              value: totals.get(key) ?? 0,
+              color: meta.color,
+            }))
+            .filter((entry) => entry.value > 0)
+            .sort((a, b) => b.value - a.value);
+
+          const totalPortfolio = ov.kpis.totalValueUsd || 0;
+          const unknownShare =
+            totalPortfolio === 0
+              ? 0
+              : ((totals.get("unknown") ?? 0) / totalPortfolio) * 100;
+
+          return priceSourceData.length === 0 ? (
+            <div className="text-sm text-slate-500">
+              Unable to compute valuation quality without holdings.
+            </div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={priceSourceData}
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={(v) => fmtUSD(v)} />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    width={140}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <RechartsTooltip
+                    formatter={(value: number) => fmtUSD(value)}
+                    labelFormatter={(label) => `Source: ${label}`}
+                  />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                    {priceSourceData.map((entry) => (
+                      <Cell key={`pricing-${entry.key}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                {priceSourceData.map((entry) => (
+                  <div
+                    key={`pricing-stat-${entry.key}`}
+                    className="bg-slate-50 rounded-lg p-3"
+                  >
+                    <p className="text-xs text-slate-500">{entry.label}</p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {fmtUSD(entry.value)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Share:{" "}
+                      {fmtPct(
+                        totalPortfolio === 0
+                          ? 0
+                          : ((entry.value / totalPortfolio) || 0) * 100
+                      )}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {unknownShare > 0 && (
+                <p className="text-xs text-amber-600 mt-3">
+                  {fmtPct(unknownShare)} of the portfolio uses fallback prices.
+                  Consider refreshing those quotes before filing.
+                </p>
+              )}
+            </>
+          );
+        })()
+      )}
+      </Card>
+    )}
+
+    {/* Tax Reserve Coverage */}
+    {visibleCharts.taxReserveCoverage && (
+      <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Tax Reserve Coverage
+          </h3>
+          <InfoHover description="Stress-tests whether your stablecoin buffer can cover an estimated short-term tax bill (30% of current gains) plus 1.5% wealth tax above $1.3M." />
+        </div>
+        <span className="text-xs text-slate-500">Readiness check</span>
+      </div>
+      {loadingOv || !ov ? (
+        <Skeleton className="h-[340px] w-full" />
+      ) : (
+        (() => {
+          const holdings = ov.holdings ?? [];
+          const stableBuffer = holdings.reduce((sum, holding) => {
+            const symbol = (holding.symbol || "").toUpperCase();
+            return STABLE_SYMBOLS.has(symbol)
+              ? sum + (holding.valueUsd || 0)
+              : sum;
+          }, 0);
+
+          const totalValue = ov.kpis.totalValueUsd || 0;
+          const deltaGain = Math.max(ov.kpis.delta24hUsd || 0, 0);
+          const assumedShortTermRate = 0.3;
+          const shortTermTax = deltaGain * assumedShortTermRate;
+
+          const wealthTaxThreshold = 1_300_000;
+          const wealthTaxRate = 0.015;
+          const wealthTaxBase = Math.max(totalValue - wealthTaxThreshold, 0);
+          const wealthTax = wealthTaxBase * wealthTaxRate;
+
+          const estimatedTax = shortTermTax + wealthTax;
+          const coveragePct =
+            estimatedTax === 0 ? 0 : (stableBuffer / estimatedTax) * 100;
+          const fundingGap = Math.max(estimatedTax - stableBuffer, 0);
+
+          const reserveData = [
+            { name: "Stable Buffer", value: stableBuffer, color: "#0ea5e9" },
+            { name: "Estimated Tax", value: estimatedTax, color: "#f97316" },
+          ];
+
+          return (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={reserveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                  <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
+                  <Bar dataKey="value">
+                    {reserveData.map((entry) => (
+                      <Cell key={`reserve-${entry.name}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Stable liquidity
+                  </p>
+                  <p className="text-2xl font-semibold text-blue-700">
+                    {fmtUSD(stableBuffer)}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Covers {fmtPct(Math.min(coveragePct, 100))}
+                  </p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Estimated liability
+                  </p>
+                  <p className="text-2xl font-semibold text-amber-700">
+                    {fmtUSD(estimatedTax)}
+                  </p>
+                  <div className="text-xs text-slate-500 space-y-1 mt-1">
+                    <p>Short-term: {fmtUSD(shortTermTax)}</p>
+                    <p>Wealth tax: {fmtUSD(wealthTax)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                  <span>Coverage</span>
+                  <span>
+                    {fmtPct(Math.min(coveragePct, 100))}{" "}
+                    {coveragePct >= 100 ? "(fully covered)" : ""}
+                  </span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-2 rounded-full ${coveragePct >= 100 ? "bg-emerald-500" : "bg-amber-500"}`}
+                    style={{ width: `${Math.min(coveragePct, 120)}%` }}
+                  />
+                </div>
+                {coveragePct < 100 && (
+                  <p className="text-xs text-rose-600 mt-2">
+                    You are {fmtUSD(fundingGap)} short of the estimated
+                    liability. Consider topping up stablecoins.
+                  </p>
+                )}
+                {coveragePct >= 100 && (
+                  <p className="text-xs text-emerald-600 mt-2">
+                    Stable reserves cover the modeled liability. You can lock a
+                    portion for tax escrow with confidence.
+                  </p>
+                )}
+              </div>
+            </>
+          );
+        })()
+      )}
+      </Card>
+    )}
+
+    {/* Tax Planning */}
+    {visibleCharts.taxPlanning && (
+      <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Tax Planning
+          </h3>
+          <InfoHover description="Surface taxable base, unrealized P&L, and upcoming filing reminders for wallets that need extra compliance." />
+        </div>
+        <span className="text-xs text-slate-500">Tax Calendar</span>
+      </div>
+      {loadingOv || !ov ? (
+        <Skeleton className="h-[300px] w-full" />
+      ) : (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <p className="text-xs text-slate-600 mb-1">
+                Total taxable value
+              </p>
+              <p className="text-2xl font-bold text-blue-700">
+                {fmtUSD(ov.kpis.totalValueUsd || 0)}
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Basis for wealth tax calculation
+              </p>
+            </div>
+            <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+              <p className="text-xs text-slate-600 mb-1">
+                Unrealized gain (24h)
+              </p>
+              <p
+                className={`text-2xl font-bold ${
+                  (ov.kpis.delta24hUsd || 0) >= 0
+                    ? "text-emerald-700"
+                    : "text-red-700"
+                }`}
+              >
+                {fmtUSD(ov.kpis.delta24hUsd || 0)}
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Potential taxable gain/loss
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 p-4 rounded-lg">
+            <h4 className="text-sm font-semibold text-slate-700 mb-3">
+              Key tax deadlines
+            </h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-blue-500" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">
+                      Annual return
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Crypto income 2024
+                    </p>
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-blue-700">
+                  May 15, 2025
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-amber-500" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">
+                      Wealth tax (IFI)
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      If crypto net worth {">"} $1.3M
+                    </p>
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-amber-700">
+                  June 15, 2025
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">
+                      Realized gains
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      30% flat tax on gains
+                    </p>
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-emerald-700">
+                  Rolling throughout the year
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+            <p className="text-xs text-purple-800 font-semibold mb-2">
+              💡 Tax tip
+            </p>
+            <p className="text-sm text-slate-700">
+              Capital gains from cryptocurrency disposals are taxed at 30% (flat
+              tax). Remember to declare every realized gain when swapping
+              crypto-to-crypto or crypto-to-fiat.
+            </p>
+          </div>
+        </div>
+      )}
+      </Card>
+    )}
+
+    {/* Cross-Chain Reconciliation */}
+    {visibleCharts.crossChainReconciliation && (
+      <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Cross-Chain Reconciliation
+          </h3>
+          <InfoHover description="Aggregates holdings per network so you can trace where value sits before initiating bridge or settlement operations." />
+        </div>
+        <span className="text-xs text-slate-500">Cross-Chain Analysis</span>
+      </div>
+      {loadingOv || !ov ? (
+        <Skeleton className="h-[300px] w-full" />
+      ) : (
+        (() => {
+          const chainMap = new Map<
+            string,
+            { label: string; value: number; assets: number }
+          >();
+          for (const h of ov.holdings ?? []) {
+            const existing = chainMap.get(h.chain) ?? {
+              label: CHAIN_LABEL[h.chain] ?? h.chain,
+              value: 0,
+              assets: 0,
+            };
+            existing.value += h.valueUsd || 0;
+            existing.assets += 1;
+            chainMap.set(h.chain, existing);
+          }
+
+          const crossChainData = Array.from(chainMap.entries())
+            .map(([chain, data]) => ({
+              chain,
+              label: data.label,
+              value: data.value,
+              assets: data.assets,
+              percentage: (
+                (data.value / (ov.kpis.totalValueUsd || 1)) *
+                100
+              ).toFixed(1),
+            }))
+            .sort((a, b) => b.value - a.value);
+
+          return (
+            <>
+              <div className="mb-4 grid grid-cols-3 gap-4">
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Chains tracked
+                  </p>
+                  <p className="text-2xl font-bold text-purple-700">
+                    {crossChainData.length}
+                  </p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Total assets
+                  </p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {(ov.holdings ?? []).length}
+                  </p>
+                </div>
+                <div className="bg-emerald-50 p-4 rounded-lg">
+                  <p className="text-xs text-slate-600 mb-1">Primary chain</p>
+                  <p className="text-lg font-bold text-emerald-700">
+                    {crossChainData[0]?.label || "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2 mb-4">
+                {crossChainData.map((chain, idx) => (
+                  <div
+                    key={chain.chain}
+                    className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{
+                          backgroundColor:
+                            CHAIN_STACK_COLORS[
+                              idx % CHAIN_STACK_COLORS.length
+                            ],
+                        }}
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          {chain.label}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {chain.assets} asset{chain.assets > 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-slate-800">
+                        {fmtUSD(chain.value)}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {chain.percentage}%
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {crossChainData.length > 0 && (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={crossChainData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} />
+                    <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                    <RechartsTooltip
+                      formatter={(value: number, _name: string, props: any) => [
+                        `${fmtUSD(value)} (${props.payload.percentage}%)`,
+                        "Value",
+                      ]}
+                    />
+                    <Bar dataKey="value">
+                      {crossChainData.map((entry, index) => (
+                        <Cell
+                          key={`cross-cell-${index}`}
+                          fill={
+                            CHAIN_STACK_COLORS[
+                              index % CHAIN_STACK_COLORS.length
+                            ]
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </>
+          );
+        })()
+      )}
+      </Card>
+    )}
+
+    {/* Portfolio Risk Evaluation (Concentration) */}
+    {visibleCharts.portfolioRiskEvaluation && (
+      <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Portfolio Risk Evaluation
+          </h3>
+          <InfoHover description="Uses the Herfindahl-Hirschman Index (HHI) to highlight concentration risk and the number of truly independent bets in the portfolio." />
+        </div>
+        <span className="text-xs text-slate-500">Concentration Analysis</span>
+      </div>
+      {loadingOv || !ov ? (
+        <Skeleton className="h-[300px] w-full" />
+      ) : (
+        (() => {
+          const weights = (ov.allocation ?? []).map((a) => a.weightPct / 100);
+          const hhi =
+            weights.reduce((sum, w) => sum + w * w, 0) * 10000 || 0;
+          const effectiveN =
+            weights.length > 0
+              ? 1 / weights.reduce((sum, w) => sum + w * w, 0)
+              : 0;
+
+          const sorted = [...(ov.allocation ?? [])].sort(
+            (a, b) => b.weightPct - a.weightPct
+          );
+          const top3Holdings = sorted.slice(0, 3);
+          const top3Concentration = top3Holdings.reduce(
+            (s, a) => s + a.weightPct,
+            0
+          );
+
+          const riskLevel =
+            hhi > 2500
+              ? { label: "Very high", color: "red", bg: "bg-red-50" }
+              : hhi > 1500
+              ? { label: "High", color: "orange", bg: "bg-orange-50" }
+              : hhi > 1000
+              ? { label: "Moderate", color: "amber", bg: "bg-amber-50" }
+              : { label: "Low", color: "emerald", bg: "bg-emerald-50" };
+
+          const concentrationData = sorted.slice(0, 10).map((a) => ({
+            name: a.symbol || "Unknown",
+            concentration: a.weightPct,
+            value: a.valueUsd,
+          }));
+
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className={`${riskLevel.bg} p-4 rounded-lg border border-${riskLevel.color}-200`}>
+                  <p className="text-xs text-slate-600 mb-1">HHI index</p>
+                  <p className={`text-2xl font-bold text-${riskLevel.color}-700`}>
+                    {hhi.toFixed(0)}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Risk: {riskLevel.label}
+                  </p>
+                </div>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Effective number of assets
+                  </p>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {effectiveN.toFixed(1)}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Diversification
+                  </p>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Top 3 concentration
+                  </p>
+                  <p className="text-2xl font-bold text-purple-700">
+                    {top3Concentration.toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {top3Holdings.length} assets
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-lg">
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">
+                  Top 3 concentration risks
+                </h4>
+                <div className="space-y-2">
+                  {top3Holdings.map((holding, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-2 bg-white rounded border border-slate-200"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-500">
+                          #{idx + 1}
+                        </span>
+                        <span className="text-sm font-medium text-slate-800">
+                          {holding.symbol}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-slate-800">
+                          {holding.weightPct.toFixed(2)}%
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {fmtUSD(holding.valueUsd)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {concentrationData.length > 0 && (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={concentrationData}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="name"
+                      angle={-45}
+                      textAnchor="end"
+                      height={80}
+                      tick={{ fontSize: 10 }}
+                    />
+                    <YAxis tickFormatter={(v) => `${v}%`} />
+                    <RechartsTooltip
+                      formatter={(value: number, _name: string, props: any) => [
+                        `${value.toFixed(2)}% (${fmtUSD(props.payload.value)})`,
+                        "Concentration",
+                      ]}
+                    />
+                    <Bar dataKey="concentration">
+                      {concentrationData.map((entry, index) => {
+                        const color =
+                          entry.concentration > 25
+                            ? "#ef4444"
+                            : entry.concentration > 15
+                            ? "#f97316"
+                            : entry.concentration > 10
+                            ? "#f59e0b"
+                            : "#10b981";
+                        return (
+                          <Cell key={`conc-cell-${index}`} fill={color} />
+                        );
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <p className="text-xs text-blue-800 font-semibold mb-2">
+                  📊 HHI interpretation
+                </p>
+                <ul className="text-sm text-slate-700 space-y-1">
+                  <li>• HHI {"<"} 1000: Well-diversified portfolio</li>
+                  <li>• HHI 1000-1500: Moderate concentration</li>
+                  <li>• HHI 1500-2500: High concentration</li>
+                  <li>• HHI {">"} 2500: Very high concentration</li>
+                </ul>
+              </div>
+            </div>
+          );
+        })()
+      )}
+      </Card>
+    )}
+      </div>
+    </TooltipProvider>
+  );
+};
 
 export default GraphsTab;
