@@ -210,9 +210,7 @@ export default function AllTransactionsTab({
       const sp = new URLSearchParams(window.location.search);
       const n = sp.get("networks");
       setNetworks(
-        normalizeNetworkList(
-          n ? parseNetworkQuery(n) : [...DEFAULT_NETWORKS]
-        )
+        normalizeNetworkList(n ? parseNetworkQuery(n) : [...DEFAULT_NETWORKS])
       );
     }
   }, [propNetworks]);

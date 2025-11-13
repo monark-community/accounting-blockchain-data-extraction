@@ -13,7 +13,9 @@ import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
 import ExpensesTab from "@/components/dashboard/ExpensesTab";
 import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
-import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
+import AllTransactionsTab, {
+  AllTransactionsTabPersistedState,
+} from "@/components/dashboard/AllTransactionsTab";
 import OverviewTab from "@/components/dashboard/OverviewTab";
 import GraphsTab from "@/components/dashboard/GraphsTab";
 import {
@@ -23,7 +25,7 @@ import {
 } from "@/utils/capitalGains";
 import { fetchTransactions } from "@/lib/api/transactions";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useReducer } from "react";
 import { useWallets } from "@/hooks/use-wallets";
 import { OverviewResponse } from "@/lib/types/portfolio";
 import {
@@ -35,6 +37,7 @@ import {
 } from "@/lib/portfolioUtils";
 import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
 import type { TxRow } from "@/lib/types/transactions";
+import { Crown } from "lucide-react";
 
 const RISK_BUCKET_META: Record<
   RiskBucketId,
@@ -124,9 +127,12 @@ const Dashboard = () => {
     longTermGains: 0,
   });
   const [loadingCapitalGains, setLoadingCapitalGains] = useState(false);
+  const transactionsPersistRef = useRef<
+    Map<string, AllTransactionsTabPersistedState>
+  >(new Map());
+  const persistSignatureRef = useRef<Map<string, string>>(new Map());
+  const [, forcePersistRender] = useReducer((x: number) => x + 1, 0);
 
-  // Get address from URL params on client side to avoid hydration issues
-  // Read ?address=... exactly once after mount
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     setUrlAddress(sp.get("address") || "");
@@ -137,7 +143,6 @@ const Dashboard = () => {
     setMounted(true);
   }, []);
 
-  // Use URL address if available, otherwise use connected wallet address
   const address = useMemo(
     () =>
       urlAddress
@@ -146,19 +151,17 @@ const Dashboard = () => {
     [urlAddress, selectedWallet, isConnected, userWallet]
   );
 
-  // Get all wallets from backend (main wallet from users table + secondary wallets from user_wallets table)
+  const persistedTransactionsState = address
+    ? transactionsPersistRef.current.get(address) ?? null
+    : null;
+
   const allWallets = useMemo(() => {
-    // userWallets already contains:
-    // 1. Main wallet (from users table) with up-to-date name
-    // 2. Secondary wallets (from user_wallets table)
-    // Just identify which is the main wallet
     return userWallets.map((w) => ({
       ...w,
       isMain: w.address.toLowerCase() === userWallet?.toLowerCase(),
     }));
   }, [userWallet, userWallets]);
 
-  // Calculate width based on longest wallet name
   const maxWalletWidth = useMemo(() => {
     if (allWallets.length === 0) return 280;
     const longestName = allWallets.reduce(
@@ -166,13 +169,11 @@ const Dashboard = () => {
         wallet.name.length > longest.length ? wallet.name : longest,
       allWallets[0].name
     );
-    // Account for: checkmark space (32px) + crown icon (16px) + gap (8px) + name + address format "(0x...10...8)" (~28 chars) + padding (40px left + 16px right) + arrow (32px)
-    const checkmarkSpace = 32; // space for checkmark in dropdown
-    const iconSpace = 16 + 8; // crown + gap
-    const addressChars = 28; // "(0x12345678...12345678)"
-    const padding = 40 + 16; // left (pl-10) + right (pr-4) padding
+    const checkmarkSpace = 32;
+    const iconSpace = 16 + 8;
+    const addressChars = 28;
+    const padding = 40 + 16;
     const arrowSpace = 32;
-    // Rough estimation: ~8px per character for font-medium, ~6px for monospace
     const estimatedWidth =
       checkmarkSpace +
       iconSpace +
@@ -183,21 +184,18 @@ const Dashboard = () => {
     return Math.max(280, estimatedWidth);
   }, [allWallets]);
 
-  // Auto-select first wallet (main wallet) when wallets are loaded
   useEffect(() => {
     if (allWallets.length > 0 && !selectedWallet && !urlAddress) {
       setSelectedWallet(allWallets[0].address);
     }
   }, [allWallets, selectedWallet, urlAddress]);
 
-  // Reset selectedWallet when user disconnects
   useEffect(() => {
     if (!isConnected) {
       setSelectedWallet("");
     }
   }, [isConnected]);
 
-  // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
     if (!urlReady) return;
     if (!address && !isConnected) {
@@ -223,14 +221,12 @@ const Dashboard = () => {
     fetch(url, { cache: "no-store" })
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then((data: OverviewResponse) => {
-        // console.log("[FE] holdings overview kpis =", data.kpis); // sanity log
         setOv(data);
       })
       .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
       .finally(() => setLoadingOv(false));
   }, [address, networks, userWallet, isConnected]);
 
-  // Fetch historical data for 6-month graph
   useEffect(() => {
     if (!address || !overviewReady) {
       console.log(
@@ -267,7 +263,6 @@ const Dashboard = () => {
       .finally(() => {
         if (cancelled) return;
         setLoadingHistorical(false);
-        console.log("[Dashboard] Historical data fetch completed");
       });
 
     return () => {
@@ -435,14 +430,10 @@ const Dashboard = () => {
   }, [address, networks, accountingMethod, overviewReady, ov]);
 
   const historicalChartData = useMemo(() => {
-    console.log(
-      `[Dashboard] Processing historical data: ${historicalData.length} points`
-    );
     if (historicalData.length === 0) {
-      console.log("[Dashboard] No historical data to process");
       return [];
     }
-    const processed = historicalData
+    return historicalData
       .sort((a, b) => a.timestamp - b.timestamp)
       .map((point) => ({
         date: new Date(point.date).toLocaleDateString("fr-FR", {
@@ -452,8 +443,6 @@ const Dashboard = () => {
         value: point.totalValueUsd,
         timestamp: point.timestamp,
       }));
-    console.log(`[Dashboard] Processed chart data: ${processed.length} points`);
-    return processed;
   }, [historicalData]);
 
   const netFlowData = useMemo(() => {
@@ -519,12 +508,10 @@ const Dashboard = () => {
 
   const allocationData = useMemo(() => {
     if (!ov) return [];
-    // keep only priced tokens (value > 0)
     const items = ov.allocation
       .filter((a) => (a.valueUsd ?? 0) > 0)
       .sort((a, b) => b.valueUsd - a.valueUsd);
 
-    // top N, group the rest as "Other"
     const TOP_N = 8;
     const top = items.slice(0, TOP_N);
     const otherVal = items.slice(TOP_N).reduce((s, x) => s + x.valueUsd, 0);
@@ -545,14 +532,12 @@ const Dashboard = () => {
     return rows;
   }, [ov]);
 
-  // --- Overview state ---
   const topHoldingsLive = useMemo(() => {
     const rows = (ov?.holdings ?? []).slice();
     rows.sort((a, b) => {
       const va = a.valueUsd ?? 0;
       const vb = b.valueUsd ?? 0;
-      if (vb !== va) return vb - va; // prefer priced when available
-      // fallback by qty if both 0
+      if (vb !== va) return vb - va;
       const qa = parseFloat(a.qty || "0");
       const qb = parseFloat(b.qty || "0");
       return qb - qa;
@@ -560,15 +545,14 @@ const Dashboard = () => {
     return rows.slice(0, 5);
   }, [ov]);
 
-  // Chain-level breakdown (sum of values per chain)
   const chainBreakdown = useMemo(() => {
     if (!ov) return [];
     const byChain = new Map<string, number>();
     for (const h of ov.holdings) {
       byChain.set(h.chain, (byChain.get(h.chain) ?? 0) + (h.valueUsd || 0));
     }
-    const total = [...byChain.values()].reduce((s, v) => s + v, 0) || 1;
-    return [...byChain.entries()]
+    const total = Array.from(byChain.values()).reduce((s, v) => s + v, 0) || 1;
+    return Array.from(byChain.entries())
       .map(([chain, usd]) => ({
         chain,
         label: CHAIN_LABEL[chain] ?? chain,
@@ -578,7 +562,6 @@ const Dashboard = () => {
       .sort((a, b) => b.usd - a.usd);
   }, [ov]);
 
-  // Top movers (24h) — requires deltas present
   const movers = useMemo(() => {
     const rows = (ov?.holdings ?? []).filter(
       (h) => typeof h.delta24hUsd === "number"
@@ -594,7 +577,6 @@ const Dashboard = () => {
     return { gainers, losers };
   }, [ov]);
 
-  // Concentration metrics & stablecoin share (quick badges)
   const concentration = useMemo(() => {
     const w = (ov?.allocation ?? []).map((a) => a.weightPct);
     const hhi = computeHHI(w);
@@ -690,7 +672,9 @@ const Dashboard = () => {
       cur.value += h.valueUsd ?? 0;
       map.set(h.chain, cur);
     }
-    return [...map.values()].sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
+    return Array.from(map.values()).sort(
+      (a, b) => Math.abs(b.pnl) - Math.abs(a.pnl)
+    );
   }, [ov]);
 
   const filteredHoldings = useMemo(() => {
@@ -860,7 +844,35 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab address={address} isReady={overviewReady} />
+            <AllTransactionsTab
+              isReady={overviewReady}
+              key={address || "__no_addr__"}
+              address={address}
+              persistedState={persistedTransactionsState}
+              onPersist={(addr, state) => {
+                if (!addr) return;
+                const signature = JSON.stringify({
+                  page: state.page,
+                  hasNext: state.hasNext,
+                  refreshKey: state.refreshKey,
+                  error: state.error,
+                  selectedTypes: state.selectedTypes,
+                  visibleColumns: Object.entries(state.visibleColumns).sort(),
+                  cacheFilteredKeys: (state.filteredCacheEntries ?? []).map(
+                    ([key, value]) => [key, value.hasNext, value.rows.length]
+                  ),
+                  cacheRawKeys: (state.rawCacheEntries ?? []).map(
+                    ([key, value]) => [key, value.hasNext, value.rows.length]
+                  ),
+                });
+                if (persistSignatureRef.current.get(addr) === signature) {
+                  return;
+                }
+                persistSignatureRef.current.set(addr, signature);
+                transactionsPersistRef.current.set(addr, state);
+                forcePersistRender();
+              }}
+            />
           </TabsContent>
         </Tabs>
       </main>
