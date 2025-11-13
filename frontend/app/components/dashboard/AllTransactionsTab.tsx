@@ -33,6 +33,13 @@ import {
 
 import type { TxRow, TxType } from "@/lib/types/transactions";
 import { fetchTransactions } from "@/lib/api/transactions";
+import {
+  NETWORK_OPTIONS,
+  NETWORK_IDS,
+  PRIMARY_NETWORK_ID,
+  networkLabel,
+  normalizeNetworkList,
+} from "@/lib/networks";
 
 // --- UI helpers
 const fmtUSD = (n: number | null | undefined) =>
@@ -91,55 +98,7 @@ const explorerBase = (network?: string) => {
 };
 const etherscanTxUrl = (hash: string, network?: string) =>
   `${explorerBase(network)}/tx/${hash}`;
-const networkLabel = (network?: string) => {
-  switch ((network || "").toLowerCase()) {
-    case "mainnet":
-    case "ethereum":
-      return "Ethereum";
-    case "sepolia":
-    case "eth-sepolia":
-      return "Sepolia";
-    case "base":
-      return "Base";
-    case "polygon":
-      return "Polygon";
-    case "bsc":
-      return "BSC";
-    case "optimism":
-      return "Optimism";
-    case "arbitrum-one":
-      return "Arbitrum";
-    case "avalanche":
-      return "Avalanche";
-    case "unichain":
-      return "Unichain";
-    default:
-      return network || "Unknown";
-  }
-};
-
-const NETWORK_OPTIONS = [
-  { id: "mainnet", label: "Ethereum" },
-  { id: "bsc", label: "BSC" },
-  { id: "polygon", label: "Polygon" },
-  { id: "optimism", label: "Optimism" },
-  { id: "base", label: "Base" },
-  { id: "arbitrum-one", label: "Arbitrum" },
-  { id: "avalanche", label: "Avalanche" },
-  { id: "unichain", label: "Unichain" },
-] as const;
-const NETWORK_IDS: string[] = NETWORK_OPTIONS.map((n) => n.id);
-const DEFAULT_NETWORKS: string[] = [NETWORK_OPTIONS[0].id];
-
-function normalizeNetworkList(list: string[]): string[] {
-  const normalized = new Set(
-    list
-      .map((n) => n.trim().toLowerCase())
-      .filter((n) => NETWORK_IDS.includes(n))
-  );
-  const ordered = NETWORK_IDS.filter((id) => normalized.has(id));
-  return ordered.length ? ordered : [...DEFAULT_NETWORKS];
-}
+const DEFAULT_NETWORKS: string[] = [PRIMARY_NETWORK_ID];
 
 function parseNetworkQuery(value?: string | null): string[] {
   if (!value) return [];
@@ -168,13 +127,11 @@ const PAGE_SIZE = 20;
 interface AllTransactionsTabProps {
   address?: string;
   networks?: string; // comma-separated override; omit to use UI-managed selection
-  isReady?: boolean; // allow parent to delay initial fetch
 }
 
 export default function AllTransactionsTab({
   address: propAddress,
   networks: propNetworks,
-  isReady = true,
 }: AllTransactionsTabProps) {
   // Use prop address if provided, otherwise read from URL
   const [address, setAddress] = useState<string>(propAddress || "");
@@ -196,6 +153,7 @@ export default function AllTransactionsTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [maxLoadedPage, setMaxLoadedPage] = useState(0);
 
   // Networks: default to Ethereum mainnet, allow user/URL overrides
   const [networks, setNetworks] = useState<string[]>(() =>
@@ -230,8 +188,17 @@ export default function AllTransactionsTab({
 
   // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
   const pageCache = useRef(
-    new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>()
+    new Map<
+      string,
+      { rows: TxRow[]; hasNext: boolean; total: number | null; nextCursor: string | null }
+    >()
   );
+  const cursorCache = useRef(new Map<string, Map<number, string | null>>());
+  const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pageStatus, setPageStatus] = useState<
+    | { page: number; state: "loading" | "success" | "error"; message: string }
+    | null
+  >(null);
 
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
@@ -255,28 +222,42 @@ export default function AllTransactionsTab({
   >({ ...visibleColumnsInit });
 
   // Generate cache key for current filters
-  const getCacheKey = (addr: string, pageNum: number) => {
+  const getBaseCacheKey = (addr: string) => {
     const filterKey = JSON.stringify(selectedTypes);
     const nets = networksParam || "(all)";
-    return `${addr}:${nets}:${filterKey}:${pageNum}`;
+    return `${addr}:${nets}:${filterKey}`;
+  };
+  const getCacheKey = (addr: string, pageNum: number) =>
+    `${getBaseCacheKey(addr)}:${pageNum}`;
+
+  const ensureCursorMap = (addr: string) => {
+    const ns = getBaseCacheKey(addr);
+    if (!cursorCache.current.has(ns)) {
+      cursorCache.current.set(ns, new Map([[1, null]]));
+    }
+    return { map: cursorCache.current.get(ns)!, namespace: ns };
   };
 
   // Load current page (with cache check)
   async function load(p: number) {
-    if (!address || !isReady) return;
+    if (!address) return;
 
     // Check cache first
     const cacheKey = getCacheKey(address, p);
     const cached = pageCache.current.get(cacheKey);
+    const { map: cursorMap } = ensureCursorMap(address);
+    const cursorParam = cursorMap.get(p) ?? null;
 
     if (cached) {
       // Use cached data immediately (no loading state)
       setRows(cached.rows);
       setHasNext(cached.hasNext);
       setTotal(cached.total);
+      setMaxLoadedPage((prev) => (p > prev ? p : prev));
+      cursorMap.set(p + 1, cached.nextCursor ?? null);
 
       // Prefetch next page in background (if available)
-      if (cached.hasNext) {
+      if (cached.hasNext && cached.nextCursor) {
         preloadNextPage(p + 1);
       }
       return;
@@ -285,12 +266,14 @@ export default function AllTransactionsTab({
     // Not in cache, fetch from API
     setLoading(true);
     setError(null);
+    setPageStatus({ page: p, state: "loading", message: `Loading page ${p}…` });
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const {
         rows,
         hasNext,
         total: totalCount,
+        nextCursor,
       } = await fetchTransactions(address, {
         // networks: if undefined → backend default = all supported EVM networks
         ...(networksParam ? { networks: networksParam } : {}),
@@ -298,18 +281,27 @@ export default function AllTransactionsTab({
         limit: PAGE_SIZE,
         minUsd: 0,
         spamFilter: "hard",
+        ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
       });
 
       // Store in cache
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      pageCache.current.set(cacheKey, {
+        rows,
+        hasNext,
+        total: totalCount,
+        nextCursor: nextCursor ?? null,
+      });
 
       setRows(rows);
       setHasNext(hasNext);
       setTotal(totalCount); // Store total count from backend
+      setMaxLoadedPage((prev) => (p > prev ? p : prev));
+      cursorMap.set(p + 1, nextCursor ?? null);
+      setPageStatus({ page: p, state: "success", message: `Page ${p} loaded` });
 
       // Prefetch next page in background (if available)
-      if (hasNext) {
+      if (hasNext && nextCursor) {
         preloadNextPage(p + 1);
       }
     } catch (e: any) {
@@ -317,6 +309,11 @@ export default function AllTransactionsTab({
       setRows([]);
       setHasNext(false);
       setTotal(null);
+      setPageStatus({
+        page: p,
+        state: "error",
+        message: `Failed to load page ${p}`,
+      });
     } finally {
       setLoading(false);
     }
@@ -332,23 +329,38 @@ export default function AllTransactionsTab({
       return; // Already cached
     }
 
+    const cursorInfo = ensureCursorMap(address);
+    const cursorParam = cursorInfo.map.get(nextPage);
+    if (cursorParam === undefined) {
+      // We don't have a cursor for this page yet
+      return;
+    }
+
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const {
         rows,
         hasNext,
         total: totalCount,
+        nextCursor,
       } = await fetchTransactions(address, {
         ...(networksParam ? { networks: networksParam } : {}),
         page: nextPage,
         limit: PAGE_SIZE,
         minUsd: 0,
         spamFilter: "hard",
+        ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
       });
 
       // Store in cache (silently, no state updates)
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      pageCache.current.set(cacheKey, {
+        rows,
+        hasNext,
+        total: totalCount,
+        nextCursor: nextCursor ?? null,
+      });
+      cursorInfo.map.set(nextPage + 1, nextCursor ?? null);
     } catch (e) {
       // Silent failure - prefetch errors should not affect UI
       console.debug("[Prefetch] Failed to preload page", nextPage, e);
@@ -357,22 +369,51 @@ export default function AllTransactionsTab({
 
   // Initial/refresh - clear cache when address or filters change
   useEffect(() => {
-    if (!address || !isReady) return;
+    if (!address) return;
     setPage(1);
     pageCache.current.clear(); // Clear cache when address or filters change
+    cursorCache.current.clear();
+    setMaxLoadedPage(0);
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey, networksParam, isReady]);
+  }, [address, refreshKey, networksParam]);
+
+  useEffect(() => {
+    if (!pageStatus || pageStatus.state === "loading") return;
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+      statusTimeoutRef.current = null;
+    }
+    statusTimeoutRef.current = setTimeout(() => {
+      setPageStatus((curr) => (curr?.state === "loading" ? curr : null));
+    }, 2000);
+    return () => {
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
+      }
+    };
+  }, [pageStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // When server-side class filter changes (chips), reload current page with new filter
   useEffect(() => {
-    if (!address || !isReady) return;
+    if (!address) return;
     // Don't clear cache - it's already organized by filter via getCacheKey
     // This allows instant navigation when returning to previously visited filters
     // Load current page with new filter (if page doesn't exist, backend will handle it)
     load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
+
+  const isInitialLoading = loading && rows.length === 0;
 
   // Use total from backend (Covalent) if available, otherwise fallback to estimation
   const totalCount = useMemo(() => {
@@ -398,7 +439,8 @@ export default function AllTransactionsTab({
 
   // Block navigation buttons when filters are active
   const canPrev = !hasActiveFilter && page > 1;
-  const canNext = !hasActiveFilter && hasNext;
+  const canNext =
+    !hasActiveFilter && hasNext && !(loading && page >= maxLoadedPage);
   const goPrev = () => {
     const p = Math.max(1, page - 1);
     setPage(p);
@@ -696,7 +738,7 @@ export default function AllTransactionsTab({
                 variant="outline"
                 size="sm"
                 onClick={() => setRefreshKey((k) => k + 1)}
-                disabled={loading || !isReady}
+                disabled={loading}
               >
                 <RefreshCw
                   className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
@@ -747,7 +789,7 @@ export default function AllTransactionsTab({
             Enter an address on the Overview tab to load transactions.
           </div>
         )}
-        {address && loading && (
+        {address && isInitialLoading && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -786,8 +828,8 @@ export default function AllTransactionsTab({
         )}
 
         {/* Table */}
-        {address && !loading && rows.length > 0 && (
-          <div className="overflow-x-auto">
+        {address && rows.length > 0 && (
+          <div className="overflow-x-auto relative">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -897,6 +939,19 @@ export default function AllTransactionsTab({
                 ))}
               </TableBody>
             </Table>
+            {address && pageStatus && (
+              <div
+                className={`absolute top-3 right-4 flex items-center gap-2 rounded-full px-3 py-1 text-xs shadow ${
+                  pageStatus.state === "loading"
+                    ? "bg-amber-50 text-amber-800"
+                    : pageStatus.state === "success"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-rose-50 text-rose-800"
+                }`}
+              >
+                {pageStatus.message}
+              </div>
+            )}
 
             {/* Pager footer (mobile) */}
             <div className="flex sm:hidden justify-end gap-2 p-3">

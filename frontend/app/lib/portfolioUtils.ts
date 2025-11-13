@@ -37,6 +37,18 @@ export const chainBadgeClass: Record<string, string> = {
   unichain: "bg-emerald-100 text-emerald-700",
 };
 
+// Colors for chain stacked area charts and visualizations
+export const CHAIN_STACK_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f97316",
+  "#a855f7",
+  "#06b6d4",
+  "#e11d48",
+  "#facc15",
+  "#0ea5e9",
+];
+
 const BLUE_CHIP_SYMBOLS = [
   "ETH",
   "WETH",

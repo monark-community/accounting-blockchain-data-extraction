@@ -49,6 +49,13 @@ export interface NormalizedLegRow {
   class?: TxClass;
 }
 
+export interface TxCursorPosition {
+  timestamp: number;
+  blockNumber: number;
+  txHash: `0x${string}`;
+  logIndex: number;
+}
+
 /** Inputs to fetch a single “page window” for one network. */
 export interface PageParams {
   network: EvmNetwork;

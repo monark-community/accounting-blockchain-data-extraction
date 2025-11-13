@@ -10,7 +10,11 @@ import {
 } from "./tx.normalize";
 import { fetchReceiptsBatch } from "./tx.enrich.rpc";
 import { parseNetworks, type EvmNetwork } from "../config/networks";
-import type { NormalizedLegRow, PageParams } from "../types/transactions";
+import type {
+  NormalizedLegRow,
+  PageParams,
+  TxCursorPosition,
+} from "../types/transactions";
 import { quoteTokenUsdAtTs, quoteNativeUsdAtTs } from "./tx.pricing";
 import { classifyLegs } from "./tx.classify";
 
@@ -21,6 +25,7 @@ type ListParams = {
   to?: string; // ISO datetime or epoch seconds (string ok)
   page?: number; // default 1
   limit?: number; // default 20
+  cursor?: TxCursorPosition | null;
 };
 
 const ZERO_ADDRESS: `0x${string}` =
@@ -57,12 +62,12 @@ function toEpochSeconds(v?: string): number | undefined {
 }
 
 function sortLegs(a: NormalizedLegRow, b: NormalizedLegRow): number {
-  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-  if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
-  if (a.txHash !== b.txHash) return a.txHash < b.txHash ? -1 : 1;
-  const ai = a.logIndex ?? 0,
-    bi = b.logIndex ?? 0;
-  return ai - bi;
+  if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+  if (a.blockNumber !== b.blockNumber) return b.blockNumber - a.blockNumber;
+  if (a.txHash !== b.txHash) return a.txHash < b.txHash ? 1 : -1;
+  const ai = a.logIndex ?? 0;
+  const bi = b.logIndex ?? 0;
+  return bi - ai;
 }
 
 /** Main listing function: normalized legs + USD pricing + gas USD meta. */
@@ -70,13 +75,15 @@ export async function listTransactionLegs(
   params: ListParams
 ): Promise<NormalizedLegRow[]> {
   const page = Math.max(1, params.page ?? 1);
+  const cursor = params.cursor ?? null;
   const defaultLimit = Number(process.env.TX_DEFAULT_LIMIT ?? 20);
   const maxLimit = Number(process.env.TX_MAX_LIMIT ?? 40);
   const pageSize = Math.min(
     Math.max(1, params.limit ?? defaultLimit),
     maxLimit
   );
-  const requestedWindow = pageSize * page;
+  const windowMultiplier = cursor ? 3 : page;
+  const requestedWindow = pageSize * windowMultiplier;
   const fetchWindow = Math.max(
     pageSize,
     Math.min(requestedWindow, TX_FETCH_WINDOW_CAP)
@@ -85,7 +92,12 @@ export async function listTransactionLegs(
 
   const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
   const fromTime = toEpochSeconds(params.from);
-  const toTime = toEpochSeconds(params.to);
+  const toTimeRaw = toEpochSeconds(params.to);
+  const cursorTime = cursor?.timestamp;
+  const toTime =
+    cursorTime != null && toTimeRaw != null
+      ? Math.min(cursorTime, toTimeRaw)
+      : cursorTime ?? toTimeRaw;
 
   debugLog("list:start", {
     address: wallet,

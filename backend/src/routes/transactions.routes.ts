@@ -5,6 +5,11 @@ import { listTransactionLegs } from "../services/transactions.service";
 import { parseNetworks } from "../config/networks";
 import { applyLegFilters } from "../utils/tx.filters";
 import { buildSummary } from "../services/tx.aggregate";
+import {
+  decodeCursor,
+  encodeCursorFromLeg,
+  isLegOlderThanCursor,
+} from "../utils/tx.cursor";
 
 const router = Router();
 
@@ -83,6 +88,8 @@ router.get("/:address", async (req, res) => {
     const classParam = (req.query.class as string | undefined)?.trim();
     const hasClassFilter = !!classParam;
 
+    const cursor = decodeCursor(firstQueryValue(req.query.cursor));
+
     const legsRaw = await listTransactionLegs({
       address: addr,
       networks: req.query.networks as string | string[] | undefined,
@@ -90,6 +97,7 @@ router.get("/:address", async (req, res) => {
       to: req.query.to as string | undefined,
       page,
       limit,
+      cursor,
     });
 
     const gasMeta = (legsRaw as any)._gasUsdByTx as
@@ -111,23 +119,38 @@ router.get("/:address", async (req, res) => {
     const legsFilteredByClass = classSet
       ? legs.filter((l) => l.class && classSet.has(l.class))
       : legs;
-    const start = (page - 1) * limit;
-    const pagedLegs = legsFilteredByClass.slice(start, start + limit);
+    const legsAfterCursor = cursor
+      ? legsFilteredByClass.filter((leg) => isLegOlderThanCursor(leg, cursor))
+      : legsFilteredByClass;
+    const start = cursor ? 0 : (page - 1) * limit;
+    const pagedLegs = legsAfterCursor.slice(start, start + limit);
+    const hasNext = cursor
+      ? legsAfterCursor.length > pagedLegs.length
+      : pagedLegs.length === limit;
+    const nextCursorLeg = hasNext
+      ? pagedLegs[pagedLegs.length - 1]
+      : undefined;
+    const nextCursor = nextCursorLeg
+      ? encodeCursorFromLeg(nextCursorLeg)
+      : null;
 
     res.json({
       data: pagedLegs,
       meta: { gasUsdByTx: gasMeta ?? {} },
       page,
       limit,
+      hasNext,
+      nextCursor,
     });
     logDebug("list:success", {
       address: addr,
       page,
       limit,
+      cursor: cursor ? "yes" : "no",
       totalLegs: legs.length,
-      filteredCount: legsFilteredByClass.length,
+      filteredCount: legsAfterCursor.length,
       returnedCount: pagedLegs.length,
-      hasNext: pagedLegs.length === limit,
+      hasNext,
     });
   } catch (err: any) {
     logError("list:error", err?.stack || err);

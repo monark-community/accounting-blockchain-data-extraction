@@ -51,4 +51,6 @@ export interface TxListResponse {
   meta: { gasUsdByTx: Record<string, number> };
   page: number;
   limit: number;
+  hasNext?: boolean;
+  nextCursor?: string | null;
 }

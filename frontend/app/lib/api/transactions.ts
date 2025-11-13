@@ -11,6 +11,7 @@ export type TxQuery = {
   minUsd?: number; // dust filter
   spamFilter?: "off" | "soft" | "hard";
   class?: string; // e.g. "swap_in,swap_out"
+  cursor?: string | null;
 };
 
 export async function fetchTransactions(address: string, q: TxQuery) {
@@ -23,6 +24,7 @@ export async function fetchTransactions(address: string, q: TxQuery) {
   if (q.minUsd != null) qs.set("minUsd", String(q.minUsd));
   if (q.spamFilter) qs.set("spamFilter", q.spamFilter);
   if (q.class) qs.set("class", q.class);
+  if (q.cursor) qs.set("cursor", q.cursor);
 
   const url = `/api/transactions/${encodeURIComponent(
     address
@@ -37,7 +39,10 @@ export async function fetchTransactions(address: string, q: TxQuery) {
   const rows: TxRow[] = json.data.map((leg) =>
     mapLegToTxRow(leg, json.meta?.gasUsdByTx ?? {})
   );
-  const hasNext = json.data.length >= (json.limit ?? 0); // simple next-page heuristic
+  const hasNext =
+    typeof json.hasNext === "boolean"
+      ? json.hasNext
+      : json.data.length >= (json.limit ?? 0);
 
   return {
     rows,
@@ -45,5 +50,6 @@ export async function fetchTransactions(address: string, q: TxQuery) {
     limit: json.limit,
     hasNext,
     gasMeta: json.meta?.gasUsdByTx ?? {},
+    nextCursor: json.nextCursor ?? null,
   };
 }
