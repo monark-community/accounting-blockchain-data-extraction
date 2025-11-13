@@ -13,22 +13,72 @@ import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
 import ExpensesTab from "@/components/dashboard/ExpensesTab";
 import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
-import AllTransactionsTab, {
-  AllTransactionsTabPersistedState,
-} from "@/components/dashboard/AllTransactionsTab";
+import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
 import OverviewTab from "@/components/dashboard/OverviewTab";
 import GraphsTab from "@/components/dashboard/GraphsTab";
 import {
+  CapitalGainsCalculator,
   type CapitalGainEntry,
   type AccountingMethod,
 } from "@/utils/capitalGains";
+import { fetchTransactions } from "@/lib/api/transactions";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo, useRef, useReducer } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useWallets } from "@/hooks/use-wallets";
 import { OverviewResponse } from "@/lib/types/portfolio";
-import { CHAIN_LABEL, computeHHI, isStable } from "@/lib/portfolioUtils";
+import {
+  CHAIN_LABEL,
+  computeHHI,
+  isStable,
+  classifyRiskBucket,
+  type RiskBucketId,
+} from "@/lib/portfolioUtils";
 import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
-import { Crown } from "lucide-react";
+import type { TxRow } from "@/lib/types/transactions";
+
+const RISK_BUCKET_META: Record<
+  RiskBucketId,
+  {
+    label: string;
+    description: string;
+    criteria: string;
+    accent: string;
+    barColor: string;
+  }
+> = {
+  stable: {
+    label: "Stablecoins",
+    description: "Capital parked in USD-pegged assets.",
+    criteria: "Symbols matching USDT, USDC, DAI, FRAX, LUSD, PYUSD, etc.",
+    accent: "bg-emerald-100 text-emerald-800",
+    barColor: "#10b981",
+  },
+  bluechip: {
+    label: "Blue Chip",
+    description: "ETH, BTC, and liquid staking derivatives.",
+    criteria: "ETH/WETH, BTC/WBTC, and LSDs like stETH, rETH, cbETH.",
+    accent: "bg-blue-100 text-blue-800",
+    barColor: "#3b82f6",
+  },
+  longtail: {
+    label: "Long Tail",
+    description: "Higher-beta tokens and niche assets.",
+    criteria: "All other ERC20 / token holdings outside the above buckets.",
+    accent: "bg-amber-100 text-amber-800",
+    barColor: "#f97316",
+  },
+};
+
+const CHAIN_STACK_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f97316",
+  "#a855f7",
+  "#06b6d4",
+  "#e11d48",
+  "#facc15",
+  "#0ea5e9",
+];
 
 const Dashboard = () => {
   const {
@@ -57,12 +107,26 @@ const Dashboard = () => {
   const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
-  const transactionsPersistRef = useRef<
-    Map<string, AllTransactionsTabPersistedState>
-  >(new Map());
-  const persistSignatureRef = useRef<Map<string, string>>(new Map());
-  const [, forcePersistRender] = useReducer((x: number) => x + 1, 0);
+  const overviewReady = !!ov && !loadingOv;
+  const [capitalGainsData, setCapitalGainsData] = useState<{
+    realized: CapitalGainEntry[];
+    unrealized: CapitalGainEntry[];
+    totalRealizedGains: number;
+    totalUnrealizedGains: number;
+    shortTermGains: number;
+    longTermGains: number;
+  }>({
+    realized: [],
+    unrealized: [],
+    totalRealizedGains: 0,
+    totalUnrealizedGains: 0,
+    shortTermGains: 0,
+    longTermGains: 0,
+  });
+  const [loadingCapitalGains, setLoadingCapitalGains] = useState(false);
 
+  // Get address from URL params on client side to avoid hydration issues
+  // Read ?address=... exactly once after mount
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     setUrlAddress(sp.get("address") || "");
@@ -73,6 +137,7 @@ const Dashboard = () => {
     setMounted(true);
   }, []);
 
+  // Use URL address if available, otherwise use connected wallet address
   const address = useMemo(
     () =>
       urlAddress
@@ -81,17 +146,19 @@ const Dashboard = () => {
     [urlAddress, selectedWallet, isConnected, userWallet]
   );
 
-  const persistedTransactionsState = address
-    ? transactionsPersistRef.current.get(address) ?? null
-    : null;
-
+  // Get all wallets from backend (main wallet from users table + secondary wallets from user_wallets table)
   const allWallets = useMemo(() => {
+    // userWallets already contains:
+    // 1. Main wallet (from users table) with up-to-date name
+    // 2. Secondary wallets (from user_wallets table)
+    // Just identify which is the main wallet
     return userWallets.map((w) => ({
       ...w,
       isMain: w.address.toLowerCase() === userWallet?.toLowerCase(),
     }));
   }, [userWallet, userWallets]);
 
+  // Calculate width based on longest wallet name
   const maxWalletWidth = useMemo(() => {
     if (allWallets.length === 0) return 280;
     const longestName = allWallets.reduce(
@@ -99,11 +166,13 @@ const Dashboard = () => {
         wallet.name.length > longest.length ? wallet.name : longest,
       allWallets[0].name
     );
-    const checkmarkSpace = 32;
-    const iconSpace = 16 + 8;
-    const addressChars = 28;
-    const padding = 40 + 16;
+    // Account for: checkmark space (32px) + crown icon (16px) + gap (8px) + name + address format "(0x...10...8)" (~28 chars) + padding (40px left + 16px right) + arrow (32px)
+    const checkmarkSpace = 32; // space for checkmark in dropdown
+    const iconSpace = 16 + 8; // crown + gap
+    const addressChars = 28; // "(0x12345678...12345678)"
+    const padding = 40 + 16; // left (pl-10) + right (pr-4) padding
     const arrowSpace = 32;
+    // Rough estimation: ~8px per character for font-medium, ~6px for monospace
     const estimatedWidth =
       checkmarkSpace +
       iconSpace +
@@ -114,18 +183,21 @@ const Dashboard = () => {
     return Math.max(280, estimatedWidth);
   }, [allWallets]);
 
+  // Auto-select first wallet (main wallet) when wallets are loaded
   useEffect(() => {
     if (allWallets.length > 0 && !selectedWallet && !urlAddress) {
       setSelectedWallet(allWallets[0].address);
     }
   }, [allWallets, selectedWallet, urlAddress]);
 
+  // Reset selectedWallet when user disconnects
   useEffect(() => {
     if (!isConnected) {
       setSelectedWallet("");
     }
   }, [isConnected]);
 
+  // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
     if (!urlReady) return;
     if (!address && !isConnected) {
@@ -151,22 +223,36 @@ const Dashboard = () => {
     fetch(url, { cache: "no-store" })
       .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
       .then((data: OverviewResponse) => {
+        // console.log("[FE] holdings overview kpis =", data.kpis); // sanity log
         setOv(data);
       })
       .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
       .finally(() => setLoadingOv(false));
   }, [address, networks, userWallet, isConnected]);
 
+  // Fetch historical data for 6-month graph
   useEffect(() => {
-    if (!address) {
+    if (!address || !overviewReady) {
+      console.log(
+        "[Dashboard] Historical data fetch postponed until overview is ready"
+      );
       return;
     }
+    let cancelled = false;
+    console.log(
+      `[Dashboard] Fetching historical data for ${address}, networks: ${networks}`
+    );
     setLoadingHistorical(true);
     fetchHistoricalData(address, {
       networks,
       days: 180,
     })
       .then((response) => {
+        if (cancelled) return;
+        console.log(
+          `[Dashboard] Historical data received: ${response.data.length} points`
+        );
+        // Clean data by removing internal _isEstimated field
         const cleanData = response.data.map((point: any) => {
           const { _isEstimated, ...rest } = point;
           return rest;
@@ -175,18 +261,188 @@ const Dashboard = () => {
         setIsHistoricalEstimated(response.isEstimated || false);
       })
       .catch((e) => {
+        if (cancelled) return;
         console.error("[Dashboard] Failed to load historical data:", e);
       })
       .finally(() => {
+        if (cancelled) return;
         setLoadingHistorical(false);
+        console.log("[Dashboard] Historical data fetch completed");
       });
-  }, [address, networks]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [address, networks, overviewReady]);
+
+  useEffect(() => {
+    if (!address || !overviewReady) {
+      return;
+    }
+    let cancelled = false;
+    async function loadCapitalGains() {
+      setLoadingCapitalGains(true);
+      try {
+        const calculator = new CapitalGainsCalculator(accountingMethod);
+        const rows: TxRow[] = [];
+        const MAX_PAGES = 3;
+        for (let page = 1; page <= MAX_PAGES; page++) {
+          const resp = await fetchTransactions(address, {
+            networks,
+            page,
+            limit: 40,
+            minUsd: 0,
+            spamFilter: "hard",
+          });
+          rows.push(...resp.rows);
+          if (!resp.hasNext) break;
+        }
+        rows.sort(
+          (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
+        );
+        const assetLabels = new Map<string, string>();
+        const getAssetKey = (row: TxRow) =>
+          row.asset.contract?.toLowerCase() ??
+          row.asset.symbol?.toUpperCase() ??
+          "UNKNOWN";
+        const formatLabel = (row: TxRow, key: string) =>
+          row.asset.symbol ||
+          (row.asset.contract
+            ? `${row.asset.contract.slice(0, 6)}…${row.asset.contract.slice(
+                -4
+              )}`
+            : key);
+
+        const realizedEntries: CapitalGainEntry[] = [];
+
+        rows.forEach((row, idx) => {
+          const totalValue = row.usdAtTs ?? null;
+          const qty = Math.abs(parseFloat(row.qty || "0"));
+          if (!totalValue || !Number.isFinite(totalValue) || !qty) return;
+          const unitPrice = totalValue / qty;
+          if (!Number.isFinite(unitPrice) || unitPrice === 0) return;
+
+          const assetKey = getAssetKey(row);
+          const label = formatLabel(row, assetKey);
+          assetLabels.set(assetKey, label);
+          const day = row.ts.split("T")[0];
+
+          if (row.direction === "in") {
+            calculator.addToCostBasis({
+              id: `${row.hash}-${idx}`,
+              asset: assetKey,
+              quantity: qty,
+              costBasis: totalValue,
+              purchaseDate: day,
+              purchasePrice: unitPrice,
+            });
+          } else {
+            const gains = calculator.calculateGains(
+              assetKey,
+              qty,
+              unitPrice,
+              day,
+              row.hash
+            );
+            if (gains.length === 0) {
+              realizedEntries.push({
+                id: `${row.hash}-${idx}`,
+                asset: label,
+                quantity: qty,
+                salePrice: unitPrice,
+                costBasis: 0,
+                gain: totalValue,
+                gainPercent: 100,
+                holdingPeriod: 0,
+                isLongTerm: false,
+                saleDate: day,
+                purchaseDate: day,
+                transactionId: row.hash,
+              });
+              return;
+            }
+            gains.forEach((g) =>
+              realizedEntries.push({
+                ...g,
+                asset: assetLabels.get(g.asset) ?? label,
+              })
+            );
+          }
+        });
+
+        const currentPriceMap = new Map<string, number>();
+        (ov?.holdings ?? []).forEach((holding) => {
+          const key =
+            holding.contract?.toLowerCase() ?? holding.symbol?.toUpperCase();
+          if (!key) return;
+          currentPriceMap.set(key, holding.priceUsd ?? 0);
+          if (!assetLabels.has(key)) assetLabels.set(key, holding.symbol);
+        });
+
+        const unrealizedEntries = calculator
+          .getUnrealizedGains(currentPriceMap)
+          .map((entry) => ({
+            ...entry,
+            asset: assetLabels.get(entry.asset) ?? entry.asset,
+          }));
+
+        const totalRealizedGains = realizedEntries.reduce(
+          (sum, item) => sum + (item.gain ?? 0),
+          0
+        );
+        const totalUnrealizedGains = unrealizedEntries.reduce(
+          (sum, item) => sum + (item.gain ?? 0),
+          0
+        );
+        const shortTermGains = realizedEntries
+          .filter((item) => !item.isLongTerm)
+          .reduce((sum, item) => sum + item.gain, 0);
+        const longTermGains = realizedEntries
+          .filter((item) => item.isLongTerm)
+          .reduce((sum, item) => sum + item.gain, 0);
+
+        if (!cancelled) {
+          setCapitalGainsData({
+            realized: realizedEntries,
+            unrealized: unrealizedEntries,
+            totalRealizedGains,
+            totalUnrealizedGains,
+            shortTermGains,
+            longTermGains,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("[Dashboard] Failed to compute capital gains:", err);
+          setCapitalGainsData((prev) => ({
+            ...prev,
+            realized: [],
+            unrealized: [],
+            totalRealizedGains: 0,
+            totalUnrealizedGains: 0,
+            shortTermGains: 0,
+            longTermGains: 0,
+          }));
+        }
+      } finally {
+        if (!cancelled) setLoadingCapitalGains(false);
+      }
+    }
+    loadCapitalGains();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, networks, accountingMethod, overviewReady, ov]);
 
   const historicalChartData = useMemo(() => {
+    console.log(
+      `[Dashboard] Processing historical data: ${historicalData.length} points`
+    );
     if (historicalData.length === 0) {
+      console.log("[Dashboard] No historical data to process");
       return [];
     }
-    return historicalData
+    const processed = historicalData
       .sort((a, b) => a.timestamp - b.timestamp)
       .map((point) => ({
         date: new Date(point.date).toLocaleDateString("fr-FR", {
@@ -196,14 +452,79 @@ const Dashboard = () => {
         value: point.totalValueUsd,
         timestamp: point.timestamp,
       }));
+    console.log(`[Dashboard] Processed chart data: ${processed.length} points`);
+    return processed;
+  }, [historicalData]);
+
+  const netFlowData = useMemo(() => {
+    if (historicalData.length < 2) return [];
+    const sorted = [...historicalData].sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
+    const flows: Array<{ date: string; delta: number }> = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const current = sorted[i];
+      const delta = current.totalValueUsd - prev.totalValueUsd;
+      flows.push({
+        date: new Date(current.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+        delta,
+      });
+    }
+    return flows;
+  }, [historicalData]);
+
+  const chainHistory = useMemo(() => {
+    if (historicalData.length === 0) {
+      return {
+        data: [] as Record<string, number | string>[],
+        series: [] as Array<{ key: string; label: string; color: string }>,
+      };
+    }
+    const sorted = [...historicalData].sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
+    const chainSet = new Set<string>();
+    for (const point of sorted) {
+      Object.keys(point.byChain ?? {}).forEach((chain) => chainSet.add(chain));
+    }
+    const seriesKeys = Array.from(chainSet);
+    if (!seriesKeys.length) {
+      return { data: [], series: [] };
+    }
+    const data = sorted.map((point) => {
+      const row: Record<string, number | string> = {
+        date: new Date(point.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+      };
+      const total = point.totalValueUsd || 0;
+      seriesKeys.forEach((chain) => {
+        const usd = point.byChain?.[chain] ?? 0;
+        row[chain] = total > 0 ? (usd / total) * 100 : 0;
+      });
+      return row;
+    });
+    const series = seriesKeys.map((chain, idx) => ({
+      key: chain,
+      label: CHAIN_LABEL[chain] ?? chain,
+      color: CHAIN_STACK_COLORS[idx % CHAIN_STACK_COLORS.length],
+    }));
+    return { data, series };
   }, [historicalData]);
 
   const allocationData = useMemo(() => {
     if (!ov) return [];
+    // keep only priced tokens (value > 0)
     const items = ov.allocation
       .filter((a) => (a.valueUsd ?? 0) > 0)
       .sort((a, b) => b.valueUsd - a.valueUsd);
 
+    // top N, group the rest as "Other"
     const TOP_N = 8;
     const top = items.slice(0, TOP_N);
     const otherVal = items.slice(TOP_N).reduce((s, x) => s + x.valueUsd, 0);
@@ -224,12 +545,14 @@ const Dashboard = () => {
     return rows;
   }, [ov]);
 
+  // --- Overview state ---
   const topHoldingsLive = useMemo(() => {
     const rows = (ov?.holdings ?? []).slice();
     rows.sort((a, b) => {
       const va = a.valueUsd ?? 0;
       const vb = b.valueUsd ?? 0;
-      if (vb !== va) return vb - va;
+      if (vb !== va) return vb - va; // prefer priced when available
+      // fallback by qty if both 0
       const qa = parseFloat(a.qty || "0");
       const qb = parseFloat(b.qty || "0");
       return qb - qa;
@@ -237,14 +560,15 @@ const Dashboard = () => {
     return rows.slice(0, 5);
   }, [ov]);
 
+  // Chain-level breakdown (sum of values per chain)
   const chainBreakdown = useMemo(() => {
     if (!ov) return [];
     const byChain = new Map<string, number>();
     for (const h of ov.holdings) {
       byChain.set(h.chain, (byChain.get(h.chain) ?? 0) + (h.valueUsd || 0));
     }
-    const total = Array.from(byChain.values()).reduce((s, v) => s + v, 0) || 1;
-    return Array.from(byChain.entries())
+    const total = [...byChain.values()].reduce((s, v) => s + v, 0) || 1;
+    return [...byChain.entries()]
       .map(([chain, usd]) => ({
         chain,
         label: CHAIN_LABEL[chain] ?? chain,
@@ -254,6 +578,7 @@ const Dashboard = () => {
       .sort((a, b) => b.usd - a.usd);
   }, [ov]);
 
+  // Top movers (24h) — requires deltas present
   const movers = useMemo(() => {
     const rows = (ov?.holdings ?? []).filter(
       (h) => typeof h.delta24hUsd === "number"
@@ -269,6 +594,7 @@ const Dashboard = () => {
     return { gainers, losers };
   }, [ov]);
 
+  // Concentration metrics & stablecoin share (quick badges)
   const concentration = useMemo(() => {
     const w = (ov?.allocation ?? []).map((a) => a.weightPct);
     const hhi = computeHHI(w);
@@ -295,6 +621,41 @@ const Dashboard = () => {
       .reduce((s, h) => s + (h.valueUsd || 0), 0);
     const total = ov.kpis.totalValueUsd || 0;
     return { stable, nonStable: Math.max(total - stable, 0) };
+  }, [ov]);
+
+  const riskBuckets = useMemo(() => {
+    const totals: Record<RiskBucketId, number> = {
+      stable: 0,
+      bluechip: 0,
+      longtail: 0,
+    };
+    const counts: Record<RiskBucketId, number> = {
+      stable: 0,
+      bluechip: 0,
+      longtail: 0,
+    };
+    for (const holding of ov?.holdings ?? []) {
+      const bucket = classifyRiskBucket(holding.symbol);
+      const value = holding.valueUsd || 0;
+      totals[bucket] += value;
+      if (value > 0) counts[bucket] += 1;
+    }
+    const totalValue = ov?.kpis.totalValueUsd || 0;
+    return (
+      Object.entries(RISK_BUCKET_META) as Array<
+        [RiskBucketId, (typeof RISK_BUCKET_META)[RiskBucketId]]
+      >
+    ).map(([id, meta]) => ({
+      id,
+      label: meta.label,
+      description: meta.description,
+      criteria: meta.criteria,
+      accent: meta.accent,
+      barColor: meta.barColor,
+      usd: totals[id],
+      pct: totalValue > 0 ? (totals[id] / totalValue) * 100 : 0,
+      assetCount: counts[id],
+    }));
   }, [ov]);
 
   const effectiveN = (weightsPct: number[]) => {
@@ -329,9 +690,7 @@ const Dashboard = () => {
       cur.value += h.valueUsd ?? 0;
       map.set(h.chain, cur);
     }
-    return Array.from(map.values()).sort(
-      (a, b) => Math.abs(b.pnl) - Math.abs(a.pnl)
-    );
+    return [...map.values()].sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
   }, [ov]);
 
   const filteredHoldings = useMemo(() => {
@@ -376,7 +735,10 @@ const Dashboard = () => {
             </div>
             {isConnected && allWallets.length > 1 && (
               <div className="relative inline-block">
-                <Select value={selectedWallet} onValueChange={setSelectedWallet}>
+                <Select
+                  value={selectedWallet}
+                  onValueChange={setSelectedWallet}
+                >
                   <SelectTrigger
                     className="h-12 pl-10 pr-4 border-2 border-slate-200 rounded-xl bg-white shadow-md hover:border-blue-400 focus:ring-2 focus:ring-blue-500 transition-all duration-200 text-slate-800 font-medium"
                     style={{ width: `${maxWalletWidth}px` }}
@@ -436,6 +798,9 @@ const Dashboard = () => {
             <TabsTrigger className="flex-1" value="graphs">
               Graphs
             </TabsTrigger>
+            <TabsTrigger className="flex-1" value="capital-gains">
+              Capital Gains
+            </TabsTrigger>
             <TabsTrigger className="flex-1" value="all-transactions">
               All Transactions
             </TabsTrigger>
@@ -450,18 +815,17 @@ const Dashboard = () => {
               quality={quality}
               concentration={concentration}
               concentrationExtras={concentrationExtras}
-              allocationData={allocationData}
               topHoldingsLive={topHoldingsLive}
               errorOv={errorOv}
               showChange={showChange}
               setShowChange={setShowChange}
               movers={movers}
-              stableVsRisk={stableVsRisk}
               minUsdFilter={minUsdFilter}
               setMinUsdFilter={setMinUsdFilter}
               hideStables={hideStables}
               setHideStables={setHideStables}
               filteredHoldings={filteredHoldings}
+              riskBuckets={riskBuckets}
             />
           </TabsContent>
 
@@ -480,38 +844,23 @@ const Dashboard = () => {
               allocationData={allocationData}
               stableVsRisk={stableVsRisk}
               movers={movers}
+              netFlowData={netFlowData}
+              chainHistory={chainHistory}
+            />
+          </TabsContent>
+
+          <TabsContent value="capital-gains" className="space-y-6">
+            <CapitalGainsTab
+              loading={loadingCapitalGains}
+              capitalGainsData={capitalGainsData}
+              accountingMethod={accountingMethod}
+              setAccountingMethod={setAccountingMethod}
+              currency={userPreferences.currency}
             />
           </TabsContent>
 
           <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab
-              key={address || "__no_addr__"}
-              address={address}
-              persistedState={persistedTransactionsState}
-              onPersist={(addr, state) => {
-                if (!addr) return;
-                const signature = JSON.stringify({
-                  page: state.page,
-                  hasNext: state.hasNext,
-                  refreshKey: state.refreshKey,
-                  error: state.error,
-                  selectedTypes: state.selectedTypes,
-                  visibleColumns: Object.entries(state.visibleColumns).sort(),
-                  cacheFilteredKeys: (state.filteredCacheEntries ?? []).map(
-                    ([key, value]) => [key, value.hasNext, value.rows.length]
-                  ),
-                  cacheRawKeys: (state.rawCacheEntries ?? []).map(
-                    ([key, value]) => [key, value.hasNext, value.rows.length]
-                  ),
-                });
-                if (persistSignatureRef.current.get(addr) === signature) {
-                  return;
-                }
-                persistSignatureRef.current.set(addr, signature);
-                transactionsPersistRef.current.set(addr, state);
-                forcePersistRender();
-              }}
-            />
+            <AllTransactionsTab address={address} isReady={overviewReady} />
           </TabsContent>
         </Tabs>
       </main>
