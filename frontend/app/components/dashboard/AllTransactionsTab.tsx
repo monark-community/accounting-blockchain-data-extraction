@@ -187,8 +187,12 @@ export default function AllTransactionsTab({
 
   // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
   const pageCache = useRef(
-    new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>()
+    new Map<
+      string,
+      { rows: TxRow[]; hasNext: boolean; total: number | null; nextCursor: string | null }
+    >()
   );
+  const cursorCache = useRef(new Map<string, Map<number, string | null>>());
 
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
@@ -212,10 +216,20 @@ export default function AllTransactionsTab({
   >({ ...visibleColumnsInit });
 
   // Generate cache key for current filters
-  const getCacheKey = (addr: string, pageNum: number) => {
+  const getBaseCacheKey = (addr: string) => {
     const filterKey = JSON.stringify(selectedTypes);
     const nets = networksParam || "(all)";
-    return `${addr}:${nets}:${filterKey}:${pageNum}`;
+    return `${addr}:${nets}:${filterKey}`;
+  };
+  const getCacheKey = (addr: string, pageNum: number) =>
+    `${getBaseCacheKey(addr)}:${pageNum}`;
+
+  const ensureCursorMap = (addr: string) => {
+    const ns = getBaseCacheKey(addr);
+    if (!cursorCache.current.has(ns)) {
+      cursorCache.current.set(ns, new Map([[1, null]]));
+    }
+    return { map: cursorCache.current.get(ns)!, namespace: ns };
   };
 
   // Load current page (with cache check)
@@ -225,15 +239,18 @@ export default function AllTransactionsTab({
     // Check cache first
     const cacheKey = getCacheKey(address, p);
     const cached = pageCache.current.get(cacheKey);
+    const { map: cursorMap } = ensureCursorMap(address);
+    const cursorParam = cursorMap.get(p) ?? null;
 
     if (cached) {
       // Use cached data immediately (no loading state)
       setRows(cached.rows);
       setHasNext(cached.hasNext);
       setTotal(cached.total);
+      cursorMap.set(p + 1, cached.nextCursor ?? null);
 
       // Prefetch next page in background (if available)
-      if (cached.hasNext) {
+      if (cached.hasNext && cached.nextCursor) {
         preloadNextPage(p + 1);
       }
       return;
@@ -248,6 +265,7 @@ export default function AllTransactionsTab({
         rows,
         hasNext,
         total: totalCount,
+        nextCursor,
       } = await fetchTransactions(address, {
         // networks: if undefined → backend default = all supported EVM networks
         ...(networksParam ? { networks: networksParam } : {}),
@@ -255,18 +273,25 @@ export default function AllTransactionsTab({
         limit: PAGE_SIZE,
         minUsd: 0,
         spamFilter: "hard",
+        ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
       });
 
       // Store in cache
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      pageCache.current.set(cacheKey, {
+        rows,
+        hasNext,
+        total: totalCount,
+        nextCursor: nextCursor ?? null,
+      });
 
       setRows(rows);
       setHasNext(hasNext);
       setTotal(totalCount); // Store total count from backend
+      cursorMap.set(p + 1, nextCursor ?? null);
 
       // Prefetch next page in background (if available)
-      if (hasNext) {
+      if (hasNext && nextCursor) {
         preloadNextPage(p + 1);
       }
     } catch (e: any) {
@@ -289,23 +314,38 @@ export default function AllTransactionsTab({
       return; // Already cached
     }
 
+    const cursorInfo = ensureCursorMap(address);
+    const cursorParam = cursorInfo.map.get(nextPage);
+    if (cursorParam === undefined) {
+      // We don't have a cursor for this page yet
+      return;
+    }
+
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const {
         rows,
         hasNext,
         total: totalCount,
+        nextCursor,
       } = await fetchTransactions(address, {
         ...(networksParam ? { networks: networksParam } : {}),
         page: nextPage,
         limit: PAGE_SIZE,
         minUsd: 0,
         spamFilter: "hard",
+        ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
       });
 
       // Store in cache (silently, no state updates)
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      pageCache.current.set(cacheKey, {
+        rows,
+        hasNext,
+        total: totalCount,
+        nextCursor: nextCursor ?? null,
+      });
+      cursorInfo.map.set(nextPage + 1, nextCursor ?? null);
     } catch (e) {
       // Silent failure - prefetch errors should not affect UI
       console.debug("[Prefetch] Failed to preload page", nextPage, e);
@@ -317,6 +357,7 @@ export default function AllTransactionsTab({
     if (!address) return;
     setPage(1);
     pageCache.current.clear(); // Clear cache when address or filters change
+    cursorCache.current.clear();
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey, networksParam]);
