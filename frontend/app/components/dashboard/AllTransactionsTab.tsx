@@ -153,6 +153,7 @@ export default function AllTransactionsTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [maxLoadedPage, setMaxLoadedPage] = useState(0);
 
   // Networks: default to Ethereum mainnet, allow user/URL overrides
   const [networks, setNetworks] = useState<string[]>(() =>
@@ -193,6 +194,11 @@ export default function AllTransactionsTab({
     >()
   );
   const cursorCache = useRef(new Map<string, Map<number, string | null>>());
+  const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pageStatus, setPageStatus] = useState<
+    | { page: number; state: "loading" | "success" | "error"; message: string }
+    | null
+  >(null);
 
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
@@ -247,6 +253,7 @@ export default function AllTransactionsTab({
       setRows(cached.rows);
       setHasNext(cached.hasNext);
       setTotal(cached.total);
+      setMaxLoadedPage((prev) => (p > prev ? p : prev));
       cursorMap.set(p + 1, cached.nextCursor ?? null);
 
       // Prefetch next page in background (if available)
@@ -259,6 +266,7 @@ export default function AllTransactionsTab({
     // Not in cache, fetch from API
     setLoading(true);
     setError(null);
+    setPageStatus({ page: p, state: "loading", message: `Loading page ${p}…` });
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const {
@@ -288,7 +296,9 @@ export default function AllTransactionsTab({
       setRows(rows);
       setHasNext(hasNext);
       setTotal(totalCount); // Store total count from backend
+      setMaxLoadedPage((prev) => (p > prev ? p : prev));
       cursorMap.set(p + 1, nextCursor ?? null);
+      setPageStatus({ page: p, state: "success", message: `Page ${p} loaded` });
 
       // Prefetch next page in background (if available)
       if (hasNext && nextCursor) {
@@ -299,6 +309,11 @@ export default function AllTransactionsTab({
       setRows([]);
       setHasNext(false);
       setTotal(null);
+      setPageStatus({
+        page: p,
+        state: "error",
+        message: `Failed to load page ${p}`,
+      });
     } finally {
       setLoading(false);
     }
@@ -358,9 +373,35 @@ export default function AllTransactionsTab({
     setPage(1);
     pageCache.current.clear(); // Clear cache when address or filters change
     cursorCache.current.clear();
+    setMaxLoadedPage(0);
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey, networksParam]);
+
+  useEffect(() => {
+    if (!pageStatus || pageStatus.state === "loading") return;
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+      statusTimeoutRef.current = null;
+    }
+    statusTimeoutRef.current = setTimeout(() => {
+      setPageStatus((curr) => (curr?.state === "loading" ? curr : null));
+    }, 2000);
+    return () => {
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
+      }
+    };
+  }, [pageStatus]);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimeoutRef.current) {
+        clearTimeout(statusTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // When server-side class filter changes (chips), reload current page with new filter
   useEffect(() => {
@@ -371,6 +412,8 @@ export default function AllTransactionsTab({
     load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
+
+  const isInitialLoading = loading && rows.length === 0;
 
   // Use total from backend (Covalent) if available, otherwise fallback to estimation
   const totalCount = useMemo(() => {
@@ -396,7 +439,8 @@ export default function AllTransactionsTab({
 
   // Block navigation buttons when filters are active
   const canPrev = !hasActiveFilter && page > 1;
-  const canNext = !hasActiveFilter && hasNext;
+  const canNext =
+    !hasActiveFilter && hasNext && !(loading && page >= maxLoadedPage);
   const goPrev = () => {
     const p = Math.max(1, page - 1);
     setPage(p);
@@ -745,7 +789,7 @@ export default function AllTransactionsTab({
             Enter an address on the Overview tab to load transactions.
           </div>
         )}
-        {address && loading && (
+        {address && isInitialLoading && (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
@@ -784,8 +828,8 @@ export default function AllTransactionsTab({
         )}
 
         {/* Table */}
-        {address && !loading && rows.length > 0 && (
-          <div className="overflow-x-auto">
+        {address && rows.length > 0 && (
+          <div className="overflow-x-auto relative">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -895,6 +939,19 @@ export default function AllTransactionsTab({
                 ))}
               </TableBody>
             </Table>
+            {address && pageStatus && (
+              <div
+                className={`absolute top-3 right-4 flex items-center gap-2 rounded-full px-3 py-1 text-xs shadow ${
+                  pageStatus.state === "loading"
+                    ? "bg-amber-50 text-amber-800"
+                    : pageStatus.state === "success"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-rose-50 text-rose-800"
+                }`}
+              >
+                {pageStatus.message}
+              </div>
+            )}
 
             {/* Pager footer (mobile) */}
             <div className="flex sm:hidden justify-end gap-2 p-3">
