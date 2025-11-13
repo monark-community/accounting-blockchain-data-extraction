@@ -170,12 +170,19 @@ export default function AllTransactionsTab({
   }, [networks]);
 
   type RawPagePayload = { rows: TxRow[]; hasNext: boolean };
-  type FilteredPagePayload = { rows: TxRow[]; hasNext: boolean };
+  type FilteredPagePayload = {
+    rows: TxRow[];
+    hasNext: boolean;
+    resolvedPage: number;
+    exhausted?: boolean;
+    totalFiltered?: number;
+  };
   interface ComboState {
     networks: string[];
     rawPages: Map<number, RawPagePayload>;
     rawPromises: Map<number, Promise<RawPagePayload>>;
     filteredPages: Map<string, FilteredPagePayload>;
+    filteredTotals: Map<string, { total: number; maxPage: number }>;
   }
   const comboCacheRef = useRef(new Map<string, ComboState>());
   const loadTokenRef = useRef(0);
@@ -223,18 +230,38 @@ export default function AllTransactionsTab({
         rawPages: new Map(),
         rawPromises: new Map(),
         filteredPages: new Map(),
+        filteredTotals: new Map(),
       };
       comboCacheRef.current.set(comboKey, state);
     }
     return state;
   };
 
-  const getFilteredKey = (types: TxType[] | ["all"], pageNum: number) => {
+  const getFilteredBaseKey = (types: TxType[] | ["all"]) => {
     if (!Array.isArray(types) || (types as any)[0] === "all") {
-      return `all:${pageNum}`;
+      return "all";
     }
     const sorted = [...(types as TxType[])].sort();
-    return `${sorted.join(",")}:${pageNum}`;
+    return sorted.join(",");
+  };
+  const getFilteredKey = (types: TxType[] | ["all"], pageNum: number) =>
+    `${getFilteredBaseKey(types)}:${pageNum}`;
+
+  const findLastCachedPageForFilter = (
+    comboState: ComboState,
+    types: TxType[] | ["all"]
+  ): number => {
+    const baseKey = getFilteredBaseKey(types);
+    let maxPage = 0;
+    for (const key of Array.from(comboState.filteredPages.keys())) {
+      if (key.startsWith(`${baseKey}:`)) {
+        const pageNum = parseInt(key.split(":")[1] || "0", 10);
+        if (pageNum > maxPage) {
+          maxPage = pageNum;
+        }
+      }
+    }
+    return maxPage;
   };
 
   const clearComboStatesForAddress = (addr: string) => {
@@ -297,10 +324,17 @@ export default function AllTransactionsTab({
       return cached;
     }
 
+    const baseKey = getFilteredBaseKey(types);
+
     if (!Array.isArray(types) || (types as any)[0] === "all") {
       const raw = await ensureRawPage(addr, comboState, pageNum);
-      comboState.filteredPages.set(cacheKey, raw);
-      return raw;
+      const payload: FilteredPagePayload = {
+        rows: raw.rows,
+        hasNext: raw.hasNext,
+        resolvedPage: pageNum,
+      };
+      comboState.filteredPages.set(cacheKey, payload);
+      return payload;
     }
 
     const selectedSet = new Set(types as TxType[]);
@@ -310,6 +344,7 @@ export default function AllTransactionsTab({
     let remainingToSkip = Math.max(0, (pageNum - 1) * limit);
     let hasMoreFiltered = false;
     let lastRawHasNext = false;
+    let filteredSeen = 0;
 
     while (rowsAccum.length < limit) {
       const { rows: rawRows, hasNext: rawHasNext } = await ensureRawPage(
@@ -319,6 +354,7 @@ export default function AllTransactionsTab({
       );
       lastRawHasNext = rawHasNext;
       const filtered = rawRows.filter((row) => selectedSet.has(row.type));
+      filteredSeen += filtered.length;
 
       if (remainingToSkip > 0) {
         if (remainingToSkip >= filtered.length) {
@@ -382,7 +418,50 @@ export default function AllTransactionsTab({
       hasNextFiltered = false;
     }
 
-    const payload = { rows: rowsAccum, hasNext: hasNextFiltered };
+    const exhausted = remainingToSkip > 0 && !lastRawHasNext;
+
+    if (exhausted) {
+      const totalFiltered = filteredSeen;
+      const maxPage =
+        totalFiltered === 0
+          ? 1
+          : Math.max(1, Math.ceil(totalFiltered / limit));
+      comboState.filteredTotals.set(baseKey, {
+        total: totalFiltered,
+        maxPage,
+      });
+      const fallbackPage = Math.min(pageNum, maxPage);
+
+      if (fallbackPage < pageNum) {
+        const fallbackKey = getFilteredKey(types, fallbackPage);
+        let fallbackPayload = comboState.filteredPages.get(fallbackKey);
+        if (!fallbackPayload) {
+          fallbackPayload = await collectFilteredPage(
+            addr,
+            comboState,
+            types,
+            fallbackPage
+          );
+        }
+        const payload: FilteredPagePayload = {
+          rows: fallbackPayload.rows,
+          hasNext: fallbackPayload.hasNext,
+          resolvedPage: fallbackPayload.resolvedPage,
+          exhausted: true,
+          totalFiltered,
+        };
+        comboState.filteredPages.set(cacheKey, payload);
+        return payload;
+      }
+    }
+
+    const payload: FilteredPagePayload = {
+      rows: rowsAccum,
+      hasNext: hasNextFiltered,
+      resolvedPage: pageNum,
+      exhausted,
+      totalFiltered: exhausted ? filteredSeen : undefined,
+    };
     comboState.filteredPages.set(cacheKey, payload);
     return payload;
   };
@@ -399,13 +478,22 @@ export default function AllTransactionsTab({
     const token = ++loadTokenRef.current;
 
     if (cached) {
+      const resolvedPage = cached.resolvedPage ?? p;
+      if (resolvedPage !== page) {
+        setPage(resolvedPage);
+      }
       setRows(cached.rows);
       setHasNext(cached.hasNext);
       if (cached.hasNext) {
-        preloadNextPage(p + 1, comboState);
+        preloadNextPage(resolvedPage + 1, comboState);
       }
       return;
     }
+
+    // If requested page is not cached, find the last cached page for this filter
+    // and load the next page after it
+    const lastCachedPage = findLastCachedPageForFilter(comboState, selectedTypes);
+    const pageToLoad = lastCachedPage > 0 ? lastCachedPage + 1 : 1;
 
     setLoading(true);
     setError(null);
@@ -414,15 +502,19 @@ export default function AllTransactionsTab({
         address,
         comboState,
         selectedTypes,
-        p
+        pageToLoad
       );
       if (loadTokenRef.current !== token) {
         return;
       }
+      const resolvedPage = result.resolvedPage ?? pageToLoad;
       setRows(result.rows);
       setHasNext(result.hasNext);
+      if (resolvedPage !== page) {
+        setPage(resolvedPage);
+      }
       if (result.hasNext) {
-        preloadNextPage(p + 1, comboState);
+        preloadNextPage(resolvedPage + 1, comboState);
       }
     } catch (e: any) {
       if (loadTokenRef.current !== token) {
@@ -742,7 +834,7 @@ export default function AllTransactionsTab({
                       goPrev();
                     }
                   }}
-                  disabled={!canPrev}
+                  disabled={!canPrev || loading}
                 >
                   Prev
                 </Button>
@@ -754,7 +846,7 @@ export default function AllTransactionsTab({
                       goNext();
                     }
                   }}
-                  disabled={!canNext}
+                  disabled={!canNext || loading}
                 >
                   Next
                 </Button>
@@ -786,6 +878,7 @@ export default function AllTransactionsTab({
                 id="type-all"
                 checked={(selectedTypes as any)[0] === "all"}
                 onCheckedChange={(c) => toggleType("all", !!c)}
+                disabled={loading}
               />
               <Label htmlFor="type-all" className="text-sm font-normal">
                 All Types
@@ -802,6 +895,7 @@ export default function AllTransactionsTab({
                       : false
                   }
                   onCheckedChange={(c) => toggleType(t as TxType, !!c)}
+                  disabled={loading}
                 />
                 <Label
                   htmlFor={`type-${t}`}
