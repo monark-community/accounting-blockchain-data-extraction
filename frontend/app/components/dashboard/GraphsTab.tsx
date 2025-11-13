@@ -21,9 +21,10 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { TrendingUp, BarChart3, PieChart, DollarSign, Activity, Briefcase, Calendar, Link2, AlertTriangle } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { TrendingUp, BarChart3, PieChart, DollarSign, Activity, Briefcase, Calendar, Link2, AlertTriangle, HelpCircle } from "lucide-react";
 
 interface AllocationRow {
   name: string;
@@ -63,6 +64,33 @@ interface ChainHistorySeries {
   series: Array<{ key: string; label: string; color: string }>;
 }
 
+const STABLE_SYMBOLS = new Set([
+  "USDT",
+  "USDC",
+  "DAI",
+  "FRAX",
+  "LUSD",
+  "PYUSD",
+  "BUSD",
+]);
+
+const InfoHover = ({ description }: { description: string }) => (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <button
+        type="button"
+        className="p-1 rounded-full text-slate-400 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 transition-colors"
+        aria-label="More info"
+      >
+        <HelpCircle className="h-4 w-4" />
+      </button>
+    </TooltipTrigger>
+    <TooltipContent className="max-w-xs text-xs leading-5">
+      {description}
+    </TooltipContent>
+  </Tooltip>
+);
+
 const chartVisibilityDefaults = {
   portfolioEvolution: true,
   netPortfolioChange: true,
@@ -75,6 +103,8 @@ const chartVisibilityDefaults = {
   assetPerformance: true,
   liquidityManagement: true,
   accountingClassification: true,
+  pricingSourceQuality: true,
+  taxReserveCoverage: true,
   taxPlanning: true,
   crossChainReconciliation: true,
   portfolioRiskEvaluation: true,
@@ -167,8 +197,204 @@ const GraphsTab = ({
     );
   };
 
+  const pieCards: ReactElement[] = [];
+
+  if (visibleCharts.assetDistribution) {
+    pieCards.push(
+      <Card
+        key="assetDistribution"
+        className="p-6 bg-white shadow-sm h-full"
+      >
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">
+          Asset Distribution
+        </h3>
+        {loadingOv ? (
+          <Skeleton className="h-[300px] w-full" />
+        ) : !ov ? (
+          <div className="text-sm text-slate-500">
+            Load an address to see asset distribution.
+          </div>
+        ) : allocationData.length === 0 ? (
+          <div className="text-sm text-slate-500">No assets to display.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <RPieChart>
+              <Pie
+                data={allocationData}
+                dataKey="usd"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
+              >
+                {allocationData.map((entry, index) => {
+                  const colors = [
+                    "#3b82f6",
+                    "#10b981",
+                    "#f59e0b",
+                    "#ef4444",
+                    "#8b5cf6",
+                    "#ec4899",
+                    "#06b6d4",
+                    "#84cc16",
+                  ];
+                  return (
+                    <Cell
+                      key={`asset-dist-${index}`}
+                      fill={colors[index % colors.length]}
+                    />
+                  );
+                })}
+              </Pie>
+              <RechartsTooltip
+                formatter={(value: number, name: string, props: any) => [
+                  fmtUSD(value),
+                  `${name} (${fmtPct(props.payload.pct)})`,
+                ]}
+              />
+              <Legend />
+            </RPieChart>
+          </ResponsiveContainer>
+        )}
+      </Card>
+    );
+  }
+
+  if (visibleCharts.stableVsRisk) {
+    pieCards.push(
+      <Card key="stableVsRisk" className="p-6 bg-white shadow-sm h-full">
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">
+          Stablecoin vs Risk Assets
+        </h3>
+        {loadingOv || !ov ? (
+          <Skeleton className="h-[300px] w-full" />
+        ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
+          <div className="text-sm text-slate-500">No data available.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <RPieChart>
+              <Pie
+                data={[
+                  { name: "Stablecoins", value: stableVsRisk.stable },
+                  { name: "Risk Assets", value: stableVsRisk.nonStable },
+                ]}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+                label={(entry) =>
+                  `${entry.name}: ${fmtPct(
+                    (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
+                  )}`
+                }
+              >
+                <Cell fill="#10b981" />
+                <Cell fill="#f59e0b" />
+              </Pie>
+              <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
+              <Legend />
+            </RPieChart>
+          </ResponsiveContainer>
+        )}
+      </Card>
+    );
+  }
+
+  if (visibleCharts.accountingClassification) {
+    pieCards.push(
+      <Card
+        key="accountingClassification"
+        className="p-6 bg-white shadow-sm h-full"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-slate-800">
+              Accounting Classification
+            </h3>
+            <InfoHover description="Breaks down holdings into accounting buckets so auditors can reconcile stablecoins, majors, and staking receipts quickly." />
+          </div>
+          <span className="text-xs text-slate-500">
+            Distribution by asset type
+          </span>
+        </div>
+        {loadingOv || !ov ? (
+          <Skeleton className="h-[300px] w-full" />
+        ) : (
+          (() => {
+            const classify = (symbol: string) => {
+              const s = (symbol || "").toUpperCase();
+              if (STABLE_SYMBOLS.has(s)) return "Stablecoins";
+              if (["ETH", "WETH"].includes(s)) return "Ethereum";
+              if (["BTC", "WBTC"].includes(s)) return "Bitcoin";
+              if (["STETH", "RETH", "CBETH", "WSTETH"].includes(s))
+                return "Liquid Staking";
+              return "Other Tokens";
+            };
+
+            const categoryMap = new Map<string, number>();
+            for (const h of ov.holdings ?? []) {
+              const cat = classify(h.symbol);
+              categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + (h.valueUsd || 0));
+            }
+
+            const accountingData = Array.from(categoryMap.entries()).map(
+              ([name, value]) => ({
+                name,
+                value,
+                percentage:
+                  ((value / (ov.kpis.totalValueUsd || 1)) * 100).toFixed(1) +
+                  "%",
+              })
+            );
+
+            return accountingData.length === 0 ? (
+              <div className="text-sm text-slate-500">
+                No classification data available.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={320}>
+                <RPieChart>
+                  <Pie
+                    data={accountingData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={110}
+                    label={(entry) => `${entry.name} (${entry.percentage})`}
+                  >
+                    {accountingData.map((entry, index) => {
+                      const colors = [
+                        "#10b981",
+                        "#3b82f6",
+                        "#f59e0b",
+                        "#8b5cf6",
+                        "#ec4899",
+                        "#06b6d4",
+                      ];
+                      return (
+                        <Cell
+                          key={`acc-cell-${index}`}
+                          fill={colors[index % colors.length]}
+                        />
+                      );
+                    })}
+                  </Pie>
+                  <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
+                  <Legend />
+                </RPieChart>
+              </ResponsiveContainer>
+            );
+          })()
+        )}
+      </Card>
+    );
+  }
   return (
-    <div className="space-y-6">
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-6">
       {/* Chart Selection Panel */}
       <Card className="p-6 bg-white shadow-sm">
         <div className="flex items-center justify-between mb-4">
@@ -242,6 +468,16 @@ const GraphsTab = ({
               key: "accountingClassification",
               label: "Accounting Classification",
               icon: Briefcase,
+            },
+            {
+              key: "pricingSourceQuality",
+              label: "Pricing Source Quality",
+              icon: PieChart,
+            },
+            {
+              key: "taxReserveCoverage",
+              label: "Tax Reserve Coverage",
+              icon: DollarSign,
             },
             {
               key: "taxPlanning",
@@ -622,110 +858,20 @@ const GraphsTab = ({
           Weighted move:{" "}
           {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over 24h.
         </p>
-      )}
+    )}
       </Card>
     )}
 
-    {/* Asset Distribution Pie Chart */}
-    {visibleCharts.assetDistribution && (
-      <Card className="p-6 bg-white shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4">
-        Asset Distribution
-      </h3>
-      {loadingOv ? (
-        <Skeleton className="h-[300px] w-full" />
-      ) : !ov ? (
-        <div className="text-sm text-slate-500">
-          Load an address to see asset distribution.
-        </div>
-      ) : allocationData.length === 0 ? (
-        <div className="text-sm text-slate-500">
-          No assets to display.
-        </div>
-      ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <RPieChart>
-            <Pie
-              data={allocationData}
-              dataKey="usd"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
-            >
-              {allocationData.map((entry, index) => {
-                const colors = [
-                  "#3b82f6",
-                  "#10b981",
-                  "#f59e0b",
-                  "#ef4444",
-                  "#8b5cf6",
-                  "#ec4899",
-                  "#06b6d4",
-                  "#84cc16",
-                ];
-                return (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={colors[index % colors.length]}
-                  />
-                );
-              })}
-            </Pie>
-            <RechartsTooltip
-              formatter={(value: number, name: string, props: any) => [
-                fmtUSD(value),
-                `${name} (${fmtPct(props.payload.pct)})`,
-              ]}
-            />
-            <Legend />
-          </RPieChart>
-        </ResponsiveContainer>
-      )}
-      </Card>
-    )}
-
-    {/* Stablecoin vs Risk Assets */}
-    {visibleCharts.stableVsRisk && (
-      <Card className="p-6 bg-white shadow-sm">
-      <h3 className="text-lg font-semibold text-slate-800 mb-4">
-        Stablecoin vs Risk Assets
-      </h3>
-      {loadingOv || !ov ? (
-        <Skeleton className="h-[300px] w-full" />
-      ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
-        <div className="text-sm text-slate-500">No data available.</div>
-      ) : (
-        <ResponsiveContainer width="100%" height={300}>
-          <RPieChart>
-            <Pie
-              data={[
-                { name: "Stablecoins", value: stableVsRisk.stable },
-                { name: "Risk Assets", value: stableVsRisk.nonStable },
-              ]}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={100}
-              label={(entry) =>
-                `${entry.name}: ${fmtPct(
-                  (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
-                )}`
-              }
-            >
-              <Cell fill="#10b981" />
-              <Cell fill="#f59e0b" />
-            </Pie>
-            <RechartsTooltip
-              formatter={(value: number) => fmtUSD(value)}
-            />
-            <Legend />
-          </RPieChart>
-        </ResponsiveContainer>
-      )}
-      </Card>
+    {pieCards.length === 0 ? null : pieCards.length === 1 ? (
+      pieCards[0]
+    ) : (
+      <div
+        className={`grid gap-6 lg:grid-cols-2 ${
+          pieCards.length > 2 ? "xl:grid-cols-3" : ""
+        }`}
+      >
+        {pieCards}
+      </div>
     )}
 
     {/* Top Gainers vs Losers Comparison */}
@@ -858,13 +1004,16 @@ const GraphsTab = ({
       </Card>
     )}
 
-    {/* Gestion de liquidité (Liquidity Management) */}
+    {/* Liquidity Management */}
     {visibleCharts.liquidityManagement && (
       <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-800">
-          Gestion de liquidité
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Liquidity Management
+          </h3>
+          <InfoHover description="Tracks how much of the portfolio is sitting in stablecoins versus harder-to-unwind assets so you can meet fiat settlement needs." />
+        </div>
         <span className="text-xs text-slate-500">Cash Flow Analysis</span>
       </div>
       {loadingOv || !ov ? (
@@ -872,9 +1021,7 @@ const GraphsTab = ({
       ) : (
         (() => {
           const stablecoins = (ov.holdings ?? []).filter((h) =>
-            ["USDT", "USDC", "DAI", "FRAX", "LUSD", "PYUSD", "BUSD"].includes(
-              (h.symbol || "").toUpperCase()
-            )
+            STABLE_SYMBOLS.has((h.symbol || "").toUpperCase())
           );
           const totalStable = stablecoins.reduce(
             (s, h) => s + (h.valueUsd || 0),
@@ -886,7 +1033,8 @@ const GraphsTab = ({
           const liquidityData = stablecoins.map((h) => ({
             name: h.symbol || "Unknown",
             value: h.valueUsd || 0,
-            percentage: ((h.valueUsd || 0) / totalStable) * 100,
+            percentage:
+              totalStable === 0 ? 0 : ((h.valueUsd || 0) / totalStable) * 100,
           }));
 
           return (
@@ -894,7 +1042,7 @@ const GraphsTab = ({
               <div className="mb-4 grid grid-cols-3 gap-4">
                 <div className="bg-emerald-50 p-4 rounded-lg">
                   <p className="text-xs text-slate-600 mb-1">
-                    Liquidités totales
+                    Total liquid assets
                   </p>
                   <p className="text-2xl font-bold text-emerald-700">
                     {fmtUSD(totalStable)}
@@ -902,7 +1050,7 @@ const GraphsTab = ({
                 </div>
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <p className="text-xs text-slate-600 mb-1">
-                    Ratio de liquidité
+                    Liquidity ratio
                   </p>
                   <p className="text-2xl font-bold text-blue-700">
                     {liquidityRatio.toFixed(1)}%
@@ -910,7 +1058,7 @@ const GraphsTab = ({
                 </div>
                 <div className="bg-amber-50 p-4 rounded-lg">
                   <p className="text-xs text-slate-600 mb-1">
-                    Actifs illiquides
+                    Illiquid assets
                   </p>
                   <p className="text-2xl font-bold text-amber-700">
                     {fmtUSD(totalPortfolio - totalStable)}
@@ -919,7 +1067,7 @@ const GraphsTab = ({
               </div>
               {liquidityData.length === 0 ? (
                 <div className="text-sm text-slate-500">
-                  Aucun stablecoin détecté dans votre portefeuille.
+                  No stablecoins detected in your portfolio.
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={280}>
@@ -932,7 +1080,7 @@ const GraphsTab = ({
                         `${fmtUSD(value)} (${props.payload.percentage.toFixed(
                           1
                         )}%)`,
-                        "Liquidité",
+                        "Liquidity",
                       ]}
                     />
                     <Bar dataKey="value" fill="#10b981" />
@@ -946,97 +1094,249 @@ const GraphsTab = ({
       </Card>
     )}
 
-    {/* Classification comptable (Transaction Types) */}
-    {visibleCharts.accountingClassification && (
+    {/* Pricing Source Quality */}
+    {visibleCharts.pricingSourceQuality && (
       <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-800">
-          Classification comptable
-        </h3>
-        <span className="text-xs text-slate-500">
-          Distribution par type d'actif
-        </span>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Pricing Source Quality
+          </h3>
+          <InfoHover description="Highlights how much of the portfolio relies on on-chain DEX quotes vs. internal mappings or external APIs so you know which values are safest for reporting." />
+        </div>
+        <span className="text-xs text-slate-500">Valuation coverage</span>
       </div>
       {loadingOv || !ov ? (
         <Skeleton className="h-[300px] w-full" />
       ) : (
         (() => {
-          const classify = (symbol: string) => {
-            const s = (symbol || "").toUpperCase();
-            if (["USDT", "USDC", "DAI", "FRAX", "LUSD", "PYUSD", "BUSD"].includes(s))
-              return "Stablecoins";
-            if (["ETH", "WETH"].includes(s)) return "Ethereum";
-            if (["BTC", "WBTC"].includes(s)) return "Bitcoin";
-            if (["STETH", "RETH", "CBETH", "WSTETH"].includes(s))
-              return "Liquid Staking";
-            return "Autres tokens";
+          const priceSourceMeta: Record<
+            NonNullable<PricedHolding["priceSource"]>,
+            { label: string; color: string }
+          > = {
+            native: { label: "On-chain DEX", color: "#10b981" },
+            map: { label: "Internal Map", color: "#6366f1" },
+            tokenapi: { label: "Token API", color: "#06b6d4" },
+            unknown: { label: "Unknown", color: "#94a3b8" },
           };
 
-          const categoryMap = new Map<string, number>();
-          for (const h of ov.holdings ?? []) {
-            const cat = classify(h.symbol);
-            categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + (h.valueUsd || 0));
+          const totals = new Map<string, number>();
+          for (const holding of ov.holdings ?? []) {
+            const key = holding.priceSource ?? "unknown";
+            totals.set(key, (totals.get(key) ?? 0) + (holding.valueUsd || 0));
           }
 
-          const accountingData = Array.from(categoryMap.entries()).map(
-            ([name, value]) => ({
-              name,
-              value,
-              percentage:
-                ((value / (ov.kpis.totalValueUsd || 1)) * 100).toFixed(1) + "%",
-            })
-          );
+          const priceSourceData = Object.entries(priceSourceMeta)
+            .map(([key, meta]) => ({
+              key,
+              label: meta.label,
+              value: totals.get(key) ?? 0,
+              color: meta.color,
+            }))
+            .filter((entry) => entry.value > 0)
+            .sort((a, b) => b.value - a.value);
 
-          return accountingData.length === 0 ? (
+          const totalPortfolio = ov.kpis.totalValueUsd || 0;
+          const unknownShare =
+            totalPortfolio === 0
+              ? 0
+              : ((totals.get("unknown") ?? 0) / totalPortfolio) * 100;
+
+          return priceSourceData.length === 0 ? (
             <div className="text-sm text-slate-500">
-              Aucune donnée de classification disponible.
+              Unable to compute valuation quality without holdings.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={320}>
-              <RPieChart>
-                <Pie
-                  data={accountingData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={110}
-                  label={(entry) => `${entry.name} (${entry.percentage})`}
+            <>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={priceSourceData}
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
-                  {accountingData.map((entry, index) => {
-                    const colors = [
-                      "#10b981",
-                      "#3b82f6",
-                      "#f59e0b",
-                      "#8b5cf6",
-                      "#ec4899",
-                      "#06b6d4",
-                    ];
-                    return (
-                      <Cell
-                        key={`acc-cell-${index}`}
-                        fill={colors[index % colors.length]}
-                      />
-                    );
-                  })}
-                </Pie>
-                <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
-                <Legend />
-              </RPieChart>
-            </ResponsiveContainer>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis type="number" tickFormatter={(v) => fmtUSD(v)} />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    width={140}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <RechartsTooltip
+                    formatter={(value: number) => fmtUSD(value)}
+                    labelFormatter={(label) => `Source: ${label}`}
+                  />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                    {priceSourceData.map((entry) => (
+                      <Cell key={`pricing-${entry.key}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                {priceSourceData.map((entry) => (
+                  <div
+                    key={`pricing-stat-${entry.key}`}
+                    className="bg-slate-50 rounded-lg p-3"
+                  >
+                    <p className="text-xs text-slate-500">{entry.label}</p>
+                    <p className="text-lg font-semibold text-slate-900">
+                      {fmtUSD(entry.value)}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Share:{" "}
+                      {fmtPct(
+                        totalPortfolio === 0
+                          ? 0
+                          : ((entry.value / totalPortfolio) || 0) * 100
+                      )}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {unknownShare > 0 && (
+                <p className="text-xs text-amber-600 mt-3">
+                  {fmtPct(unknownShare)} of the portfolio uses fallback prices.
+                  Consider refreshing those quotes before filing.
+                </p>
+              )}
+            </>
           );
         })()
       )}
       </Card>
     )}
 
-    {/* Planification fiscale (Tax Planning) */}
+    {/* Tax Reserve Coverage */}
+    {visibleCharts.taxReserveCoverage && (
+      <Card className="p-6 bg-white shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Tax Reserve Coverage
+          </h3>
+          <InfoHover description="Stress-tests whether your stablecoin buffer can cover an estimated short-term tax bill (30% of current gains) plus 1.5% wealth tax above $1.3M." />
+        </div>
+        <span className="text-xs text-slate-500">Readiness check</span>
+      </div>
+      {loadingOv || !ov ? (
+        <Skeleton className="h-[340px] w-full" />
+      ) : (
+        (() => {
+          const holdings = ov.holdings ?? [];
+          const stableBuffer = holdings.reduce((sum, holding) => {
+            const symbol = (holding.symbol || "").toUpperCase();
+            return STABLE_SYMBOLS.has(symbol)
+              ? sum + (holding.valueUsd || 0)
+              : sum;
+          }, 0);
+
+          const totalValue = ov.kpis.totalValueUsd || 0;
+          const deltaGain = Math.max(ov.kpis.delta24hUsd || 0, 0);
+          const assumedShortTermRate = 0.3;
+          const shortTermTax = deltaGain * assumedShortTermRate;
+
+          const wealthTaxThreshold = 1_300_000;
+          const wealthTaxRate = 0.015;
+          const wealthTaxBase = Math.max(totalValue - wealthTaxThreshold, 0);
+          const wealthTax = wealthTaxBase * wealthTaxRate;
+
+          const estimatedTax = shortTermTax + wealthTax;
+          const coveragePct =
+            estimatedTax === 0 ? 0 : (stableBuffer / estimatedTax) * 100;
+          const fundingGap = Math.max(estimatedTax - stableBuffer, 0);
+
+          const reserveData = [
+            { name: "Stable Buffer", value: stableBuffer, color: "#0ea5e9" },
+            { name: "Estimated Tax", value: estimatedTax, color: "#f97316" },
+          ];
+
+          return (
+            <>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={reserveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                  <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
+                  <Bar dataKey="value">
+                    {reserveData.map((entry) => (
+                      <Cell key={`reserve-${entry.name}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Stable liquidity
+                  </p>
+                  <p className="text-2xl font-semibold text-blue-700">
+                    {fmtUSD(stableBuffer)}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Covers {fmtPct(Math.min(coveragePct, 100))}
+                  </p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-600 mb-1">
+                    Estimated liability
+                  </p>
+                  <p className="text-2xl font-semibold text-amber-700">
+                    {fmtUSD(estimatedTax)}
+                  </p>
+                  <div className="text-xs text-slate-500 space-y-1 mt-1">
+                    <p>Short-term: {fmtUSD(shortTermTax)}</p>
+                    <p>Wealth tax: {fmtUSD(wealthTax)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                  <span>Coverage</span>
+                  <span>
+                    {fmtPct(Math.min(coveragePct, 100))}{" "}
+                    {coveragePct >= 100 ? "(fully covered)" : ""}
+                  </span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={`h-2 rounded-full ${coveragePct >= 100 ? "bg-emerald-500" : "bg-amber-500"}`}
+                    style={{ width: `${Math.min(coveragePct, 120)}%` }}
+                  />
+                </div>
+                {coveragePct < 100 && (
+                  <p className="text-xs text-rose-600 mt-2">
+                    You are {fmtUSD(fundingGap)} short of the estimated
+                    liability. Consider topping up stablecoins.
+                  </p>
+                )}
+                {coveragePct >= 100 && (
+                  <p className="text-xs text-emerald-600 mt-2">
+                    Stable reserves cover the modeled liability. You can lock a
+                    portion for tax escrow with confidence.
+                  </p>
+                )}
+              </div>
+            </>
+          );
+        })()
+      )}
+      </Card>
+    )}
+
+    {/* Tax Planning */}
     {visibleCharts.taxPlanning && (
       <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-800">
-          Planification fiscale
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Tax Planning
+          </h3>
+          <InfoHover description="Surface taxable base, unrealized P&L, and upcoming filing reminders for wallets that need extra compliance." />
+        </div>
         <span className="text-xs text-slate-500">Tax Calendar</span>
       </div>
       {loadingOv || !ov ? (
@@ -1046,18 +1346,18 @@ const GraphsTab = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <p className="text-xs text-slate-600 mb-1">
-                Valeur totale imposable
+                Total taxable value
               </p>
               <p className="text-2xl font-bold text-blue-700">
                 {fmtUSD(ov.kpis.totalValueUsd || 0)}
               </p>
               <p className="text-xs text-slate-500 mt-2">
-                Base de calcul pour l'impôt sur la fortune
+                Basis for wealth tax calculation
               </p>
             </div>
             <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
               <p className="text-xs text-slate-600 mb-1">
-                Plus-value latente (24h)
+                Unrealized gain (24h)
               </p>
               <p
                 className={`text-2xl font-bold ${
@@ -1069,14 +1369,14 @@ const GraphsTab = ({
                 {fmtUSD(ov.kpis.delta24hUsd || 0)}
               </p>
               <p className="text-xs text-slate-500 mt-2">
-                Potentiel gain/perte imposable
+                Potential taxable gain/loss
               </p>
             </div>
           </div>
 
           <div className="bg-slate-50 p-4 rounded-lg">
             <h4 className="text-sm font-semibold text-slate-700 mb-3">
-              Échéances fiscales importantes
+              Key tax deadlines
             </h4>
             <div className="space-y-2">
               <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
@@ -1084,15 +1384,15 @@ const GraphsTab = ({
                   <div className="w-2 h-2 rounded-full bg-blue-500" />
                   <div>
                     <p className="text-sm font-medium text-slate-800">
-                      Déclaration annuelle
+                      Annual return
                     </p>
                     <p className="text-xs text-slate-500">
-                      Revenus cryptomonnaies 2024
+                      Crypto income 2024
                     </p>
                   </div>
                 </div>
                 <span className="text-sm font-semibold text-blue-700">
-                  15 Mai 2025
+                  May 15, 2025
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
@@ -1100,15 +1400,15 @@ const GraphsTab = ({
                   <div className="w-2 h-2 rounded-full bg-amber-500" />
                   <div>
                     <p className="text-sm font-medium text-slate-800">
-                      Impôt sur la fortune (IFI)
+                      Wealth tax (IFI)
                     </p>
                     <p className="text-xs text-slate-500">
-                      Si patrimoine crypto {">"} 1.3M€
+                      If crypto net worth {">"} $1.3M
                     </p>
                   </div>
                 </div>
                 <span className="text-sm font-semibold text-amber-700">
-                  15 Juin 2025
+                  June 15, 2025
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-200">
@@ -1116,15 +1416,15 @@ const GraphsTab = ({
                   <div className="w-2 h-2 rounded-full bg-emerald-500" />
                   <div>
                     <p className="text-sm font-medium text-slate-800">
-                      Plus-values réalisées
+                      Realized gains
                     </p>
                     <p className="text-xs text-slate-500">
-                      Flat tax 30% sur gains
+                      30% flat tax on gains
                     </p>
                   </div>
                 </div>
                 <span className="text-sm font-semibold text-emerald-700">
-                  Au fil de l'eau
+                  Rolling throughout the year
                 </span>
               </div>
             </div>
@@ -1132,12 +1432,12 @@ const GraphsTab = ({
 
           <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
             <p className="text-xs text-purple-800 font-semibold mb-2">
-              💡 Conseil fiscal
+              💡 Tax tip
             </p>
             <p className="text-sm text-slate-700">
-              Les plus-values de cession de cryptomonnaies sont imposées à 30%
-              (flat tax). Pensez à déclarer tous vos gains réalisés lors de
-              conversions crypto-to-crypto ou crypto-to-fiat.
+              Capital gains from cryptocurrency disposals are taxed at 30% (flat
+              tax). Remember to declare every realized gain when swapping
+              crypto-to-crypto or crypto-to-fiat.
             </p>
           </div>
         </div>
@@ -1145,13 +1445,16 @@ const GraphsTab = ({
       </Card>
     )}
 
-    {/* Réconciliation multi-chaînes (Cross-Chain) */}
+    {/* Cross-Chain Reconciliation */}
     {visibleCharts.crossChainReconciliation && (
       <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-800">
-          Réconciliation multi-chaînes
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Cross-Chain Reconciliation
+          </h3>
+          <InfoHover description="Aggregates holdings per network so you can trace where value sits before initiating bridge or settlement operations." />
+        </div>
         <span className="text-xs text-slate-500">Cross-Chain Analysis</span>
       </div>
       {loadingOv || !ov ? (
@@ -1191,7 +1494,7 @@ const GraphsTab = ({
               <div className="mb-4 grid grid-cols-3 gap-4">
                 <div className="bg-purple-50 p-4 rounded-lg">
                   <p className="text-xs text-slate-600 mb-1">
-                    Nombre de chaînes
+                    Chains tracked
                   </p>
                   <p className="text-2xl font-bold text-purple-700">
                     {crossChainData.length}
@@ -1199,14 +1502,14 @@ const GraphsTab = ({
                 </div>
                 <div className="bg-blue-50 p-4 rounded-lg">
                   <p className="text-xs text-slate-600 mb-1">
-                    Actifs totaux
+                    Total assets
                   </p>
                   <p className="text-2xl font-bold text-blue-700">
                     {(ov.holdings ?? []).length}
                   </p>
                 </div>
                 <div className="bg-emerald-50 p-4 rounded-lg">
-                  <p className="text-xs text-slate-600 mb-1">Chaîne principale</p>
+                  <p className="text-xs text-slate-600 mb-1">Primary chain</p>
                   <p className="text-lg font-bold text-emerald-700">
                     {crossChainData[0]?.label || "N/A"}
                   </p>
@@ -1234,7 +1537,7 @@ const GraphsTab = ({
                           {chain.label}
                         </p>
                         <p className="text-xs text-slate-500">
-                          {chain.assets} actif{chain.assets > 1 ? "s" : ""}
+                          {chain.assets} asset{chain.assets > 1 ? "s" : ""}
                         </p>
                       </div>
                     </div>
@@ -1259,7 +1562,7 @@ const GraphsTab = ({
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${fmtUSD(value)} (${props.payload.percentage}%)`,
-                        "Valeur",
+                        "Value",
                       ]}
                     />
                     <Bar dataKey="value">
@@ -1284,13 +1587,16 @@ const GraphsTab = ({
       </Card>
     )}
 
-    {/* Évaluation du risque portfolio (Concentration) */}
+    {/* Portfolio Risk Evaluation (Concentration) */}
     {visibleCharts.portfolioRiskEvaluation && (
       <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-800">
-          Évaluation du risque portfolio
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Portfolio Risk Evaluation
+          </h3>
+          <InfoHover description="Uses the Herfindahl-Hirschman Index (HHI) to highlight concentration risk and the number of truly independent bets in the portfolio." />
+        </div>
         <span className="text-xs text-slate-500">Concentration Analysis</span>
       </div>
       {loadingOv || !ov ? (
@@ -1316,12 +1622,12 @@ const GraphsTab = ({
 
           const riskLevel =
             hhi > 2500
-              ? { label: "Très élevé", color: "red", bg: "bg-red-50" }
+              ? { label: "Very high", color: "red", bg: "bg-red-50" }
               : hhi > 1500
-              ? { label: "Élevé", color: "orange", bg: "bg-orange-50" }
+              ? { label: "High", color: "orange", bg: "bg-orange-50" }
               : hhi > 1000
-              ? { label: "Modéré", color: "amber", bg: "bg-amber-50" }
-              : { label: "Faible", color: "emerald", bg: "bg-emerald-50" };
+              ? { label: "Moderate", color: "amber", bg: "bg-amber-50" }
+              : { label: "Low", color: "emerald", bg: "bg-emerald-50" };
 
           const concentrationData = sorted.slice(0, 10).map((a) => ({
             name: a.symbol || "Unknown",
@@ -1333,17 +1639,17 @@ const GraphsTab = ({
             <div className="space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div className={`${riskLevel.bg} p-4 rounded-lg border border-${riskLevel.color}-200`}>
-                  <p className="text-xs text-slate-600 mb-1">Indice HHI</p>
+                  <p className="text-xs text-slate-600 mb-1">HHI index</p>
                   <p className={`text-2xl font-bold text-${riskLevel.color}-700`}>
                     {hhi.toFixed(0)}
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Risque: {riskLevel.label}
+                    Risk: {riskLevel.label}
                   </p>
                 </div>
                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                   <p className="text-xs text-slate-600 mb-1">
-                    Nombre effectif d'actifs
+                    Effective number of assets
                   </p>
                   <p className="text-2xl font-bold text-blue-700">
                     {effectiveN.toFixed(1)}
@@ -1354,20 +1660,20 @@ const GraphsTab = ({
                 </div>
                 <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
                   <p className="text-xs text-slate-600 mb-1">
-                    Concentration Top 3
+                    Top 3 concentration
                   </p>
                   <p className="text-2xl font-bold text-purple-700">
                     {top3Concentration.toFixed(1)}%
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    {top3Holdings.length} actifs
+                    {top3Holdings.length} assets
                   </p>
                 </div>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-lg">
                 <h4 className="text-sm font-semibold text-slate-700 mb-3">
-                  Top 3 positions à risque
+                  Top 3 concentration risks
                 </h4>
                 <div className="space-y-2">
                   {top3Holdings.map((holding, idx) => (
@@ -1438,13 +1744,13 @@ const GraphsTab = ({
 
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                 <p className="text-xs text-blue-800 font-semibold mb-2">
-                  📊 Interprétation HHI
+                  📊 HHI interpretation
                 </p>
                 <ul className="text-sm text-slate-700 space-y-1">
-                  <li>• HHI {"<"} 1000: Portfolio bien diversifié</li>
-                  <li>• HHI 1000-1500: Concentration modérée</li>
-                  <li>• HHI 1500-2500: Concentration élevée</li>
-                  <li>• HHI {">"} 2500: Concentration très élevée</li>
+                  <li>• HHI {"<"} 1000: Well-diversified portfolio</li>
+                  <li>• HHI 1000-1500: Moderate concentration</li>
+                  <li>• HHI 1500-2500: High concentration</li>
+                  <li>• HHI {">"} 2500: Very high concentration</li>
                 </ul>
               </div>
             </div>
@@ -1453,7 +1759,8 @@ const GraphsTab = ({
       )}
       </Card>
     )}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 };
 
