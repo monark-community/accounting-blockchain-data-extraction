@@ -36,6 +36,45 @@ import {
 import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
 import type { TxRow } from "@/lib/types/transactions";
 import { Crown } from "lucide-react";
+import {
+  NETWORK_OPTIONS,
+  NETWORK_IDS,
+  networkLabel,
+  normalizeNetworkList,
+  normalizeNetworkListFromString,
+  serializeNetworks,
+} from "@/lib/networks";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import { Plus, X, Sparkles } from "lucide-react";
+
+const DASHBOARD_NETWORK_STORAGE_KEY = "dashboard.networks";
+const DASHBOARD_NETWORK_HINTS_KEY = "dashboard.networkSuggestions";
+const RAW_DEFAULT_DASHBOARD_NETWORKS =
+  process.env.NEXT_PUBLIC_DASHBOARD_DEFAULT_NETWORKS ??
+  process.env.NEXT_PUBLIC_DEFAULT_NETWORKS ??
+  "mainnet";
+
+const DASHBOARD_DEFAULT_NETWORKS = normalizeNetworkListFromString(
+  RAW_DEFAULT_DASHBOARD_NETWORKS
+);
+
+type NetworkSuggestion = {
+  network: string;
+  lastActivityTs: number | null;
+  direction: "in" | "out" | "unknown";
+};
 
 const RISK_BUCKET_META: Record<
   RiskBucketId,
@@ -206,9 +245,125 @@ const Dashboard = () => {
     }
   }, [urlReady, address, isConnected, router]);
 
-  const [networks, setNetworks] = useState<string>(
-    "mainnet,polygon,base,optimism,arbitrum-one,bsc,avalanche,unichain"
-  );
+  const [networks, setNetworks] = useState<string[]>(() => {
+    if (typeof window === "undefined") {
+      return [...DASHBOARD_DEFAULT_NETWORKS];
+    }
+    const sp = new URLSearchParams(window.location.search);
+    const urlNetworks = sp.get("networks");
+    if (urlNetworks) {
+      return normalizeNetworkListFromString(urlNetworks);
+    }
+    const stored = window.localStorage.getItem(DASHBOARD_NETWORK_STORAGE_KEY);
+    if (stored) {
+      return normalizeNetworkListFromString(stored);
+    }
+    return [...DASHBOARD_DEFAULT_NETWORKS];
+  });
+
+  const networksParam = useMemo(() => serializeNetworks(networks), [networks]);
+
+  const sameNetworks = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((value, idx) => value === b[idx]);
+
+  const [networkSuggestions, setNetworkSuggestions] = useState<
+    NetworkSuggestion[]
+  >([]);
+  const [loadingNetworkHints, setLoadingNetworkHints] = useState(false);
+  const [enableNetworkSuggestions, setEnableNetworkSuggestions] =
+    useState<boolean>(() => {
+      if (typeof window === "undefined") return true;
+      const stored = window.localStorage.getItem(DASHBOARD_NETWORK_HINTS_KEY);
+      return stored === "false" ? false : true;
+    });
+
+  useEffect(() => {
+    if (!urlReady) return;
+    const sp = new URLSearchParams(window.location.search);
+    const urlNetworks = sp.get("networks");
+    if (!urlNetworks) return;
+    const normalized = normalizeNetworkListFromString(urlNetworks);
+    setNetworks((prev) => (sameNetworks(prev, normalized) ? prev : normalized));
+  }, [urlReady]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      DASHBOARD_NETWORK_STORAGE_KEY,
+      serializeNetworks(networks)
+    );
+  }, [networks]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      DASHBOARD_NETWORK_HINTS_KEY,
+      enableNetworkSuggestions ? "true" : "false"
+    );
+  }, [enableNetworkSuggestions]);
+
+  useEffect(() => {
+    if (!enableNetworkSuggestions) {
+      setNetworkSuggestions([]);
+      setLoadingNetworkHints(false);
+      return;
+    }
+    if (!address) {
+      setNetworkSuggestions([]);
+      return;
+    }
+    const remaining = NETWORK_IDS.filter((id) => !networks.includes(id));
+    if (!remaining.length) {
+      setNetworkSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingNetworkHints(true);
+    const query = serializeNetworks(remaining);
+    fetch(
+      `/api/networks/activity/${encodeURIComponent(
+        address
+      )}?networks=${encodeURIComponent(query)}&_ts=${Date.now()}`,
+      { signal: controller.signal }
+    )
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || "Failed to load network activity");
+        }
+        return res.json();
+      })
+      .then((payload) => {
+        const list = Array.isArray(payload?.suggestions)
+          ? payload.suggestions
+          : Array.isArray(payload?.summaries)
+          ? payload.summaries
+          : [];
+        setNetworkSuggestions(
+          list.map((item: any) => ({
+            network: item?.network,
+            lastActivityTs:
+              typeof item?.lastActivityTs === "number"
+                ? item.lastActivityTs
+                : null,
+            direction:
+              item?.direction === "in" || item?.direction === "out"
+                ? item.direction
+                : "unknown",
+          }))
+        );
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        console.error("[Dashboard] Failed to load network suggestions:", err);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoadingNetworkHints(false);
+        }
+      });
+    return () => controller.abort();
+  }, [address, networks, enableNetworkSuggestions]);
 
   useEffect(() => {
     if (!address) return;
@@ -218,7 +373,7 @@ const Dashboard = () => {
     const url = `/api/holdings/${encodeURIComponent(
       address
     )}?networks=${encodeURIComponent(
-      networks
+      networksParam
     )}&withDelta24h=true&minUsd=0&includeZero=true&spamFilter=hard&_ts=${Date.now()}`;
 
     fetch(url, { cache: "no-store" })
@@ -229,7 +384,33 @@ const Dashboard = () => {
       })
       .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
       .finally(() => setLoadingOv(false));
-  }, [address, networks, userWallet, isConnected]);
+  }, [address, networksParam, userWallet, isConnected]);
+
+  const addNetwork = (networkId: string) =>
+    setNetworks((prev) => {
+      if (prev.includes(networkId)) return prev;
+      return normalizeNetworkList([...prev, networkId]);
+    });
+
+  const removeNetwork = (networkId: string) =>
+    setNetworks((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((id) => id !== networkId);
+      return next.length ? next : prev;
+    });
+
+  const toggleNetwork = (networkId: string, checked: boolean) =>
+    setNetworks((prev) => {
+      if (checked) {
+        if (prev.includes(networkId)) return prev;
+        return normalizeNetworkList([...prev, networkId]);
+      }
+      if (prev.length <= 1) return prev;
+      return prev.filter((id) => id !== networkId);
+    });
+
+  const resetNetworks = () => setNetworks([...DASHBOARD_DEFAULT_NETWORKS]);
+  const selectAllNetworks = () => setNetworks([...NETWORK_IDS]);
 
   // Fetch historical data for 6-month graph
   useEffect(() => {
@@ -241,11 +422,11 @@ const Dashboard = () => {
     }
     let cancelled = false;
     console.log(
-      `[Dashboard] Fetching historical data for ${address}, networks: ${networks}`
+      `[Dashboard] Fetching historical data for ${address}, networks: ${networksParam}`
     );
     setLoadingHistorical(true);
     fetchHistoricalData(address, {
-      networks,
+      networks: networksParam,
       days: 180,
     })
       .then((response) => {
@@ -274,7 +455,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [address, networks, overviewReady]);
+  }, [address, networksParam, overviewReady]);
 
   useEffect(() => {
     if (!address || !overviewReady) {
@@ -289,7 +470,7 @@ const Dashboard = () => {
         const MAX_PAGES = 3;
         for (let page = 1; page <= MAX_PAGES; page++) {
           const resp = await fetchTransactions(address, {
-            networks,
+            networks: networksParam,
             page,
             limit: 40,
             minUsd: 0,
@@ -433,7 +614,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [address, networks, accountingMethod, overviewReady, ov]);
+  }, [address, networksParam, accountingMethod, overviewReady, ov]);
 
   const historicalChartData = useMemo(() => {
     console.log(
@@ -719,6 +900,40 @@ const Dashboard = () => {
     return { volProxy, bluechipShare, chainSpread };
   }, [ov, chainBreakdown]);
 
+  const formatLastActivity = (timestamp: number | null) => {
+    if (!timestamp) return "No recent activity";
+    const diffSeconds = Math.max(0, Math.floor(Date.now() / 1000) - timestamp);
+    if (diffSeconds < 60) return "Just now";
+    if (diffSeconds < 3600) {
+      const mins = Math.floor(diffSeconds / 60);
+      return `${mins} min${mins === 1 ? "" : "s"} ago`;
+    }
+    if (diffSeconds < 86400) {
+      const hours = Math.floor(diffSeconds / 3600);
+      return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    }
+    const days = Math.floor(diffSeconds / 86400);
+    if (days < 30) {
+      return `${days} day${days === 1 ? "" : "s"} ago`;
+    }
+    const months = Math.floor(days / 30);
+    return `${months} mo${months === 1 ? "" : "s"} ago`;
+  };
+
+  const suggestionCandidates = useMemo(
+    () =>
+      networkSuggestions
+        .filter(
+          (hint) =>
+            hint.network &&
+            !networks.includes(hint.network) &&
+            typeof hint.lastActivityTs === "number"
+        )
+        .sort((a, b) => (b.lastActivityTs ?? 0) - (a.lastActivityTs ?? 0))
+        .slice(0, 3),
+    [networkSuggestions, networks]
+  );
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
@@ -791,6 +1006,151 @@ const Dashboard = () => {
           </div>
         </div>
 
+        <Card className="mb-8 shadow-sm border border-slate-200">
+          <div className="flex flex-col gap-4 p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">
+                  Chains in Overview & Graphs
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Only the selected chains are fetched for balances, KPIs, and
+                  visualizations.
+                </p>
+              </div>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <Switch
+                    checked={enableNetworkSuggestions}
+                    onCheckedChange={setEnableNetworkSuggestions}
+                    id="suggestion-switch"
+                  />
+                  <label htmlFor="suggestion-switch">
+                    Suggest chains automatically
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetNetworks}
+                    disabled={sameNetworks(
+                      networks,
+                      DASHBOARD_DEFAULT_NETWORKS
+                    )}
+                  >
+                    Reset
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Manage Chains
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-60">
+                      <DropdownMenuLabel>Select chains</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {NETWORK_OPTIONS.map((net) => (
+                        <DropdownMenuCheckboxItem
+                          key={net.id}
+                          checked={networks.includes(net.id)}
+                          onCheckedChange={(checked) =>
+                            toggleNetwork(net.id, Boolean(checked))
+                          }
+                        >
+                          {net.label}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          selectAllNetworks();
+                        }}
+                      >
+                        Select all
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          resetNetworks();
+                        }}
+                      >
+                        Reset to default
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {networks.map((networkId) => (
+                <Badge
+                  key={networkId}
+                  variant="secondary"
+                  className="flex items-center gap-2 rounded-full px-3 py-1 text-sm"
+                >
+                  {networkLabel(networkId)}
+                  {networks.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${networkLabel(networkId)}`}
+                      className="text-slate-500 hover:text-slate-700 transition-colors"
+                      onClick={() => removeNetwork(networkId)}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </Badge>
+              ))}
+            </div>
+            {!enableNetworkSuggestions ? (
+              <p className="text-xs text-slate-500">Suggestions disabled.</p>
+            ) : loadingNetworkHints ? (
+              <p className="text-xs text-slate-500">
+                Scanning other chains for recent activity…
+              </p>
+            ) : suggestionCandidates.length > 0 ? (
+              <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
+                  <Sparkles className="h-4 w-4" />
+                  Recently active chains
+                </div>
+                <div className="space-y-3">
+                  {suggestionCandidates.map((hint) => (
+                    <div
+                      key={hint.network}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white p-3 shadow-sm"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">
+                          {networkLabel(hint.network)}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Last tx {formatLastActivity(hint.lastActivityTs)}
+                          {hint.direction !== "unknown"
+                            ? ` • ${
+                                hint.direction === "in" ? "Inbound" : "Outbound"
+                              }`
+                            : ""}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => addNetwork(hint.network)}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="flex w-full gap-2">
             <TabsTrigger className="flex-1" value="overview">
@@ -833,7 +1193,7 @@ const Dashboard = () => {
           <TabsContent value="graphs" className="space-y-6">
             <GraphsTab
               address={address}
-              networks={networks}
+              networks={networksParam}
               loadingHistorical={loadingHistorical}
               historicalChartData={historicalChartData}
               historicalData={historicalData}
@@ -861,7 +1221,7 @@ const Dashboard = () => {
           </TabsContent> */}
 
           <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab address={address} isReady={overviewReady} />
+            <AllTransactionsTab address={address} />
           </TabsContent>
         </Tabs>
       </main>
