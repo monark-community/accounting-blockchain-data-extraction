@@ -35,6 +35,7 @@ import {
 } from "@/lib/portfolioUtils";
 import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
 import type { TxRow } from "@/lib/types/transactions";
+import { Crown } from "lucide-react";
 
 const RISK_BUCKET_META: Record<
   RiskBucketId,
