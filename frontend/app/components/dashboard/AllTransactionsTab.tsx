@@ -304,9 +304,22 @@ export default function AllTransactionsTab({
   const selectAllNetworks = () => setNetworks([...NETWORK_IDS]);
   const resetToDefaultNetworks = () => setNetworks([...DEFAULT_NETWORKS]);
 
+  // Check if "all" is the only filter selected
+  const isOnlyAllSelected = useMemo(
+    () =>
+      Array.isArray(selectedTypes) &&
+      (selectedTypes as any)[0] === "all" &&
+      selectedTypes.length === 1,
+    [selectedTypes]
+  );
+
   // Filters UI helpers
   const toggleType = (t: TxType | "all", checked: boolean) => {
     if (t === "all") {
+      // Prevent unchecking "all" if it's the only filter selected
+      if (!checked && isOnlyAllSelected) {
+        return; // Don't allow unchecking if "all" is the only filter
+      }
       return setSelectedTypes(checked ? (["all"] as any) : ([] as any));
     }
     setSelectedTypes((prev: any) => {
@@ -504,7 +517,7 @@ export default function AllTransactionsTab({
                 id="type-all"
                 checked={(selectedTypes as any)[0] === "all"}
                 onCheckedChange={(c) => toggleType("all", !!c)}
-                disabled={loading}
+                disabled={loading || isOnlyAllSelected}
               />
               <Label htmlFor="type-all" className="text-sm font-normal">
                 All Types
