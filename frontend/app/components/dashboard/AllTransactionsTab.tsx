@@ -149,20 +149,6 @@ function parseNetworkQuery(value?: string | null): string[] {
     .filter(Boolean);
 }
 
-// Map UI chip → backend class= param
-function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
-  if (!Array.isArray(selected) || (selected as any)[0] === "all") return null;
-  const set = new Set<TxType>(selected as TxType[]);
-  const classes: string[] = [];
-  if (set.has("swap")) classes.push("swap_in", "swap_out");
-  if (set.has("income"))
-    classes.push("transfer_in", "nft_transfer_in", "nft_buy", "income");
-  if (set.has("expense"))
-    classes.push("transfer_out", "nft_transfer_out", "nft_sell", "expense");
-  if (set.has("gas")) classes.push("gas");
-  return classes.length ? classes.join(",") : null;
-}
-
 const PAGE_SIZE = 20;
 
 interface AllTransactionsTabProps {
@@ -192,7 +178,6 @@ export default function AllTransactionsTab({
   const [rows, setRows] = useState<TxRow[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
-  const [total, setTotal] = useState<number | null>(null); // Total count from backend (Covalent)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -216,7 +201,6 @@ export default function AllTransactionsTab({
       );
     }
   }, [propNetworks]);
-  const networksParam = networks.length ? networks.join(",") : undefined;
   const networksButtonLabel = useMemo(() => {
     if (!networks.length || networks.length === NETWORK_IDS.length) {
       return "All chains";
@@ -228,10 +212,16 @@ export default function AllTransactionsTab({
     return `${primary} +${networks.length - 1}`;
   }, [networks]);
 
-  // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
-  const pageCache = useRef(
-    new Map<string, { rows: TxRow[]; hasNext: boolean; total: number | null }>()
-  );
+  type RawPagePayload = { rows: TxRow[]; hasNext: boolean };
+  type FilteredPagePayload = { rows: TxRow[]; hasNext: boolean };
+  interface ComboState {
+    networks: string[];
+    rawPages: Map<number, RawPagePayload>;
+    rawPromises: Map<number, Promise<RawPagePayload>>;
+    filteredPages: Map<string, FilteredPagePayload>;
+  }
+  const comboCacheRef = useRef(new Map<string, ComboState>());
+  const loadTokenRef = useRef(0);
 
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
@@ -255,150 +245,274 @@ export default function AllTransactionsTab({
   >({ ...visibleColumnsInit });
 
   // Generate cache key for current filters
-  const getCacheKey = (addr: string, pageNum: number) => {
-    const filterKey = JSON.stringify(selectedTypes);
-    const nets = networksParam || "(all)";
-    return `${addr}:${nets}:${filterKey}:${pageNum}`;
+  const makeNetworkKey = (list: string[]) => {
+    if (!list.length) return "(none)";
+    return [...list].sort().join(",");
+  };
+  const currentNetworkKey = useMemo(
+    () => makeNetworkKey(networks),
+    [networks]
+  );
+
+  const getComboKey = (addr: string, networkKey: string) =>
+    `${addr.toLowerCase()}::${networkKey}`;
+
+  const ensureComboState = (addr: string, networkList: string[]) => {
+    const comboKey = getComboKey(addr, makeNetworkKey(networkList));
+    let state = comboCacheRef.current.get(comboKey);
+    if (!state) {
+      state = {
+        networks: [...networkList],
+        rawPages: new Map(),
+        rawPromises: new Map(),
+        filteredPages: new Map(),
+      };
+      comboCacheRef.current.set(comboKey, state);
+    }
+    return state;
   };
 
-  // Load current page (with cache check)
-  async function load(p: number) {
+  const getFilteredKey = (types: TxType[] | ["all"], pageNum: number) => {
+    if (!Array.isArray(types) || (types as any)[0] === "all") {
+      return `all:${pageNum}`;
+    }
+    const sorted = [...(types as TxType[])].sort();
+    return `${sorted.join(",")}:${pageNum}`;
+  };
+
+  const clearComboStatesForAddress = (addr: string) => {
+    const prefix = `${addr.toLowerCase()}::`;
+    const entries = comboCacheRef.current.entries();
+    const toDelete: string[] = [];
+    for (const [key] of entries) {
+      if (key.startsWith(prefix)) {
+        toDelete.push(key);
+      }
+    }
+    toDelete.forEach((key) => comboCacheRef.current.delete(key));
+  };
+
+  const ensureRawPage = async (
+    addr: string,
+    comboState: ComboState,
+    pageNum: number
+  ): Promise<RawPagePayload> => {
+    if (comboState.rawPages.has(pageNum)) {
+      return comboState.rawPages.get(pageNum)!;
+    }
+    if (comboState.rawPromises.has(pageNum)) {
+      return comboState.rawPromises.get(pageNum)!;
+    }
+
+    const promise = fetchTransactions(addr, {
+      ...(comboState.networks.length
+        ? { networks: comboState.networks.join(",") }
+        : {}),
+      page: pageNum,
+      limit: PAGE_SIZE,
+      minUsd: 0,
+      spamFilter: "hard",
+    })
+      .then(({ rows, hasNext }) => {
+        const payload = { rows, hasNext };
+        comboState.rawPages.set(pageNum, payload);
+        comboState.rawPromises.delete(pageNum);
+        return payload;
+      })
+      .catch((error) => {
+        comboState.rawPromises.delete(pageNum);
+        throw error;
+      });
+
+    comboState.rawPromises.set(pageNum, promise);
+    return promise;
+  };
+
+  const collectFilteredPage = async (
+    addr: string,
+    comboState: ComboState,
+    types: TxType[] | ["all"],
+    pageNum: number
+  ): Promise<FilteredPagePayload> => {
+    const cacheKey = getFilteredKey(types, pageNum);
+    const cached = comboState.filteredPages.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    if (!Array.isArray(types) || (types as any)[0] === "all") {
+      const raw = await ensureRawPage(addr, comboState, pageNum);
+      comboState.filteredPages.set(cacheKey, raw);
+      return raw;
+    }
+
+    const selectedSet = new Set(types as TxType[]);
+    const rowsAccum: TxRow[] = [];
+    const limit = PAGE_SIZE;
+    let rawPageIndex = 1;
+    let remainingToSkip = Math.max(0, (pageNum - 1) * limit);
+    let hasMoreFiltered = false;
+    let lastRawHasNext = false;
+
+    while (rowsAccum.length < limit) {
+      const { rows: rawRows, hasNext: rawHasNext } = await ensureRawPage(
+        addr,
+        comboState,
+        rawPageIndex
+      );
+      lastRawHasNext = rawHasNext;
+      const filtered = rawRows.filter((row) => selectedSet.has(row.type));
+
+      if (remainingToSkip > 0) {
+        if (remainingToSkip >= filtered.length) {
+          remainingToSkip -= filtered.length;
+        } else {
+          const sliceStart = remainingToSkip;
+          remainingToSkip = 0;
+          const available = filtered.slice(sliceStart);
+          const slots = limit - rowsAccum.length;
+          if (available.length > slots) {
+            rowsAccum.push(...available.slice(0, slots));
+            hasMoreFiltered = true;
+            break;
+          } else {
+            rowsAccum.push(...available);
+          }
+        }
+      } else if (filtered.length) {
+        const slots = limit - rowsAccum.length;
+        if (filtered.length > slots) {
+          rowsAccum.push(...filtered.slice(0, slots));
+          hasMoreFiltered = true;
+          break;
+        } else {
+          rowsAccum.push(...filtered);
+        }
+      }
+
+      if (!rawHasNext) {
+        break;
+      }
+      rawPageIndex += 1;
+    }
+
+    let hasNextFiltered = false;
+    if (hasMoreFiltered) {
+      hasNextFiltered = true;
+    } else if (rowsAccum.length === limit) {
+      if (lastRawHasNext) {
+        let probeIndex = rawPageIndex;
+        while (true) {
+          const { rows: probeRows, hasNext: probeHasNext } =
+            await ensureRawPage(addr, comboState, probeIndex);
+          const probeFiltered = probeRows.filter((row) =>
+            selectedSet.has(row.type)
+          );
+          if (probeFiltered.length > 0) {
+            hasNextFiltered = true;
+            break;
+          }
+          if (!probeHasNext) {
+            hasNextFiltered = false;
+            break;
+          }
+          probeIndex += 1;
+        }
+      } else {
+        hasNextFiltered = false;
+      }
+    } else {
+      hasNextFiltered = false;
+    }
+
+    const payload = { rows: rowsAccum, hasNext: hasNextFiltered };
+    comboState.filteredPages.set(cacheKey, payload);
+    return payload;
+  };
+
+  const load = async (p: number) => {
     if (!address || !isReady) return;
 
-    // Check cache first
-    const cacheKey = getCacheKey(address, p);
-    const cached = pageCache.current.get(cacheKey);
+    const networkList = [...networks];
+    const comboState = ensureComboState(address, networkList);
+    const filteredKey = getFilteredKey(selectedTypes, p);
+    const cached = comboState.filteredPages.get(filteredKey);
+
+    const token = ++loadTokenRef.current;
 
     if (cached) {
-      // Use cached data immediately (no loading state)
       setRows(cached.rows);
       setHasNext(cached.hasNext);
-      setTotal(cached.total);
-
-      // Prefetch next page in background (if available)
       if (cached.hasNext) {
-        preloadNextPage(p + 1);
+        preloadNextPage(p + 1, comboState);
       }
       return;
     }
 
-    // Not in cache, fetch from API
     setLoading(true);
     setError(null);
     try {
-      const classParam = uiTypesToClassParam(selectedTypes);
-      const {
-        rows,
-        hasNext,
-        total: totalCount,
-      } = await fetchTransactions(address, {
-        // networks: if undefined → backend default = all supported EVM networks
-        ...(networksParam ? { networks: networksParam } : {}),
-        page: p,
-        limit: PAGE_SIZE,
-        minUsd: 0,
-        spamFilter: "hard",
-        ...(classParam ? { class: classParam } : {}),
-      });
-
-      // Store in cache
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
-
-      setRows(rows);
-      setHasNext(hasNext);
-      setTotal(totalCount); // Store total count from backend
-
-      // Prefetch next page in background (if available)
-      if (hasNext) {
-        preloadNextPage(p + 1);
+      const result = await collectFilteredPage(
+        address,
+        comboState,
+        selectedTypes,
+        p
+      );
+      if (loadTokenRef.current !== token) {
+        return;
+      }
+      setRows(result.rows);
+      setHasNext(result.hasNext);
+      if (result.hasNext) {
+        preloadNextPage(p + 1, comboState);
       }
     } catch (e: any) {
+      if (loadTokenRef.current !== token) {
+        return;
+      }
       setError(e?.message || "Failed to load transactions");
       setRows([]);
       setHasNext(false);
-      setTotal(null);
     } finally {
-      setLoading(false);
+      if (loadTokenRef.current === token) {
+        setLoading(false);
+      }
     }
-  }
+  };
 
-  // Preload next page in background (silent, no loading state)
-  async function preloadNextPage(nextPage: number) {
+  const preloadNextPage = async (nextPage: number, comboState?: ComboState) => {
     if (!address) return;
-
-    // Check if already cached
-    const cacheKey = getCacheKey(address, nextPage);
-    if (pageCache.current.has(cacheKey)) {
-      return; // Already cached
+    const state =
+      comboState ?? ensureComboState(address, [...networks]);
+    const cacheKey = getFilteredKey(selectedTypes, nextPage);
+    if (state.filteredPages.has(cacheKey)) {
+      return;
     }
 
     try {
-      const classParam = uiTypesToClassParam(selectedTypes);
-      const {
-        rows,
-        hasNext,
-        total: totalCount,
-      } = await fetchTransactions(address, {
-        ...(networksParam ? { networks: networksParam } : {}),
-        page: nextPage,
-        limit: PAGE_SIZE,
-        minUsd: 0,
-        spamFilter: "hard",
-        ...(classParam ? { class: classParam } : {}),
-      });
-
-      // Store in cache (silently, no state updates)
-      pageCache.current.set(cacheKey, { rows, hasNext, total: totalCount });
+      await collectFilteredPage(address, state, selectedTypes, nextPage);
     } catch (e) {
-      // Silent failure - prefetch errors should not affect UI
       console.debug("[Prefetch] Failed to preload page", nextPage, e);
     }
-  }
+  };
 
-  // Initial/refresh - clear cache when address or filters change
   useEffect(() => {
     if (!address || !isReady) return;
     setPage(1);
-    pageCache.current.clear(); // Clear cache when address or filters change
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey, networksParam, isReady]);
+  }, [address, refreshKey, currentNetworkKey, isReady]);
 
-  // When server-side class filter changes (chips), reload current page with new filter
   useEffect(() => {
     if (!address || !isReady) return;
-    // Don't clear cache - it's already organized by filter via getCacheKey
-    // This allows instant navigation when returning to previously visited filters
-    // Load current page with new filter (if page doesn't exist, backend will handle it)
     load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes)]);
 
-  // Use total from backend (Covalent) if available, otherwise fallback to estimation
-  const totalCount = useMemo(() => {
-    if (total !== null) return total; // Use real total from backend
-    // Fallback to estimation if backend total not available
-    if (rows.length === 0) return null;
-    if (hasNext) {
-      return page * PAGE_SIZE; // At least this many
-    } else {
-      return (page - 1) * PAGE_SIZE + rows.length; // Exact count
-    }
-  }, [total, page, hasNext, rows.length]);
-
-  const totalPages = useMemo(() => {
-    if (!totalCount) return null;
-    return Math.ceil(totalCount / PAGE_SIZE);
-  }, [totalCount]);
-
-  // Check if any filter is active (not "all")
-  const hasActiveFilter = useMemo(() => {
-    return !Array.isArray(selectedTypes) || (selectedTypes as any)[0] !== "all";
-  }, [selectedTypes]);
-
-  // Block navigation buttons when filters are active
-  const canPrev = !hasActiveFilter && page > 1;
-  const canNext = !hasActiveFilter && hasNext;
+  const filterIsAll =
+    !Array.isArray(selectedTypes) || (selectedTypes as any)[0] === "all";
+  const canPrev = page > 1;
+  const canNext = hasNext;
   const goPrev = () => {
     const p = Math.max(1, page - 1);
     setPage(p);
@@ -537,25 +651,18 @@ export default function AllTransactionsTab({
             </h3>
             <div className="flex items-center gap-2">
               <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-                {hasActiveFilter ? (
-                  loading ? (
-                    <span className="font-medium">Loading...</span>
-                  ) : (
-                    <span className="font-medium">
-                      {rows.length} transaction{rows.length !== 1 ? "s" : ""}
-                    </span>
-                  )
-                ) : totalCount && totalPages ? (
+                {loading ? (
+                  <span className="font-medium">Loading...</span>
+                ) : filterIsAll ? (
                   <span className="font-medium">
-                    Page {page} of {totalPages} ({totalCount.toLocaleString()}{" "}
-                    total)
-                  </span>
-                ) : totalCount ? (
-                  <span className="font-medium">
-                    Page {page} ({totalCount.toLocaleString()}+ transactions)
+                    Page {page}
+                    {hasNext ? " (more available)" : ""}
                   </span>
                 ) : (
-                  <span className="font-medium">Page {page}</span>
+                  <span className="font-medium">
+                    {rows.length} transaction{rows.length !== 1 ? "s" : ""} (page{" "}
+                    {page})
+                  </span>
                 )}
               </div>
 
@@ -695,7 +802,12 @@ export default function AllTransactionsTab({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setRefreshKey((k) => k + 1)}
+                onClick={() => {
+                  if (address) {
+                    clearComboStatesForAddress(address);
+                  }
+                  setRefreshKey((k) => k + 1);
+                }}
                 disabled={loading || !isReady}
               >
                 <RefreshCw
