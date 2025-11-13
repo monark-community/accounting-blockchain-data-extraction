@@ -45,6 +45,5 @@ export async function fetchTransactions(address: string, q: TxQuery) {
     limit: json.limit,
     hasNext,
     gasMeta: json.meta?.gasUsdByTx ?? {},
-    total: json.total ?? null, // Total count from backend (Covalent)
   };
 }
