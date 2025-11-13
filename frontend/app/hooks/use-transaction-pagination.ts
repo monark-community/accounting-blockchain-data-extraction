@@ -354,10 +354,28 @@ export function useTransactionPagination({
     }
 
     // If requested page is not cached, find the last cached page for this filter
-    // and load the next page after it
+    // If a cached page exists, display it. Otherwise, load page 1.
     const lastCachedPage = findLastCachedPageForFilter(comboState, selectedTypes);
-    const pageToLoad = lastCachedPage > 0 ? lastCachedPage + 1 : 1;
+    
+    if (lastCachedPage > 0) {
+      // Display the last cached page
+      const lastCachedKey = getFilteredKey(selectedTypes, lastCachedPage);
+      const lastCached = comboState.filteredPages.get(lastCachedKey);
+      if (lastCached) {
+        const resolvedPage = lastCached.resolvedPage ?? lastCachedPage;
+        if (resolvedPage !== page) {
+          setPage(resolvedPage);
+        }
+        setRows(lastCached.rows);
+        setHasNext(lastCached.hasNext);
+        if (lastCached.hasNext) {
+          preloadNextPage(resolvedPage + 1, comboState);
+        }
+        return;
+      }
+    }
 
+    // No cached pages exist, load page 1
     setLoading(true);
     setError(null);
     try {
@@ -365,12 +383,12 @@ export function useTransactionPagination({
         address,
         comboState,
         selectedTypes,
-        pageToLoad
+        1
       );
       if (loadTokenRef.current !== token) {
         return;
       }
-      const resolvedPage = result.resolvedPage ?? pageToLoad;
+      const resolvedPage = result.resolvedPage ?? 1;
       setRows(result.rows);
       setHasNext(result.hasNext);
       if (resolvedPage !== page) {
