@@ -799,9 +799,9 @@ const Dashboard = () => {
             <TabsTrigger className="flex-1" value="graphs">
               Graphs
             </TabsTrigger>
-            <TabsTrigger className="flex-1" value="capital-gains">
+            {/* <TabsTrigger className="flex-1" value="capital-gains">
               Capital Gains
-            </TabsTrigger>
+            </TabsTrigger> */}
             <TabsTrigger className="flex-1" value="all-transactions">
               All Transactions
             </TabsTrigger>
@@ -850,7 +850,7 @@ const Dashboard = () => {
             />
           </TabsContent>
 
-          <TabsContent value="capital-gains" className="space-y-6">
+          {/* <TabsContent value="capital-gains" className="space-y-6">
             <CapitalGainsTab
               loading={loadingCapitalGains}
               capitalGainsData={capitalGainsData}
@@ -858,7 +858,7 @@ const Dashboard = () => {
               setAccountingMethod={setAccountingMethod}
               currency={userPreferences.currency}
             />
-          </TabsContent>
+          </TabsContent> */}
 
           <TabsContent value="all-transactions" forceMount>
             <AllTransactionsTab address={address} isReady={overviewReady} />
