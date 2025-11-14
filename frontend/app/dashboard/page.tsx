@@ -1205,6 +1205,8 @@ const Dashboard = () => {
               setHideStables={setHideStables}
               filteredHoldings={filteredHoldings}
               riskBuckets={riskBuckets}
+              address={address}
+              networks={networksParam}
             />
           </TabsContent>
 

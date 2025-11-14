@@ -30,6 +30,7 @@ import {
   BarChart3,
   Crown,
 } from "lucide-react";
+import RatiosTable from "./RatiosTable";
 
 interface Movers {
   gainers: PricedHolding[];
@@ -87,6 +88,8 @@ interface OverviewTabProps {
   setHideStables: (value: boolean) => void;
   filteredHoldings: PricedHolding[];
   riskBuckets: RiskBucket[];
+  address?: string;
+  networks?: string;
 }
 
 const CHAIN_COLOR_PALETTE = [
@@ -118,6 +121,8 @@ const OverviewTab = ({
   setHideStables,
   filteredHoldings,
   riskBuckets,
+  address,
+  networks,
 }: OverviewTabProps) => {
   const totalValueUsd = ov?.kpis.totalValueUsd ?? 0;
   const largestHolding =
@@ -1066,6 +1071,9 @@ const OverviewTab = ({
           </div>
         )}
       </Card>
+
+      {/* Ratios Table */}
+      <RatiosTable loadingOv={loadingOv} ov={ov} address={address} networks={networks} />
     </div>
   );
 };
