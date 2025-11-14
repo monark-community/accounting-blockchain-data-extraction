@@ -36,6 +36,7 @@ const NATIVE_SYMBOL: Record<EvmNetwork, string> = {
   unichain: "ETH",
 };
 const TX_FETCH_WINDOW_CAP = Number(process.env.TX_FETCH_WINDOW_CAP ?? 80);
+const PRICING_BATCH_SIZE = Number(process.env.PRICING_BATCH_SIZE ?? 10); // Limit concurrent price requests
 const LOGS_DEBUG =
   String(process.env.LOGS_DEBUG ?? "false").toLowerCase() === "true";
 const debugLog = (...args: any[]) => {
@@ -63,6 +64,23 @@ function sortLegs(a: NormalizedLegRow, b: NormalizedLegRow): number {
   const ai = a.logIndex ?? 0,
     bi = b.logIndex ?? 0;
   return ai - bi;
+}
+
+/**
+ * Process items in batches to limit concurrency and avoid rate limits
+ */
+async function processInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  processor: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(processor));
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 /** Main listing function: normalized legs + USD pricing + gas USD meta. */
@@ -163,7 +181,7 @@ export async function listTransactionLegs(
       receipts: Object.keys(receipts).length,
     });
 
-    // 4) pricing: per-leg USD at timestamp (pre-warm unique keys in parallel)
+    // 4) pricing: per-leg USD at timestamp (pre-warm unique keys in batches to avoid rate limits)
     const uniquePriceKeys = new Map<
       string,
       { contract?: string; ts: number }
@@ -177,10 +195,11 @@ export async function listTransactionLegs(
         }
       );
     }
-    await Promise.all(
-      Array.from(uniquePriceKeys.values()).map(({ contract, ts }) =>
-        quoteTokenUsdAtTs(network, contract, ts)
-      )
+    // Process price requests in batches to avoid overwhelming DeFiLlama API
+    await processInBatches(
+      Array.from(uniquePriceKeys.values()),
+      PRICING_BATCH_SIZE,
+      ({ contract, ts }) => quoteTokenUsdAtTs(network, contract, ts)
     );
     // assign from warmed cache
     for (const l of legs) {
