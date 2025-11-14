@@ -61,6 +61,7 @@ import { Plus, X, Sparkles } from "lucide-react";
 
 const DASHBOARD_NETWORK_STORAGE_KEY = "dashboard.networks";
 const DASHBOARD_NETWORK_HINTS_KEY = "dashboard.networkSuggestions";
+const HISTORICAL_FALLBACK_PREFERENCE_KEY = "dashboard.historicalUseFallback";
 const RAW_DEFAULT_DASHBOARD_NETWORKS =
   process.env.NEXT_PUBLIC_DASHBOARD_DEFAULT_NETWORKS ??
   process.env.NEXT_PUBLIC_DEFAULT_NETWORKS ??
@@ -147,6 +148,7 @@ const Dashboard = () => {
   const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
+  const [useFallbackEstimation, setUseFallbackEstimation] = useState(false);
   const overviewReady = !!ov && !loadingOv;
   const [capitalGainsData, setCapitalGainsData] = useState<{
     realized: CapitalGainEntry[];
@@ -165,6 +167,14 @@ const Dashboard = () => {
   });
   const [loadingCapitalGains, setLoadingCapitalGains] = useState(false);
 
+  // Callback to handle historical fallback preference change
+  const handleFallbackPreferenceChange = (useFallback: boolean) => {
+    setUseFallbackEstimation(useFallback);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(HISTORICAL_FALLBACK_PREFERENCE_KEY, String(useFallback));
+    }
+  };
+
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
   useEffect(() => {
@@ -175,6 +185,13 @@ const Dashboard = () => {
 
   useEffect(() => {
     setMounted(true);
+    // Load historical fallback preference from localStorage
+    if (typeof window !== "undefined") {
+      const storedPref = window.localStorage.getItem(HISTORICAL_FALLBACK_PREFERENCE_KEY);
+      if (storedPref !== null) {
+        setUseFallbackEstimation(storedPref === "true");
+      }
+    }
   }, []);
 
   // Use URL address if available, otherwise use connected wallet address
@@ -422,12 +439,13 @@ const Dashboard = () => {
     }
     let cancelled = false;
     console.log(
-      `[Dashboard] Fetching historical data for ${address}, networks: ${networksParam}`
+      `[Dashboard] Fetching historical data for ${address}, networks: ${networksParam}, useFallback: ${useFallbackEstimation}`
     );
     setLoadingHistorical(true);
     fetchHistoricalData(address, {
       networks: networksParam,
       days: 180,
+      useFallback: useFallbackEstimation,
     })
       .then((response) => {
         if (cancelled) return;
@@ -455,7 +473,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [address, networksParam, overviewReady]);
+  }, [address, networksParam, overviewReady, useFallbackEstimation]);
 
   useEffect(() => {
     if (!address || !overviewReady) {
@@ -1198,6 +1216,8 @@ const Dashboard = () => {
               historicalChartData={historicalChartData}
               historicalData={historicalData}
               isHistoricalEstimated={isHistoricalEstimated}
+              useFallbackEstimation={useFallbackEstimation}
+              onFallbackPreferenceChange={handleFallbackPreferenceChange}
               loadingOv={loadingOv}
               ov={ov}
               chainBreakdown={chainBreakdown}

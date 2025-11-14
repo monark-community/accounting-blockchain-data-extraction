@@ -11,23 +11,25 @@ function dbg(...args: any[]) {
 const router = Router();
 
 /**
- * GET /api/analytics/historical/:address?networks=mainnet,polygon,...&days=180
+ * GET /api/analytics/historical/:address?networks=mainnet,polygon,...&days=180&useFallback=true
  */
 router.get("/historical/:address", async (req, res) => {
   try {
     const { address } = req.params;
     const networks = parseNetworks(req.query.networks as string | undefined);
     const days = Math.min(365, Math.max(7, Number(req.query.days ?? "180")));
+    const useFallback = req.query.useFallback === "true";
 
     dbg(`[Analytics Route] GET /api/analytics/historical/${address}`);
     dbg(
-      `[Analytics Route] Params: networks=${networks.join(",")}, days=${days}`
+      `[Analytics Route] Params: networks=${networks.join(",")}, days=${days}, useFallback=${useFallback}`
     );
 
     const data = await getMultiNetworkHistoricalPortfolio(
       networks,
       address,
-      days
+      days,
+      useFallback
     );
 
     dbg(`[Analytics Route] Response: ${data.length} points for ${address}`);

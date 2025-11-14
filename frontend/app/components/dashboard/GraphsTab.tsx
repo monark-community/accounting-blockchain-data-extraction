@@ -23,6 +23,7 @@ import {
 } from "recharts";
 import { useEffect, useState, type ReactElement } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { TrendingUp, BarChart3, PieChart, DollarSign, Activity, Briefcase, Calendar, Link2, AlertTriangle, HelpCircle } from "lucide-react";
 
@@ -120,6 +121,8 @@ interface GraphsTabProps {
   historicalChartData: HistoricalChartPoint[];
   historicalData: HistoricalPoint[];
   isHistoricalEstimated: boolean;
+  useFallbackEstimation: boolean;
+  onFallbackPreferenceChange: (useFallback: boolean) => void;
   loadingOv: boolean;
   ov: OverviewResponse | null;
   chainBreakdown: ChainBreakdownRow[];
@@ -138,6 +141,8 @@ const GraphsTab = ({
   historicalChartData,
   historicalData,
   isHistoricalEstimated,
+  useFallbackEstimation,
+  onFallbackPreferenceChange,
   loadingOv,
   ov,
   chainBreakdown,
@@ -536,12 +541,40 @@ const GraphsTab = ({
       {visibleCharts.portfolioEvolution && (
         <Card className="p-6 bg-white shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-slate-800">
-          Portfolio Evolution (Last 6 Months)
-        </h3>
-        {loadingHistorical && (
-          <span className="text-xs text-slate-500">Loading...</span>
-        )}
+        <div className="flex-1">
+          <h3 className="text-lg font-semibold text-slate-800">
+            Portfolio Evolution (Last 6 Months)
+          </h3>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={useFallbackEstimation}
+              onCheckedChange={onFallbackPreferenceChange}
+              id="fallback-estimation"
+            />
+            <label htmlFor="fallback-estimation" className="text-sm text-slate-600 cursor-pointer">
+              Use fallback estimation
+            </label>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="p-1 rounded-full text-slate-400 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-200 transition-colors"
+                  aria-label="More info about fallback estimation"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs text-xs leading-5">
+                Enable this to use estimated historical data based on your current holdings instead of Ankr API data. Useful when Ankr data is inaccurate or unavailable.
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          {loadingHistorical && (
+            <span className="text-xs text-slate-500">Loading...</span>
+          )}
+        </div>
       </div>
       {loadingHistorical ? (
         <div className="space-y-4">

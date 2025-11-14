@@ -111,11 +111,19 @@ export type HistoricalPoint = {
 export async function getHistoricalPortfolioValue(
   network: EvmNetwork,
   address: string,
-  days: number = 180
+  days: number = 180,
+  forceFallback: boolean = false
 ): Promise<HistoricalPoint[]> {
   dbg(
-    `[Historical] Fetching data for ${network}:${address} (requested ${days} days)`
+    `[Historical] Fetching data for ${network}:${address} (requested ${days} days, forceFallback=${forceFallback})`
   );
+
+  // Skip Ankr if user explicitly requested fallback estimation
+  if (forceFallback) {
+    dbg(`[Historical] User requested fallback estimation, skipping Ankr`);
+    // Return empty to trigger fallback in getMultiNetworkHistoricalPortfolio
+    return [];
+  }
 
   // Try Ankr first (supports unlimited historical data with 500M free credits/month)
   const useAnkr = isAnkrConfigured();
@@ -410,16 +418,17 @@ async function getHistoricalPortfolioValueTheGraph(
 export async function getMultiNetworkHistoricalPortfolio(
   networks: EvmNetwork[],
   address: string,
-  days: number = 180
+  days: number = 180,
+  forceFallback: boolean = false
 ): Promise<HistoricalPoint[]> {
   dbg(
     `[Historical] Starting multi-network fetch for ${address} on networks: ${networks.join(
       ", "
-    )}`
+    )}, forceFallback=${forceFallback}`
   );
 
   const results = await Promise.all(
-    networks.map((net) => getHistoricalPortfolioValue(net, address, days))
+    networks.map((net) => getHistoricalPortfolioValue(net, address, days, forceFallback))
   );
 
   dbg(
@@ -481,8 +490,8 @@ export async function getMultiNetworkHistoricalPortfolio(
     }
   }
 
-  // Mark as real data
-  return final.map((p) => ({ ...p, _isEstimated: false }));
+  // Mark as real data (or estimated if forceFallback was used but no data was returned)
+  return final.map((p) => ({ ...p, _isEstimated: forceFallback || false }));
 }
 
 /**
