@@ -330,7 +330,7 @@ export function useTransactionPagination({
     }
   };
 
-  const load = async (p: number) => {
+  const load = async (p: number, allowFallbackToLastPage: boolean = false) => {
     if (!address) return;
 
     const networkList = [...networks];
@@ -353,29 +353,33 @@ export function useTransactionPagination({
       return;
     }
 
-    // If requested page is not cached, find the last cached page for this filter
-    // If a cached page exists, display it. Otherwise, load page 1.
-    const lastCachedPage = findLastCachedPageForFilter(comboState, selectedTypes);
-    
-    if (lastCachedPage > 0) {
-      // Display the last cached page
-      const lastCachedKey = getFilteredKey(selectedTypes, lastCachedPage);
-      const lastCached = comboState.filteredPages.get(lastCachedKey);
-      if (lastCached) {
-        const resolvedPage = lastCached.resolvedPage ?? lastCachedPage;
-        if (resolvedPage !== page) {
-          setPage(resolvedPage);
+    // If requested page is not cached and fallback is allowed (filter change),
+    // find the last cached page for this filter and display it.
+    // Otherwise (normal navigation), load the requested page directly.
+    if (allowFallbackToLastPage) {
+      const lastCachedPage = findLastCachedPageForFilter(comboState, selectedTypes);
+      
+      if (lastCachedPage > 0) {
+        // Display the last cached page
+        const lastCachedKey = getFilteredKey(selectedTypes, lastCachedPage);
+        const lastCached = comboState.filteredPages.get(lastCachedKey);
+        if (lastCached) {
+          const resolvedPage = lastCached.resolvedPage ?? lastCachedPage;
+          if (resolvedPage !== page) {
+            setPage(resolvedPage);
+          }
+          setRows(lastCached.rows);
+          setHasNext(lastCached.hasNext);
+          if (lastCached.hasNext) {
+            preloadNextPage(resolvedPage + 1, comboState);
+          }
+          return;
         }
-        setRows(lastCached.rows);
-        setHasNext(lastCached.hasNext);
-        if (lastCached.hasNext) {
-          preloadNextPage(resolvedPage + 1, comboState);
-        }
-        return;
       }
     }
 
-    // No cached pages exist, load page 1
+    // Load the requested page directly (normal navigation) or page 1 (filter change with no cache)
+    const pageToLoad = allowFallbackToLastPage && p > 1 ? 1 : p;
     setLoading(true);
     setError(null);
     try {
@@ -383,12 +387,12 @@ export function useTransactionPagination({
         address,
         comboState,
         selectedTypes,
-        1
+        pageToLoad
       );
       if (loadTokenRef.current !== token) {
         return;
       }
-      const resolvedPage = result.resolvedPage ?? 1;
+      const resolvedPage = result.resolvedPage ?? pageToLoad;
       setRows(result.rows);
       setHasNext(result.hasNext);
       if (resolvedPage !== page) {
@@ -422,20 +426,20 @@ export function useTransactionPagination({
   // Load on filter change
   useEffect(() => {
     if (!address) return;
-    load(page);
+    load(page, true); // Allow fallback to last cached page when filter changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(selectedTypes), networkKey]);
 
   const goPrev = () => {
     const p = Math.max(1, page - 1);
     setPage(p);
-    load(p);
+    load(p, false); // Normal navigation: no fallback, show loading state
   };
 
   const goNext = () => {
     const p = page + 1;
     setPage(p);
-    load(p);
+    load(p, false); // Normal navigation: no fallback, show loading state
   };
 
   const refresh = () => {
@@ -443,7 +447,7 @@ export function useTransactionPagination({
       clearComboStatesForAddress(address);
     }
     setPage(1);
-    load(1);
+    load(1, false); // Refresh: no fallback, show loading state
   };
 
   return {
@@ -454,7 +458,7 @@ export function useTransactionPagination({
     error,
     setPage: (p: number) => {
       setPage(p);
-      load(p);
+      load(p, false); // Normal navigation: no fallback, show loading state
     },
     goPrev,
     goNext,
