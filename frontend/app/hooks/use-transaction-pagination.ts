@@ -28,8 +28,10 @@ const makeNetworkKey = (list: string[]): string => {
   return [...list].sort().join(",");
 };
 
-const getComboKey = (addr: string, networkKey: string): string =>
-  `${addr.toLowerCase()}::${networkKey}`;
+const getComboKey = (addr: string, networkKey: string, from?: string, to?: string): string => {
+  const dateKey = from || to ? `::${from ?? ""}:${to ?? ""}` : "";
+  return `${addr.toLowerCase()}::${networkKey}${dateKey}`;
+};
 
 const getFilteredBaseKey = (types: TxType[] | ["all"]): string => {
   if (!Array.isArray(types) || (types as any)[0] === "all") {
@@ -62,8 +64,8 @@ const findLastCachedPageForFilter = (
 // Global cache (shared across all instances)
 const globalComboCache = new Map<string, ComboState>();
 
-const ensureComboState = (addr: string, networkList: string[]): ComboState => {
-  const comboKey = getComboKey(addr, makeNetworkKey(networkList));
+const ensureComboState = (addr: string, networkList: string[], from?: string, to?: string): ComboState => {
+  const comboKey = getComboKey(addr, makeNetworkKey(networkList), from, to);
   let state = globalComboCache.get(comboKey);
   if (!state) {
     state = {
@@ -94,7 +96,9 @@ const clearComboStatesForAddress = (addr: string): void => {
 const ensureRawPage = async (
   addr: string,
   comboState: ComboState,
-  pageNum: number
+  pageNum: number,
+  from?: string,
+  to?: string
 ): Promise<RawPagePayload> => {
   if (comboState.rawPages.has(pageNum)) {
     return comboState.rawPages.get(pageNum)!;
@@ -111,6 +115,8 @@ const ensureRawPage = async (
     limit: PAGE_SIZE,
     minUsd: 0,
     spamFilter: "hard",
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
   })
     .then(({ rows, hasNext }) => {
       const payload = { rows, hasNext };
@@ -131,7 +137,9 @@ const collectFilteredPage = async (
   addr: string,
   comboState: ComboState,
   types: TxType[] | ["all"],
-  pageNum: number
+  pageNum: number,
+  from?: string,
+  to?: string
 ): Promise<FilteredPagePayload> => {
   const cacheKey = getFilteredKey(types, pageNum);
   const cached = comboState.filteredPages.get(cacheKey);
@@ -142,7 +150,7 @@ const collectFilteredPage = async (
   const baseKey = getFilteredBaseKey(types);
 
   if (!Array.isArray(types) || (types as any)[0] === "all") {
-    const raw = await ensureRawPage(addr, comboState, pageNum);
+    const raw = await ensureRawPage(addr, comboState, pageNum, from, to);
     const payload: FilteredPagePayload = {
       rows: raw.rows,
       hasNext: raw.hasNext,
@@ -165,7 +173,9 @@ const collectFilteredPage = async (
     const { rows: rawRows, hasNext: rawHasNext } = await ensureRawPage(
       addr,
       comboState,
-      rawPageIndex
+      rawPageIndex,
+      from,
+      to
     );
     lastRawHasNext = rawHasNext;
     const filtered = rawRows.filter((row) => selectedSet.has(row.type));
@@ -212,7 +222,7 @@ const collectFilteredPage = async (
       let probeIndex = rawPageIndex;
       while (true) {
         const { rows: probeRows, hasNext: probeHasNext } =
-          await ensureRawPage(addr, comboState, probeIndex);
+          await ensureRawPage(addr, comboState, probeIndex, from, to);
         const probeFiltered = probeRows.filter((row) =>
           selectedSet.has(row.type)
         );
@@ -255,7 +265,9 @@ const collectFilteredPage = async (
           addr,
           comboState,
           types,
-          fallbackPage
+          fallbackPage,
+          from,
+          to
         );
       }
       const payload: FilteredPagePayload = {
@@ -287,6 +299,8 @@ export interface UseTransactionPaginationOptions {
   networks: string[];
   selectedTypes: TxType[] | ["all"];
   refreshKey?: number;
+  from?: string; // ISO8601 date string
+  to?: string; // ISO8601 date string
 }
 
 export interface UseTransactionPaginationReturn {
@@ -306,6 +320,8 @@ export function useTransactionPagination({
   networks,
   selectedTypes,
   refreshKey = 0,
+  from,
+  to,
 }: UseTransactionPaginationOptions): UseTransactionPaginationReturn {
   const [rows, setRows] = useState<TxRow[]>([]);
   const [page, setPage] = useState(1);
@@ -324,7 +340,7 @@ export function useTransactionPagination({
     }
 
     try {
-      await collectFilteredPage(address, comboState, selectedTypes, nextPage);
+      await collectFilteredPage(address, comboState, selectedTypes, nextPage, from, to);
     } catch (e) {
       console.debug("[Prefetch] Failed to preload page", nextPage, e);
     }
@@ -334,7 +350,7 @@ export function useTransactionPagination({
     if (!address) return;
 
     const networkList = [...networks];
-    const comboState = ensureComboState(address, networkList);
+    const comboState = ensureComboState(address, networkList, from, to);
     const filteredKey = getFilteredKey(selectedTypes, p);
     const cached = comboState.filteredPages.get(filteredKey);
 
@@ -387,7 +403,9 @@ export function useTransactionPagination({
         address,
         comboState,
         selectedTypes,
-        pageToLoad
+        pageToLoad,
+        from,
+        to
       );
       if (loadTokenRef.current !== token) {
         return;
@@ -415,20 +433,20 @@ export function useTransactionPagination({
     }
   };
 
-  // Load on address/refresh change
+  // Load on address/refresh/date range change
   useEffect(() => {
     if (!address) return;
     setPage(1);
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey]);
+  }, [address, refreshKey, from, to]);
 
   // Load on filter change
   useEffect(() => {
     if (!address) return;
     load(page, true); // Allow fallback to last cached page when filter changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(selectedTypes), networkKey]);
+  }, [JSON.stringify(selectedTypes), networkKey, from, to]);
 
   const goPrev = () => {
     const p = Math.max(1, page - 1);
