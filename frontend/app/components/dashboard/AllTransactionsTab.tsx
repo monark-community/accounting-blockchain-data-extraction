@@ -362,7 +362,7 @@ export default function AllTransactionsTab({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" disabled={loading}>
                     Networks: {networksButtonLabel}
                   </Button>
                 </DropdownMenuTrigger>
