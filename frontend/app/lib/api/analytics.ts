@@ -19,11 +19,13 @@ export async function fetchHistoricalData(
   options?: {
     networks?: string;
     days?: number;
+    useFallback?: boolean;
   }
 ): Promise<HistoricalResponse> {
   const qs = new URLSearchParams();
   if (options?.networks) qs.set("networks", options.networks);
   if (options?.days) qs.set("days", String(options.days));
+  if (options?.useFallback) qs.set("useFallback", "true");
 
   const url = `/api/analytics/historical/${encodeURIComponent(
     address
@@ -46,6 +48,7 @@ export async function fetchHistoricalData(
     networks: json.networks,
     days: json.days,
     dataLength: json.data?.length || 0,
+    useFallback: options?.useFallback,
   });
 
   return json;

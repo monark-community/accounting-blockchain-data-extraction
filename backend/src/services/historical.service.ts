@@ -8,6 +8,10 @@ import {
   getNativePriceUsd,
 } from "./pricing.service";
 import { getHoldingsOverview } from "./holdings.service";
+import {
+  isAnkrConfigured,
+  getAnkrHistoricalPortfolio,
+} from "./ankr.service";
 
 const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL ?? "https://token-api.thegraph.com/v1";
@@ -26,8 +30,7 @@ type HistPoint = {
 type HistResponse = HistPoint[];
 
 // Toggle verbose pricing/debug logs. When false only concise errors are printed.
-// const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
-const LOGS_DEBUG = false;
+const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
 function dbg(...args: any[]) {
   if (LOGS_DEBUG) console.log(...args);
 }
@@ -102,15 +105,114 @@ export type HistoricalPoint = {
 };
 
 /**
- * Fetch historical portfolio value using weekly intervals (7d)
+ * Fetch historical portfolio value using Ankr API (no 10-point limit!)
+ * Falls back to The Graph API if Ankr fails or is not configured
  */
 export async function getHistoricalPortfolioValue(
+  network: EvmNetwork,
+  address: string,
+  days: number = 180,
+  forceFallback: boolean = false
+): Promise<HistoricalPoint[]> {
+  dbg(
+    `[Historical] Fetching data for ${network}:${address} (requested ${days} days, forceFallback=${forceFallback})`
+  );
+
+  // Skip Ankr if user explicitly requested fallback estimation
+  if (forceFallback) {
+    dbg(`[Historical] User requested fallback estimation, skipping Ankr`);
+    // Return empty to trigger fallback in getMultiNetworkHistoricalPortfolio
+    return [];
+  }
+
+  // Try Ankr first (supports unlimited historical data with 500M free credits/month)
+  const useAnkr = isAnkrConfigured();
+  
+  if (useAnkr) {
+    try {
+      dbg(`[Historical] Using Ankr API for ${network}:${address}`);
+      return await getHistoricalPortfolioValueAnkr(network, address, days);
+    } catch (err: any) {
+      console.warn(
+        `[Historical] Ankr API failed for ${network}:${address}, falling back to The Graph:`,
+        err.message
+      );
+      // Fall through to The Graph fallback
+    }
+  } else {
+    dbg(`[Historical] ANKR_API_KEY not set, using The Graph API (limited to 10 points)`);
+  }
+
+  // Fallback to The Graph API (original implementation, limited to 10 points)
+  return await getHistoricalPortfolioValueTheGraph(network, address, days);
+}
+
+/**
+ * Fetch historical portfolio value using Ankr API
+ * This method has no arbitrary limits and 500M free credits/month (vs Covalent's 100k)
+ */
+async function getHistoricalPortfolioValueAnkr(
+  network: EvmNetwork,
+  address: string,
+  days: number = 180
+): Promise<HistoricalPoint[]> {
+  const months = Math.ceil(days / 30);
+  
+  dbg(
+    `[Historical/Ankr] Fetching ${months} months of data for ${network}:${address.substring(0, 10)}...`
+  );
+
+  // Get historical portfolio data from Ankr
+  const ankrData = await getAnkrHistoricalPortfolio(network, address, months);
+
+  dbg(
+    `[Historical/Ankr] Retrieved ${ankrData.length} monthly data points`
+  );
+
+  if (ankrData.length === 0) {
+    dbg(`[Historical/Ankr] No historical data found for ${network}:${address}`);
+    return [];
+  }
+
+  // Convert Ankr data to HistoricalPoint format
+  const result: HistoricalPoint[] = ankrData.map(point => ({
+    date: point.date,
+    timestamp: point.timestamp,
+    totalValueUsd: point.totalValueUsd,
+    byChain: {
+      [network]: point.totalValueUsd,
+    },
+    byAsset: {}, // Ankr doesn't provide per-asset breakdown in free tier
+  }));
+
+  dbg(
+    `[Historical/Ankr] Generated ${result.length} historical points for ${network}:${address}`
+  );
+
+  if (result.length > 0) {
+    dbg(
+      `[Historical/Ankr] ${network}:${address} - First point: ${
+        result[0].date
+      } ($${result[0].totalValueUsd.toFixed(2)}), Last: ${
+        result[result.length - 1].date
+      } ($${result[result.length - 1].totalValueUsd.toFixed(2)})`
+    );
+  }
+
+  return result.sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/**
+ * Original implementation using The Graph API
+ * Limited to 10 data points maximum
+ */
+async function getHistoricalPortfolioValueTheGraph(
   network: EvmNetwork,
   address: string,
   days: number = 180
 ): Promise<HistoricalPoint[]> {
   dbg(
-    `[Historical] Fetching data for ${network}:${address} (requested ${days} days)`
+    `[Historical/TheGraph] Fetching data for ${network}:${address} (requested ${days} days, limited to 10 points)`
   );
 
   const interval: "1d" | "7d" = "7d";
@@ -119,7 +221,7 @@ export async function getHistoricalPortfolioValue(
   const limit = Math.min(targetWeeks, maxLimit);
 
   dbg(
-    `[Historical] Requesting ${limit} weekly points (interval=7d) for ~${
+    `[Historical/TheGraph] Requesting ${limit} weekly points (interval=7d) for ~${
       limit * 7
     } days coverage`
   );
@@ -128,7 +230,7 @@ export async function getHistoricalPortfolioValue(
 
   try {
     dbg(
-      `[Historical] Calling Token API: network=${network}, address=${address.substring(
+      `[Historical/TheGraph] Calling Token API: network=${network}, address=${address.substring(
         0,
         10
       )}..., interval=${interval}, limit=${limit}`
@@ -143,12 +245,12 @@ export async function getHistoricalPortfolioValue(
       }
     );
 
-    dbg(`[Historical] API response type:`, typeof data);
-    dbg(`[Historical] API response isArray:`, Array.isArray(data));
+    dbg(`[Historical/TheGraph] API response type:`, typeof data);
+    dbg(`[Historical/TheGraph] API response isArray:`, Array.isArray(data));
     if (data && Array.isArray(data)) {
-      dbg(`[Historical] API returned array with ${data.length} items`);
+      dbg(`[Historical/TheGraph] API returned array with ${data.length} items`);
       if (data.length > 0) {
-        dbg(`[Historical] First item sample:`, {
+        dbg(`[Historical/TheGraph] First item sample:`, {
           timestamp: data[0].timestamp,
           contract: data[0].contract?.substring(0, 10) + "...",
           symbol: data[0].symbol,
@@ -157,33 +259,33 @@ export async function getHistoricalPortfolioValue(
         allData = data;
       } else {
         dbg(
-          `[Historical] API returned empty array - no historical data for this address/network`
+          `[Historical/TheGraph] API returned empty array - no historical data for this address/network`
         );
       }
     } else {
       dbg(
-        `[Historical] API returned invalid data format:`,
+        `[Historical/TheGraph] API returned invalid data format:`,
         typeof data,
         data ? Object.keys(data) : "null/undefined"
       );
     }
   } catch (err: any) {
     dbg(
-      `[Historical] API request failed for ${network}:${address.substring(
+      `[Historical/TheGraph] API request failed for ${network}:${address.substring(
         0,
         10
       )}...`
     );
-    dbg(`[Historical] Error message:`, err.message);
-    dbg(`[Historical] Error stack:`, err.stack);
+    dbg(`[Historical/TheGraph] Error message:`, err.message);
+    dbg(`[Historical/TheGraph] Error stack:`, err.stack);
   }
 
   dbg(
-    `[Historical] ${network}:${address} - Total received ${allData.length} data points`
+    `[Historical/TheGraph] ${network}:${address} - Total received ${allData.length} data points`
   );
 
   if (allData.length === 0) {
-    dbg(`[Historical] No data available for ${network}:${address}`);
+    dbg(`[Historical/TheGraph] No data available for ${network}:${address}`);
     return [];
   }
 
@@ -214,7 +316,7 @@ export async function getHistoricalPortfolioValue(
   const sortedTimestamps = Array.from(allTimestamps).sort((a, b) => a - b);
 
   dbg(
-    `[Historical] ${network}:${address} - Found ${sortedTimestamps.length} unique timestamps, ${byContract.size} unique contracts`
+    `[Historical/TheGraph] ${network}:${address} - Found ${sortedTimestamps.length} unique timestamps, ${byContract.size} unique contracts`
   );
 
   const result: HistoricalPoint[] = [];
@@ -294,12 +396,12 @@ export async function getHistoricalPortfolioValue(
   }
 
   dbg(
-    `[Historical] ${network}:${address} - Generated ${result.length} historical points`
+    `[Historical/TheGraph] ${network}:${address} - Generated ${result.length} historical points`
   );
 
   if (result.length > 0) {
     dbg(
-      `[Historical] ${network}:${address} - First point: ${
+      `[Historical/TheGraph] ${network}:${address} - First point: ${
         result[0].date
       } (${result[0].totalValueUsd.toFixed(2)} USD), Last: ${
         result[result.length - 1].date
@@ -316,16 +418,17 @@ export async function getHistoricalPortfolioValue(
 export async function getMultiNetworkHistoricalPortfolio(
   networks: EvmNetwork[],
   address: string,
-  days: number = 180
+  days: number = 180,
+  forceFallback: boolean = false
 ): Promise<HistoricalPoint[]> {
   dbg(
     `[Historical] Starting multi-network fetch for ${address} on networks: ${networks.join(
       ", "
-    )}`
+    )}, forceFallback=${forceFallback}`
   );
 
   const results = await Promise.all(
-    networks.map((net) => getHistoricalPortfolioValue(net, address, days))
+    networks.map((net) => getHistoricalPortfolioValue(net, address, days, forceFallback))
   );
 
   dbg(
@@ -387,8 +490,8 @@ export async function getMultiNetworkHistoricalPortfolio(
     }
   }
 
-  // Mark as real data
-  return final.map((p) => ({ ...p, _isEstimated: false }));
+  // Mark as real data (or estimated if forceFallback was used but no data was returned)
+  return final.map((p) => ({ ...p, _isEstimated: forceFallback || false }));
 }
 
 /**
