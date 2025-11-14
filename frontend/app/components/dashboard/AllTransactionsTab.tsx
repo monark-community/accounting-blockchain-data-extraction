@@ -444,7 +444,7 @@ export default function AllTransactionsTab({
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" disabled={loading}>
                     Date: {dateRangeLabel}
                   </Button>
                 </DropdownMenuTrigger>
