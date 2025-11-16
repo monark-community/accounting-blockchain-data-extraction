@@ -766,10 +766,8 @@ export default function AllTransactionsTab({
       return next.length ? next : (["all"] as any);
     });
   };
-  // Enforce 20-per-page display locally
-  const startIndex = Math.max(0, (page - 1) * PAGE_SIZE);
-  const endIndex = startIndex + PAGE_SIZE;
-  const visibleRows = rows.slice(startIndex, endIndex);
+  // Rows are already chunked per page (20) via caching logic; render as-is
+  const visibleRows = rows;
   const typeLabelForExport =
     (selectedTypes as any)[0] === "all"
       ? "all"
@@ -1900,7 +1898,7 @@ export default function AllTransactionsTab({
         )}
 
         {/* Table */}
-        {address && rows.length > 0 && (
+        {address && visibleRows.length > 0 && (
           <div className="overflow-x-auto relative">
             <Table>
               <TableHeader>
