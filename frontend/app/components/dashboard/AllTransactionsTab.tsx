@@ -1628,7 +1628,6 @@ export default function AllTransactionsTab({
                 ) : filterIsAll ? (
                   <span className="font-medium">
                     Page {page}
-                    {hasNext ? " (more available)" : ""}
                   </span>
                 ) : (
                   <span className="font-medium">
