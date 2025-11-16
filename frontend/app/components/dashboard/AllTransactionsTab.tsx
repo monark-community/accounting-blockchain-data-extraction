@@ -401,6 +401,31 @@ export default function AllTransactionsTab({
     [address, networksParam, dateRangeKey, selectedTypesKey]
   );
 
+  // Prefetch/cache status: compute how many pages are already cached ahead
+  const cachedAheadCount = useMemo(() => {
+    if (!address || !namespaceKey) return 0;
+    const prefix = `${namespaceKey}:`;
+    let count = 0;
+    for (const key of Array.from(pageCache.current.keys())) {
+      if (key.startsWith(prefix)) {
+        const parts = key.split(":");
+        const maybePage = Number(parts[parts.length - 1]);
+        if (Number.isFinite(maybePage) && maybePage > page) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }, [address, namespaceKey, page, cacheVersion]);
+  const isOverloaded = cachedAheadCount >= 3 || (loading && cachedAheadCount >= 1);
+  const loadIndicatorLabel = isOverloaded
+    ? `Préchargement élevé: ${cachedAheadCount} page(s)`
+    : cachedAheadCount > 0
+    ? `Pages en cache: ${cachedAheadCount}`
+    : loading
+    ? `Chargement…`
+    : null;
+
   const ensureCursorMap = (addr: string) => {
     const ns = getBaseCacheKey(addr);
     if (!cursorCache.current.has(ns)) {
@@ -1612,6 +1637,17 @@ export default function AllTransactionsTab({
                   </span>
                 )}
               </div>
+              {loadIndicatorLabel && (
+                <span
+                  className={`px-2 py-1 rounded text-xs font-medium ${
+                    isOverloaded
+                      ? "bg-amber-100 text-amber-700 border border-amber-200"
+                      : "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                  }`}
+                >
+                  {loadIndicatorLabel}
+                </span>
+              )}
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
