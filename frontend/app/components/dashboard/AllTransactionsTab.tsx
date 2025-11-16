@@ -282,6 +282,16 @@ export default function AllTransactionsTab({
     to: toParam,
   });
 
+  // Log only significant state changes (errors or page changes)
+  useEffect(() => {
+    if (error) {
+      console.error("[AllTransactionsTab] Error:", {
+        address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "none",
+        error: error.slice(0, 100),
+      });
+    }
+  }, [error, address]);
+
   const filterIsAll =
     !Array.isArray(selectedTypes) || (selectedTypes as any)[0] === "all";
   const canPrev = page > 1;

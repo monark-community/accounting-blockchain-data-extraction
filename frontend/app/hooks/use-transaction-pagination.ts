@@ -332,6 +332,10 @@ export function useTransactionPagination({
 
   const networkKey = useMemo(() => makeNetworkKey(networks), [networks]);
 
+  // Track ongoing preloads and regular loads to prevent duplicates
+  const preloadPromises = useRef<Map<number, Promise<void>>>(new Map());
+  const activeLoads = useRef<Map<number, Promise<any>>>(new Map());
+
   const preloadNextPage = async (nextPage: number, comboState: ComboState) => {
     if (!address) return;
     const cacheKey = getFilteredKey(selectedTypes, nextPage);
@@ -339,15 +343,34 @@ export function useTransactionPagination({
       return;
     }
 
-    try {
-      await collectFilteredPage(address, comboState, selectedTypes, nextPage, from, to);
-    } catch (e) {
-      console.debug("[Prefetch] Failed to preload page", nextPage, e);
+    // Prevent duplicate preload requests
+    if (preloadPromises.current.has(nextPage)) {
+      return preloadPromises.current.get(nextPage);
     }
+
+    // Also check if a regular load is already in progress for this page
+    if (activeLoads.current.has(nextPage)) {
+      return;
+    }
+
+    const preloadPromise = (async () => {
+      try {
+        await collectFilteredPage(address, comboState, selectedTypes, nextPage, from, to);
+      } catch {
+        // Silently fail preloads
+      } finally {
+        preloadPromises.current.delete(nextPage);
+      }
+    })();
+
+    preloadPromises.current.set(nextPage, preloadPromise);
+    return preloadPromise;
   };
 
   const load = async (p: number, allowFallbackToLastPage: boolean = false) => {
     if (!address) return;
+
+    const loadStartTime = performance.now();
 
     const networkList = [...networks];
     const comboState = ensureComboState(address, networkList, from, to);
@@ -363,8 +386,11 @@ export function useTransactionPagination({
       }
       setRows(cached.rows);
       setHasNext(cached.hasNext);
+      // Preload next page from cache (fast, so safe to do immediately)
       if (cached.hasNext) {
-        preloadNextPage(resolvedPage + 1, comboState);
+        setTimeout(() => {
+          preloadNextPage(resolvedPage + 1, comboState);
+        }, 100);
       }
       return;
     }
@@ -396,33 +422,65 @@ export function useTransactionPagination({
 
     // Load the requested page directly (normal navigation) or page 1 (filter change with no cache)
     const pageToLoad = allowFallbackToLastPage && p > 1 ? 1 : p;
+    
+    // Prevent duplicate loads for the same page
+    if (activeLoads.current.has(pageToLoad)) {
+      const existingPromise = activeLoads.current.get(pageToLoad);
+      try {
+        await existingPromise;
+      } catch {
+        // Ignore errors from duplicate load
+      }
+      return;
+    }
+    
     setLoading(true);
     setError(null);
+    const fetchStartTime = performance.now();
+    
+    const loadPromise = (async () => {
+      try {
+        return await collectFilteredPage(
+          address,
+          comboState,
+          selectedTypes,
+          pageToLoad,
+          from,
+          to
+        );
+      } finally {
+        activeLoads.current.delete(pageToLoad);
+      }
+    })();
+    
+    activeLoads.current.set(pageToLoad, loadPromise);
+    
     try {
-      const result = await collectFilteredPage(
-        address,
-        comboState,
-        selectedTypes,
-        pageToLoad,
-        from,
-        to
-      );
+      const result = await loadPromise;
+      const fetchTime = performance.now() - fetchStartTime;
       if (loadTokenRef.current !== token) {
         return;
       }
       const resolvedPage = result.resolvedPage ?? pageToLoad;
+      const totalTime = performance.now() - loadStartTime;
       setRows(result.rows);
       setHasNext(result.hasNext);
       if (resolvedPage !== page) {
         setPage(resolvedPage);
       }
-      if (result.hasNext) {
-        preloadNextPage(resolvedPage + 1, comboState);
+      // Preload next page only if current page loaded quickly (< 5s) to avoid overloading
+      const shouldPreload = fetchTime < 5000 && result.hasNext;
+      if (shouldPreload) {
+        // Delay preload slightly to not interfere with current request
+        setTimeout(() => {
+          preloadNextPage(resolvedPage + 1, comboState);
+        }, 500);
       }
     } catch (e: any) {
       if (loadTokenRef.current !== token) {
         return;
       }
+      console.error(`[Transactions] ❌ Error loading page ${pageToLoad}:`, e?.message || String(e));
       setError(e?.message || "Failed to load transactions");
       setRows([]);
       setHasNext(false);
@@ -441,21 +499,25 @@ export function useTransactionPagination({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey, from, to]);
 
-  // Load on filter change
+  // Load on filter/network change (but not on page change to avoid duplicates)
   useEffect(() => {
     if (!address) return;
+    // Only reload if filters/networks changed, not if page changed
+    // This prevents duplicate loads when page changes via goNext/goPrev
     load(page, true); // Allow fallback to last cached page when filter changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(selectedTypes), networkKey, from, to]);
+  }, [JSON.stringify(selectedTypes), networkKey]);
 
   const goPrev = () => {
     const p = Math.max(1, page - 1);
+    if (p === page) return; // Already on first page
     setPage(p);
     load(p, false); // Normal navigation: no fallback, show loading state
   };
 
   const goNext = () => {
     const p = page + 1;
+    if (!hasNext && p > page) return; // No next page available
     setPage(p);
     load(p, false); // Normal navigation: no fallback, show loading state
   };
@@ -475,6 +537,7 @@ export function useTransactionPagination({
     loading,
     error,
     setPage: (p: number) => {
+      if (p === page) return; // Avoid reloading same page
       setPage(p);
       load(p, false); // Normal navigation: no fallback, show loading state
     },

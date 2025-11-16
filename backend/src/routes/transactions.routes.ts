@@ -59,40 +59,46 @@ function parsePagination(query: Record<string, any>) {
  *  - page, limit: pagination (default 1 / 100)
  */
 router.get("/:address", async (req, res) => {
+  const routeStartHrTime = process.hrtime.bigint();
+  
   try {
     const raw = String(req.params.address ?? "");
     const ok = /^0x[0-9a-f]{40}$/i.test(raw); // <-- case-insensitive
-    // TEMP LOG: remove later
-    // console.log(
-    //   "[/transactions] addr raw='%s' len=%d regexOk=%s",
-    //   raw,
-    //   raw.length,
-    //   ok
-    // );
 
-    if (!ok) return res.status(400).json({ error: "Invalid address" });
+    if (!ok) {
+      return res.status(400).json({ error: "Invalid address" });
+    }
 
     const addr = raw.toLowerCase() as `0x${string}`;
     const { page, limit } = parsePagination(req.query as Record<string, any>);
-    logDebug("list:start", {
-      address: addr,
-      networks: req.query.networks ?? "(default)",
-      page,
-      limit,
-      minUsd: req.query.minUsd,
-      spamFilter: req.query.spamFilter,
-      class: req.query.class,
-    });
 
     // Check if class filter is applied (expenses, incomes, etc.)
     const classParam = (req.query.class as string | undefined)?.trim();
     const hasClassFilter = !!classParam;
 
-    const cursor = decodeCursor(firstQueryValue(req.query.cursor));
+    const cursorParamRaw = req.query.cursor;
+    const cursorParam =
+      typeof cursorParamRaw === "string"
+        ? cursorParamRaw
+        : Array.isArray(cursorParamRaw)
+        ? cursorParamRaw[0]
+        : undefined;
+    const cursor = decodeCursor(
+      cursorParam && typeof cursorParam === "string" ? cursorParam : undefined
+    );
+
+    const serviceStartTime = process.hrtime.bigint();
+
+    const networksParam = req.query.networks;
+    const networksValue = Array.isArray(networksParam)
+      ? networksParam.map(String)
+      : networksParam
+      ? String(networksParam)
+      : undefined;
 
     const legsRaw = await listTransactionLegs({
       address: addr,
-      networks: req.query.networks as string | string[] | undefined,
+      networks: networksValue,
       from: req.query.from as string | undefined,
       to: req.query.to as string | undefined,
       page,
@@ -100,11 +106,15 @@ router.get("/:address", async (req, res) => {
       cursor,
     });
 
+    const serviceTime = Number(process.hrtime.bigint() - serviceStartTime) / 1_000_000;
+
     const gasMeta = (legsRaw as any)._gasUsdByTx as
       | Record<string, number>
       | undefined;
     if (gasMeta) delete (legsRaw as any)._gasUsdByTx;
 
+    const filterStartTime = process.hrtime.bigint();
+    
     // apply filters from query
     const minUsd = req.query.minUsd ? Number(req.query.minUsd) : 0;
     const spamFilter =
@@ -134,6 +144,9 @@ router.get("/:address", async (req, res) => {
       ? encodeCursorFromLeg(nextCursorLeg)
       : null;
 
+    const filterTime = Number(process.hrtime.bigint() - filterStartTime) / 1_000_000;
+    const totalTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
+
     res.json({
       data: pagedLegs,
       meta: { gasUsdByTx: gasMeta ?? {} },
@@ -142,18 +155,12 @@ router.get("/:address", async (req, res) => {
       hasNext,
       nextCursor,
     });
-    logDebug("list:success", {
-      address: addr,
-      page,
-      limit,
-      cursor: cursor ? "yes" : "no",
-      totalLegs: legs.length,
-      filteredCount: legsAfterCursor.length,
-      returnedCount: pagedLegs.length,
-      hasNext,
-    });
+    
+    // Single summary log with key metrics
+    console.log(`[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | ${pagedLegs.length}/${legsRaw.length} legs | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`);
   } catch (err: any) {
-    logError("list:error", err?.stack || err);
+    const errorTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
+    console.error(`[Backend] ❌ Error (${(errorTime / 1000).toFixed(1)}s):`, err?.message || String(err));
     res
       .status(500)
       .json({ error: "Internal error", detail: err?.message ?? String(err) });

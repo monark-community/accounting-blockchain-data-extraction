@@ -41,7 +41,7 @@ const NATIVE_SYMBOL: Record<EvmNetwork, string> = {
   unichain: "ETH",
 };
 const TX_FETCH_WINDOW_CAP = Number(process.env.TX_FETCH_WINDOW_CAP ?? 80);
-const PRICING_BATCH_SIZE = Number(process.env.PRICING_BATCH_SIZE ?? 10); // Limit concurrent price requests
+const PRICING_BATCH_SIZE = Number(process.env.PRICING_BATCH_SIZE ?? 30); // Increased to 30 for better throughput (DeFiLlama can handle this)
 const LOGS_DEBUG =
   String(process.env.LOGS_DEBUG ?? "false").toLowerCase() === "true";
 const debugLog = (...args: any[]) => {
@@ -117,15 +117,7 @@ export async function listTransactionLegs(
       ? Math.min(cursorTime, toTimeRaw)
       : cursorTime ?? toTimeRaw;
 
-  debugLog("list:start", {
-    address: wallet,
-    page,
-    pageSize,
-    fetchWindow,
-    networks: nets,
-    fromTime,
-    toTime,
-  });
+  const serviceStartTime = process.hrtime.bigint();
 
   // 1) fetch + normalize per network (limit cross-network concurrency)
   const maxConc = Math.max(
@@ -136,6 +128,8 @@ export async function listTransactionLegs(
   const chunksArr: NormalizedLegRow[][] = [];
 
   async function runForNetwork(network: EvmNetwork) {
+    const networkStartTime = process.hrtime.bigint();
+
     const basePage: PageParams = {
       network,
       address: wallet,
@@ -145,16 +139,12 @@ export async function listTransactionLegs(
       limit: fetchWindow,
     };
 
+    const fetchStartTime = process.hrtime.bigint();
     const [fungible, nft] = await Promise.all([
       fetchFungibleTransfersPage(basePage),
       fetchNftTransfersPage(basePage),
     ]);
-    debugLog("network:fetched", {
-      network,
-      fungibleCount: fungible.length,
-      nftCount: nft.length,
-      fetchWindow,
-    });
+    const fetchTime = Number(process.hrtime.bigint() - fetchStartTime) / 1_000_000;
 
     const legsF = fungible.map((r) =>
       normalizeFungibleTransfer(r, basePage.address, network)
@@ -166,6 +156,8 @@ export async function listTransactionLegs(
 
     // 2) receipts per network (unique tx hashes in this page window)
     const uniqTx = Array.from(new Set(legs.map((l) => l.txHash)));
+    const receiptsStartTime = process.hrtime.bigint();
+    
     // Fetch receipts defensively — failures should not break the listing.
     let receipts: Record<
       string,
@@ -178,7 +170,7 @@ export async function listTransactionLegs(
     try {
       receipts = await fetchReceiptsBatch(network, uniqTx);
     } catch (e: any) {
-      console.error(`Receipts fetch failed for ${network}:`, e?.message || e);
+      console.error(`[Backend] Receipts fetch failed for ${network}:`, e?.message || String(e));
       receipts = {};
     }
 
@@ -187,40 +179,61 @@ export async function listTransactionLegs(
       const rc = receipts[l.txHash];
       if (rc) l.status = rc.status;
     }
-    debugLog("network:receipts", {
-      network,
-      uniqueTx: uniqTx.length,
-      receipts: Object.keys(receipts).length,
-    });
 
     // 4) pricing: per-leg USD at timestamp (pre-warm unique keys in batches to avoid rate limits)
+    const pricingStartTime = process.hrtime.bigint();
     const uniquePriceKeys = new Map<
       string,
-      { contract?: string; ts: number }
+      { contract?: string; ts: number; legIndices: number[] }
     >();
-    for (const l of legs) {
-      uniquePriceKeys.set(
-        `${(l.asset.contract ?? "native").toLowerCase()}@${l.timestamp}`,
-        {
+    
+    // Group legs by price key to avoid duplicate lookups
+    legs.forEach((l, idx) => {
+      const key = `${(l.asset.contract ?? "native").toLowerCase()}@${l.timestamp}`;
+      if (!uniquePriceKeys.has(key)) {
+        uniquePriceKeys.set(key, {
           contract: l.asset.contract,
           ts: l.timestamp,
-        }
-      );
-    }
+          legIndices: [],
+        });
+      }
+      uniquePriceKeys.get(key)!.legIndices.push(idx);
+    });
+    
     // Process price requests in batches to avoid overwhelming DeFiLlama API
-    await processInBatches(
-      Array.from(uniquePriceKeys.values()),
+    const priceResults = await processInBatches(
+      Array.from(uniquePriceKeys.entries()),
       PRICING_BATCH_SIZE,
-      ({ contract, ts }) => quoteTokenUsdAtTs(network, contract, ts)
+      async ([key, { contract, ts }]) => {
+        const price = await quoteTokenUsdAtTs(network, contract, ts);
+        return { key, price };
+      }
     );
-    // assign from warmed cache
-    for (const l of legs) {
-      const px = await quoteTokenUsdAtTs(
+    
+    // Build price map for fast lookup
+    const priceMap = new Map<string, number | undefined>();
+    for (const { key, price } of priceResults) {
+      priceMap.set(key, price);
+    }
+    
+    // Assign prices from map (instant lookup instead of sequential calls)
+    for (const [key, { legIndices }] of uniquePriceKeys.entries()) {
+      const px = priceMap.get(key);
+      if (typeof px === "number") {
+        for (const idx of legIndices) {
+          legs[idx].amountUsdAtTx = legs[idx].amount * px;
+        }
+      }
+    }
+    const pricingTime = Number(process.hrtime.bigint() - pricingStartTime) / 1_000_000;
+    
+    // Log pricing time if significant (>1s) - debug only
+    if (pricingTime > 1000) {
+      debugLog("pricing:time", {
         network,
-        l.asset.contract,
-        l.timestamp
-      );
-      if (typeof px === "number") l.amountUsdAtTx = l.amount * px;
+        uniqueKeys: uniquePriceKeys.size,
+        seconds: Number((pricingTime / 1000).toFixed(1)),
+      });
     }
 
     // 4b) Step 3 — Classify legs per transaction (swap, transfer, nft_buy/sell, …)
@@ -260,7 +273,7 @@ export async function listTransactionLegs(
         BigInt(rc.gasUsed ?? 0) * BigInt(rc.effectiveGasPrice ?? 0)
       ).toString();
       legs.push({
-        txHash,
+        txHash: txHash as `0x${string}`,
         blockNumber: sampleLeg.blockNumber,
         timestamp: sampleLeg.timestamp,
         network,
@@ -276,18 +289,14 @@ export async function listTransactionLegs(
         },
         amountRaw: weiSpent,
         amount: ethSpent,
-        amountUsdAtTx: gasUsdValue,
+        amountUsdAtTx: gasUsdValue ?? undefined,
         status: rc.status,
         logIndex: Number.MAX_SAFE_INTEGER,
         source: "rpc",
         class: "gas",
       });
     }
-    debugLog("network:gas", {
-      network,
-      gasEntries: Object.keys(gasUsdByTx).length,
-      syntheticGasLegs: legs.filter((l) => l.class === "gas").length,
-    });
+    const networkTime = Number(process.hrtime.bigint() - networkStartTime) / 1_000_000;
     // Attach meta on this chunk
     (legs as any)._gasUsdByTx = gasUsdByTx;
 
@@ -319,11 +328,6 @@ export async function listTransactionLegs(
   all.sort(sortLegs);
   // Return both legs and meta so the route can include it
   (all as any)._gasUsdByTx = gasMeta;
-  debugLog("list:complete", {
-    address: wallet,
-    totalLegs: all.length,
-    networksProcessed: chunks.length,
-    gasMetaEntries: Object.keys(gasMeta).length,
-  });
+  
   return all;
 }
