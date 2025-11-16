@@ -302,9 +302,6 @@ export default function AllTransactionsTab({
     }
     return { from: undefined, to: undefined, label: "All time" };
   }, [datePreset, customFrom, customTo, currentYear]);
-  const fromParam = dateRange.from;
-  const toParam = dateRange.to;
-  const dateRangeLabel = dateRange.label;
 
   useEffect(() => {
     if (datePreset !== "custom") return;
@@ -321,8 +318,8 @@ export default function AllTransactionsTab({
     [networks]
   );
   const dateRangeKey = useMemo(
-    () => `${fromParam ?? ""}|${toParam ?? ""}`,
-    [fromParam, toParam]
+    () => `${dateRange.from ?? ""}|${dateRange.to ?? ""}`,
+    [dateRange.from, dateRange.to]
   );
 
   // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
@@ -338,12 +335,6 @@ export default function AllTransactionsTab({
     >()
   );
   const cursorCache = useRef(new Map<string, Map<number, string | null>>());
-  const statusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [pageStatus, setPageStatus] = useState<{
-    page: number;
-    state: "loading" | "success" | "error";
-    message: string;
-  } | null>(null);
 
   // Simple filter chip state
   const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
@@ -462,7 +453,6 @@ export default function AllTransactionsTab({
     // Not in cache, fetch from API
     setLoading(true);
     setError(null);
-    setPageStatus({ page: p, state: "loading", message: `Loading page ${p}…` });
     try {
       const classParam = uiTypesToClassParam(selectedTypes);
       const resp = await fetchTransactions(address, {
@@ -474,8 +464,8 @@ export default function AllTransactionsTab({
         spamFilter: "hard",
         ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
-        ...(fromParam ? { from: fromParam } : {}),
-        ...(toParam ? { to: toParam } : {}),
+        ...(dateRange.from ? { from: dateRange.from } : {}),
+        ...(dateRange.to ? { to: dateRange.to } : {}),
       });
       const { rows, hasNext, nextCursor } = resp as any;
       const totalCount = (resp as any)?.total ?? null;
@@ -508,8 +498,6 @@ export default function AllTransactionsTab({
       setHasNext(current.hasNext);
       setTotal(totalCount);
       setMaxLoadedPage((prev) => (p > prev ? p : prev));
-      // cursorMap for p+1 set above
-      setPageStatus({ page: p, state: "success", message: `Page ${p} loaded` });
 
       // Prefetch next page in background (if available)
       if (current.hasNext && cursorMap.get(p + 1)) {
@@ -520,11 +508,6 @@ export default function AllTransactionsTab({
       setRows([]);
       setHasNext(false);
       setTotal(null);
-      setPageStatus({
-        page: p,
-        state: "error",
-        message: `Failed to load page ${p}`,
-      });
     } finally {
       setLoading(false);
     }
@@ -557,8 +540,8 @@ export default function AllTransactionsTab({
         spamFilter: "hard",
         ...(cursorParam ? { cursor: cursorParam } : {}),
         ...(classParam ? { class: classParam } : {}),
-        ...(fromParam ? { from: fromParam } : {}),
-        ...(toParam ? { to: toParam } : {}),
+        ...(dateRange.from ? { from: dateRange.from } : {}),
+        ...(dateRange.to ? { to: dateRange.to } : {}),
       });
       const { rows, hasNext, nextCursor } = resp as any;
       const totalCount = (resp as any)?.total ?? null;
@@ -590,22 +573,6 @@ export default function AllTransactionsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey, networksParam, dateRangeKey, bumpCacheVersion]);
 
-  useEffect(() => {
-    if (!pageStatus || pageStatus.state === "loading") return;
-    if (statusTimeoutRef.current) {
-      clearTimeout(statusTimeoutRef.current);
-      statusTimeoutRef.current = null;
-    }
-  }, [error, address]);
-
-  useEffect(() => {
-    return () => {
-      if (statusTimeoutRef.current) {
-        clearTimeout(statusTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // When server-side class filter changes (chips), reload current page with new filter
   useEffect(() => {
     if (!address) return;
@@ -615,8 +582,6 @@ export default function AllTransactionsTab({
     load(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTypesKey]);
-
-  const isInitialLoading = loading && rows.length === 0;
 
   // Use total from backend (Covalent) if available, otherwise fallback to estimation
   const totalCount = useMemo(() => {
@@ -629,11 +594,6 @@ export default function AllTransactionsTab({
       return (page - 1) * PAGE_SIZE + rows.length; // Exact count
     }
   }, [total, page, hasNext, rows.length]);
-
-  const totalPages = useMemo(() => {
-    if (!totalCount) return null;
-    return Math.ceil(totalCount / PAGE_SIZE);
-  }, [totalCount]);
 
   // Check if any filter is active (not "all")
   const hasActiveFilter = useMemo(() => {
@@ -791,8 +751,6 @@ export default function AllTransactionsTab({
       return next.length ? next : (["all"] as any);
     });
   };
-  // Rows are already chunked per page (20) via caching logic; render as-is
-  const visibleRows = rows;
   const typeLabelForExport =
     (selectedTypes as any)[0] === "all"
       ? "all"
@@ -1148,7 +1106,7 @@ export default function AllTransactionsTab({
                 </h3>
                 <p className="text-sm text-slate-500">
                   Based on {loadedTransactionsCount.toLocaleString()} loaded
-                  transactions for {dateRangeLabel}. Load additional pages to
+                  transactions for {dateRange.label}. Load additional pages to
                   refine these estimates.
                 </p>
               </div>
@@ -1651,7 +1609,7 @@ export default function AllTransactionsTab({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" disabled={loading}>
-                    Date: {dateRangeLabel}
+                    Date: {dateRange.label}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -1759,7 +1717,7 @@ export default function AllTransactionsTab({
                     onClick={() =>
                       exportCsv(
                         address,
-                        visibleRows,
+                        rows,
                         "visible",
                         typeLabelForExport
                       )
@@ -1773,7 +1731,7 @@ export default function AllTransactionsTab({
                     onClick={() =>
                       exportJson(
                         address,
-                        visibleRows,
+                        rows,
                         "visible",
                         typeLabelForExport
                       )
@@ -1933,7 +1891,7 @@ export default function AllTransactionsTab({
         )}
 
         {/* Table */}
-        {address && visibleRows.length > 0 && (
+        {address && rows.length > 0 && (
           <div className="overflow-x-auto relative">
             <Table>
               <TableHeader>
@@ -1952,7 +1910,7 @@ export default function AllTransactionsTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibleRows.map((tx, idx) => (
+                {rows.map((tx, idx) => (
                   <TableRow key={`${tx.hash}-${idx}`}>
                     {visibleColumns.type && (
                       <TableCell>
