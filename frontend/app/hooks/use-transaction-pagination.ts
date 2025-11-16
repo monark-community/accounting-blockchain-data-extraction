@@ -20,6 +20,8 @@ export interface ComboState {
   rawPromises: Map<number, Promise<RawPagePayload>>;
   filteredPages: Map<string, FilteredPagePayload>;
   filteredTotals: Map<string, { total: number; maxPage: number }>;
+  // Next cursor from the last backend response, used for fetching continuation (step 3)
+  rawNextCursor: string | null;
 }
 
 // Cache utilities
@@ -74,6 +76,7 @@ const ensureComboState = (addr: string, networkList: string[], from?: string, to
       rawPromises: new Map(),
       filteredPages: new Map(),
       filteredTotals: new Map(),
+      rawNextCursor: null,
     };
     globalComboCache.set(comboKey, state);
   }
@@ -118,11 +121,44 @@ const ensureRawPage = async (
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
   })
-    .then(({ rows, hasNext }) => {
-      const payload = { rows, hasNext };
-      comboState.rawPages.set(pageNum, payload);
+    .then(({ rows, hasNext, page: respPage, nextCursor }) => {
+      // Chunk all returned rows into PAGE_SIZE pages starting at the response page
+      const startPage = respPage ?? pageNum;
+      const chunks: TxRow[][] = [];
+      for (let i = 0; i < rows.length; i += PAGE_SIZE) {
+        chunks.push(rows.slice(i, i + PAGE_SIZE));
+      }
+
+      chunks.forEach((chunk, idx) => {
+        const logicalPage = startPage + idx;
+        if (!comboState.rawPages.has(logicalPage)) {
+          const isLastChunk = idx === chunks.length - 1;
+          comboState.rawPages.set(logicalPage, {
+            rows: chunk,
+            // If there are more chunks or backend indicates more, mark hasNext true
+            hasNext: !isLastChunk || hasNext === true,
+          });
+        }
+      });
+
+      // Save next cursor for continuation (used in step 3)
+      comboState.rawNextCursor = nextCursor ?? null;
+
+      // Dev-only summary log
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[Transactions] 📦 Buffered ${rows.length} legs into ${chunks.length} page(s) starting at ${startPage}`
+        );
+      }
+
       comboState.rawPromises.delete(pageNum);
-      return payload;
+      // Return the specifically requested page if populated; otherwise the last chunked page
+      if (comboState.rawPages.has(pageNum)) {
+        return comboState.rawPages.get(pageNum)!;
+      }
+      const lastLogical = startPage + Math.max(0, chunks.length - 1);
+      return comboState.rawPages.get(lastLogical)!;
     })
     .catch((error) => {
       comboState.rawPromises.delete(pageNum);

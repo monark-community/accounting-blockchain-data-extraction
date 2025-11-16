@@ -73,8 +73,11 @@ export async function fetchTransactions(address: string, q: TxQuery) {
   
   // Single summary log with key timings
   if (process.env.NODE_ENV !== 'production') {
+    const hasNextFlag =
+      typeof json.hasNext === "boolean" ? (json.hasNext ? "yes" : "no") : "unknown";
+    const cursorFlag = json.nextCursor ? "yes" : "no";
     console.log(
-      `[Transactions] ✅ Page ${json.page} | ${rows.length} rows | Network: ${(networkTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
+      `[Transactions] ✅ Page ${json.page} | ${rows.length} rows | hasNext=${hasNextFlag} | cursor=${cursorFlag} | Network: ${(networkTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
     );
   }
 

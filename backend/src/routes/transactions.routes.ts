@@ -132,17 +132,21 @@ router.get("/:address", async (req, res) => {
     const legsAfterCursor = cursor
       ? legsFilteredByClass.filter((leg) => isLegOlderThanCursor(leg, cursor))
       : legsFilteredByClass;
-    const start = cursor ? 0 : (page - 1) * limit;
-    const pagedLegs = legsAfterCursor.slice(start, start + limit);
-    const hasNext = cursor
-      ? legsAfterCursor.length > pagedLegs.length
-      : pagedLegs.length === limit;
-    const nextCursorLeg = hasNext
-      ? pagedLegs[pagedLegs.length - 1]
-      : undefined;
-    const nextCursor = nextCursorLeg
-      ? encodeCursorFromLeg(nextCursorLeg)
-      : null;
+    // Return-all with safety cap: send up to CAP legs, frontend paginates locally and continues via cursor
+    const CAP = Number(process.env.TX_RETURN_CAP ?? 150);
+    const pagedLegs = legsAfterCursor.slice(0, CAP);
+
+    // Cursor rule: hasNext is true iff nextCursor !== null.
+    // Provide nextCursor when there are more legs beyond the cap/slice.
+    const hasMoreBeyondCap = legsAfterCursor.length > pagedLegs.length;
+    // hasNext is false only if no legs are sent; otherwise true
+    const nextCursor =
+      pagedLegs.length === 0
+        ? null
+        : hasMoreBeyondCap
+        ? encodeCursorFromLeg(pagedLegs[pagedLegs.length - 1])
+        : null;
+    const hasNext = pagedLegs.length === 0 ? false : true;
 
     const filterTime = Number(process.hrtime.bigint() - filterStartTime) / 1_000_000;
     const totalTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
@@ -157,7 +161,9 @@ router.get("/:address", async (req, res) => {
     });
     
     // Single summary log with key metrics
-    console.log(`[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | ${pagedLegs.length}/${legsRaw.length} legs | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`);
+    console.log(
+      `[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | return-all (cap ${CAP}) ${pagedLegs.length}/${legsRaw.length} legs | hasNext=${hasNext ? "yes" : "no"} | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
+    );
   } catch (err: any) {
     const errorTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
     console.error(`[Backend] ❌ Error (${(errorTime / 1000).toFixed(1)}s):`, err?.message || String(err));
