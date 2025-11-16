@@ -455,24 +455,39 @@ export default function AllTransactionsTab({
       const { rows, hasNext, nextCursor } = resp as any;
       const totalCount = (resp as any)?.total ?? null;
 
-      // Store in cache
-      pageCache.current.set(cacheKey, {
-        rows,
-        hasNext,
-        total: totalCount,
-        nextCursor: nextCursor ?? null,
+      // Chunk and cache: build 20-sized pages starting at requested page p
+      const chunks: TxRow[][] = [];
+      for (let i = 0; i < rows.length; i += PAGE_SIZE) {
+        chunks.push(rows.slice(i, i + PAGE_SIZE));
+      }
+      chunks.forEach((chunk, idx) => {
+        const logicalPage = p + idx;
+        const key = getCacheKey(address, logicalPage);
+        const isLast = idx === chunks.length - 1;
+        const pageHasNext = !isLast || hasNext;
+        const pageNextCursor = isLast ? nextCursor ?? null : null;
+        pageCache.current.set(key, {
+          rows: chunk,
+          hasNext: pageHasNext,
+          total: totalCount,
+          nextCursor: pageNextCursor,
+        });
+        // Prepare cursor for following page (only meaningful after last chunk)
+        cursorMap.set(logicalPage + 1, pageNextCursor);
       });
       bumpCacheVersion();
 
-      setRows(rows);
-      setHasNext(hasNext);
-      setTotal(totalCount); // Store total count from backend
+      // Drive UI from the requested page slice we just cached
+      const current = pageCache.current.get(cacheKey)!;
+      setRows(current.rows);
+      setHasNext(current.hasNext);
+      setTotal(totalCount);
       setMaxLoadedPage((prev) => (p > prev ? p : prev));
-      cursorMap.set(p + 1, nextCursor ?? null);
+      // cursorMap for p+1 set above
       setPageStatus({ page: p, state: "success", message: `Page ${p} loaded` });
 
       // Prefetch next page in background (if available)
-      if (hasNext && nextCursor) {
+      if (current.hasNext && cursorMap.get(p + 1)) {
         preloadNextPage(p + 1);
       }
     } catch (e: any) {
