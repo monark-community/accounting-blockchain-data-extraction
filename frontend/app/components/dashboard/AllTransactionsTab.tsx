@@ -751,7 +751,10 @@ export default function AllTransactionsTab({
       return next.length ? next : (["all"] as any);
     });
   };
-  const visibleRows = rows;
+  // Enforce 20-per-page display locally
+  const startIndex = Math.max(0, (page - 1) * PAGE_SIZE);
+  const endIndex = startIndex + PAGE_SIZE;
+  const visibleRows = rows.slice(startIndex, endIndex);
   const typeLabelForExport =
     (selectedTypes as any)[0] === "all"
       ? "all"
@@ -1901,7 +1904,7 @@ export default function AllTransactionsTab({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((tx, idx) => (
+                {visibleRows.map((tx, idx) => (
                   <TableRow key={`${tx.hash}-${idx}`}>
                     {visibleColumns.type && (
                       <TableCell>
