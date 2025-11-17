@@ -1,13 +1,7 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useWallet } from "@/contexts/WalletContext";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
@@ -23,7 +17,6 @@ import {
 } from "@/utils/capitalGains";
 import { fetchTransactions } from "@/lib/api/transactions";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
 import { useWallets } from "@/hooks/use-wallets";
 import { OverviewResponse } from "@/lib/types/portfolio";
 import {
@@ -33,7 +26,11 @@ import {
   classifyRiskBucket,
   type RiskBucketId,
 } from "@/lib/portfolioUtils";
-import { fetchHistoricalData, type HistoricalPoint } from "@/lib/api/analytics";
+import {
+  fetchHistoricalData,
+  type HistoricalPoint,
+  type HistoricalResponse,
+} from "@/lib/api/analytics";
 import type { TxRow } from "@/lib/types/transactions";
 import { Crown } from "lucide-react";
 import {
@@ -62,6 +59,7 @@ import { Plus, X, Sparkles } from "lucide-react";
 const DASHBOARD_NETWORK_STORAGE_KEY = "dashboard.networks";
 const DASHBOARD_NETWORK_HINTS_KEY = "dashboard.networkSuggestions";
 const HISTORICAL_FALLBACK_PREFERENCE_KEY = "dashboard.historicalUseFallback";
+const DASHBOARD_WALLET_SELECTION_KEY = "dashboard.selectedWallets";
 const RAW_DEFAULT_DASHBOARD_NETWORKS =
   process.env.NEXT_PUBLIC_DASHBOARD_DEFAULT_NETWORKS ??
   process.env.NEXT_PUBLIC_DEFAULT_NETWORKS ??
@@ -121,6 +119,194 @@ const CHAIN_STACK_COLORS = [
   "#0ea5e9",
 ];
 
+const WALLET_COLOR_PALETTE = [
+  "#6366f1",
+  "#f97316",
+  "#0ea5e9",
+  "#14b8a6",
+  "#ec4899",
+  "#84cc16",
+];
+
+const MAX_MULTI_WALLETS = Number(
+  process.env.NEXT_PUBLIC_DASHBOARD_MULTI_LIMIT ?? 3
+);
+
+const shortAddress = (address?: string | null) =>
+  address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "—";
+
+type WalletStat = {
+  address: string;
+  totalValueUsd: number;
+  delta24hUsd: number;
+};
+
+type OverviewMergeResult = {
+  overview: OverviewResponse;
+  walletStats: WalletStat[];
+};
+
+type OverviewEntry = {
+  address: string;
+  overview: OverviewResponse;
+};
+
+type HoldingWithWallet = OverviewResponse["holdings"][number] & {
+  walletAddress?: string;
+};
+
+function mergeOverviewResponses(entries: OverviewEntry[]): OverviewMergeResult {
+  if (!entries.length) {
+    const empty: OverviewResponse = {
+      address: "",
+      asOf: new Date().toISOString(),
+      currency: "USD",
+      kpis: { totalValueUsd: 0, delta24hUsd: 0, delta24hPct: 0 },
+      holdings: [],
+      allocation: [],
+      topHoldings: [],
+    };
+    return { overview: empty, walletStats: [] };
+  }
+
+  if (entries.length === 1) {
+    const only = entries[0];
+    const holdings = only.overview.holdings.map((holding) => ({
+      ...holding,
+      walletAddress: only.address,
+    })) as HoldingWithWallet[];
+    const singleOverview: OverviewResponse = {
+      ...only.overview,
+      holdings,
+    };
+    return {
+      overview: singleOverview,
+      walletStats: [
+        {
+          address: only.address,
+          totalValueUsd: only.overview.kpis.totalValueUsd ?? 0,
+          delta24hUsd: only.overview.kpis.delta24hUsd ?? 0,
+        },
+      ],
+    };
+  }
+
+  let totalValue = 0;
+  let delta24h = 0;
+  const holdings: HoldingWithWallet[] = [];
+  const allocationMap = new Map<
+    string,
+    {
+      symbol: string;
+      chain: OverviewResponse["holdings"][number]["chain"];
+      valueUsd: number;
+    }
+  >();
+
+  const walletStats: WalletStat[] = [];
+
+  for (const entry of entries) {
+    const value = entry.overview.kpis.totalValueUsd ?? 0;
+    const delta = entry.overview.kpis.delta24hUsd ?? 0;
+    totalValue += value;
+    delta24h += delta;
+    walletStats.push({
+      address: entry.address,
+      totalValueUsd: value,
+      delta24hUsd: delta,
+    });
+
+    for (const holding of entry.overview.holdings) {
+      const enriched: HoldingWithWallet = {
+        ...holding,
+        walletAddress: entry.address,
+      };
+      holdings.push(enriched);
+      const key = `${holding.symbol}-${holding.chain}-${
+        holding.contract ?? ""
+      }`;
+      const existing = allocationMap.get(key);
+      if (existing) {
+        existing.valueUsd += holding.valueUsd ?? 0;
+      } else {
+        allocationMap.set(key, {
+          symbol: holding.symbol,
+          chain: holding.chain,
+          valueUsd: holding.valueUsd ?? 0,
+        });
+      }
+    }
+  }
+
+  const allocation = Array.from(allocationMap.values())
+    .filter((item) => item.valueUsd > 0)
+    .sort((a, b) => b.valueUsd - a.valueUsd)
+    .map((item) => ({
+      symbol: item.symbol,
+      valueUsd: item.valueUsd,
+      weightPct: totalValue > 0 ? (item.valueUsd / totalValue) * 100 : 0,
+      chain: item.chain,
+    }));
+
+  const topHoldings = allocation.slice(0, 5).map((item) => ({
+    symbol: item.symbol,
+    valueUsd: item.valueUsd,
+    weightPct: item.weightPct,
+    chain: item.chain,
+  }));
+
+  const previousTotal = totalValue - delta24h;
+  const delta24hPct =
+    previousTotal !== 0 ? (delta24h / previousTotal) * 100 : 0;
+
+  const merged: OverviewResponse = {
+    address: entries.map((entry) => entry.address).join(","),
+    asOf: new Date().toISOString(),
+    currency: "USD",
+    kpis: {
+      totalValueUsd: totalValue,
+      delta24hUsd: delta24h,
+      delta24hPct,
+    },
+    holdings,
+    allocation,
+    topHoldings,
+  };
+
+  return { overview: merged, walletStats };
+}
+
+function mergeHistoricalResponses(
+  responses: HistoricalResponse[]
+): HistoricalPoint[] {
+  const map = new Map<number, HistoricalPoint>();
+
+  for (const response of responses) {
+    for (const point of response.data ?? []) {
+      const existing = map.get(point.timestamp);
+      if (existing) {
+        existing.totalValueUsd += point.totalValueUsd;
+        for (const [chain, usd] of Object.entries(point.byChain ?? {})) {
+          existing.byChain[chain] = (existing.byChain[chain] ?? 0) + usd;
+        }
+        for (const [asset, usd] of Object.entries(point.byAsset ?? {})) {
+          existing.byAsset[asset] = (existing.byAsset[asset] ?? 0) + usd;
+        }
+      } else {
+        map.set(point.timestamp, {
+          date: point.date,
+          timestamp: point.timestamp,
+          totalValueUsd: point.totalValueUsd,
+          byChain: { ...(point.byChain ?? {}) },
+          byAsset: { ...(point.byAsset ?? {}) },
+        });
+      }
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp);
+}
+
 const Dashboard = () => {
   const {
     connectedWallets,
@@ -141,13 +327,63 @@ const Dashboard = () => {
   const [loadingOv, setLoadingOv] = useState(false);
   const [errorOv, setErrorOv] = useState<string | null>(null);
   const [showChange, setShowChange] = useState(false);
-  const [selectedWallet, setSelectedWallet] = useState<string>("");
+  const [selectedWallets, setSelectedWallets] = useState<string[]>([]);
+  const [appliedWallets, setAppliedWallets] = useState<string[]>([]);
+  const [walletSelectionDirty, setWalletSelectionDirty] = useState(false);
   const [minUsdFilter, setMinUsdFilter] = useState(5);
   const [hideStables, setHideStables] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
   const [loadingHistorical, setLoadingHistorical] = useState(false);
   const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
+  const [walletLabelMode, setWalletLabelMode] = useState<"name" | "address">(
+    "name"
+  );
+const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
+  const [loadedFromStorage, setLoadedFromStorage] = useState(false);
+  const handleToggleWallet = (walletAddress: string, checked: boolean) => {
+    setSelectedWallets((prev) => {
+      if (checked) {
+        if (prev.includes(walletAddress)) return prev;
+        if (prev.length >= MAX_MULTI_WALLETS) return prev;
+        setWalletSelectionDirty(true);
+        return [...prev, walletAddress];
+      }
+      const next = prev.filter((addr) => addr !== walletAddress);
+      setWalletSelectionDirty(true);
+      return next;
+    });
+  };
+
+  const handleApplyWallets = () => {
+    if (!selectedWallets.length) return;
+    setAppliedWallets(selectedWallets);
+    setWalletSelectionDirty(false);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedWallets([]);
+    setWalletSelectionDirty(true);
+  };
+
+  const walletLimitReached =
+    selectedWallets.length >= MAX_MULTI_WALLETS && !urlAddress;
+
+  const handleSelectMainWallet = () => {
+    if (urlAddress) return;
+    const main = allWallets.find((wallet) => wallet.isMain);
+    if (main) {
+      setSelectedWallets([main.address]);
+      setWalletSelectionDirty(true);
+    }
+  };
+
+  const handleSelectAllWallets = () => {
+    if (urlAddress) return;
+    const next = allWallets.slice(0, MAX_MULTI_WALLETS).map((wallet) => wallet.address);
+    setSelectedWallets(next);
+    setWalletSelectionDirty(true);
+  };
   const [useFallbackEstimation, setUseFallbackEstimation] = useState(false);
   const overviewReady = !!ov && !loadingOv;
   const [capitalGainsData, setCapitalGainsData] = useState<{
@@ -171,7 +407,10 @@ const Dashboard = () => {
   const handleFallbackPreferenceChange = (useFallback: boolean) => {
     setUseFallbackEstimation(useFallback);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(HISTORICAL_FALLBACK_PREFERENCE_KEY, String(useFallback));
+      window.localStorage.setItem(
+        HISTORICAL_FALLBACK_PREFERENCE_KEY,
+        String(useFallback)
+      );
     }
   };
 
@@ -187,72 +426,79 @@ const Dashboard = () => {
     setMounted(true);
     // Load historical fallback preference from localStorage
     if (typeof window !== "undefined") {
-      const storedPref = window.localStorage.getItem(HISTORICAL_FALLBACK_PREFERENCE_KEY);
+      const storedPref = window.localStorage.getItem(
+        HISTORICAL_FALLBACK_PREFERENCE_KEY
+      );
       if (storedPref !== null) {
         setUseFallbackEstimation(storedPref === "true");
       }
     }
   }, []);
 
-  // Use URL address if available, otherwise use connected wallet address
-  const address = useMemo(
-    () =>
-      urlAddress
-        ? urlAddress
-        : selectedWallet || (isConnected && userWallet ? userWallet : ""),
-    [urlAddress, selectedWallet, isConnected, userWallet]
-  );
-
-  // Get all wallets from backend (main wallet from users table + secondary wallets from user_wallets table)
+  // Get all wallets from backend (main wallet + linked wallets)
   const allWallets = useMemo(() => {
-    // userWallets already contains:
-    // 1. Main wallet (from users table) with up-to-date name
-    // 2. Secondary wallets (from user_wallets table)
-    // Just identify which is the main wallet
     return userWallets.map((w) => ({
       ...w,
       isMain: w.address.toLowerCase() === userWallet?.toLowerCase(),
     }));
   }, [userWallet, userWallets]);
 
-  // Calculate width based on longest wallet name
-  const maxWalletWidth = useMemo(() => {
-    if (allWallets.length === 0) return 280;
-    const longestName = allWallets.reduce(
-      (longest, wallet) =>
-        wallet.name.length > longest.length ? wallet.name : longest,
-      allWallets[0].name
-    );
-    // Account for: checkmark space (32px) + crown icon (16px) + gap (8px) + name + address format "(0x...10...8)" (~28 chars) + padding (40px left + 16px right) + arrow (32px)
-    const checkmarkSpace = 32; // space for checkmark in dropdown
-    const iconSpace = 16 + 8; // crown + gap
-    const addressChars = 28; // "(0x12345678...12345678)"
-    const padding = 40 + 16; // left (pl-10) + right (pr-4) padding
-    const arrowSpace = 32;
-    // Rough estimation: ~8px per character for font-medium, ~6px for monospace
-    const estimatedWidth =
-      checkmarkSpace +
-      iconSpace +
-      longestName.length * 8 +
-      addressChars * 6 +
-      padding +
-      arrowSpace;
-    return Math.max(280, estimatedWidth);
+  // Use URL address if available, otherwise use connected wallet address
+  const walletMetaMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { address: string; name: string; isMain: boolean; color: string }
+    >();
+    allWallets.forEach((wallet, idx) => {
+      map.set(wallet.address.toLowerCase(), {
+        address: wallet.address,
+        name: wallet.name,
+        isMain: wallet.isMain,
+        color: WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length],
+      });
+    });
+    return map;
   }, [allWallets]);
+
+  const activeWallets = useMemo(() => {
+    if (urlAddress) {
+      return urlAddress ? [urlAddress] : [];
+    }
+    if (appliedWallets.length) {
+      return appliedWallets;
+    }
+    if (selectedWallets.length) {
+      return selectedWallets;
+    }
+    if (isConnected && userWallet) {
+      return [userWallet];
+    }
+    return [];
+  }, [urlAddress, appliedWallets, selectedWallets, isConnected, userWallet]);
+
+  const address = activeWallets[0] ?? "";
+  const isMultiWalletView = activeWallets.length > 1;
 
   // Auto-select first wallet (main wallet) when wallets are loaded
   useEffect(() => {
-    if (allWallets.length > 0 && !selectedWallet && !urlAddress) {
-      setSelectedWallet(allWallets[0].address);
+    if (urlAddress) return;
+    if (allWallets.length > 0 && selectedWallets.length === 0) {
+      const first = [allWallets[0].address];
+      setSelectedWallets(first);
+      setAppliedWallets(first);
+      setWalletSelectionDirty(false);
     }
-  }, [allWallets, selectedWallet, urlAddress]);
+  }, [allWallets, selectedWallets.length, urlAddress]);
 
-  // Reset selectedWallet when user disconnects
+  // Reset selections when user disconnects
   useEffect(() => {
-    if (!isConnected) {
-      setSelectedWallet("");
+    if (!isConnected && !urlAddress) {
+      setSelectedWallets([]);
+      setAppliedWallets([]);
+      setWalletStats([]);
+      setWalletSelectionDirty(false);
     }
-  }, [isConnected]);
+  }, [isConnected, urlAddress]);
 
   // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
@@ -320,6 +566,44 @@ const Dashboard = () => {
   }, [enableNetworkSuggestions]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || urlAddress || loadedFromStorage)
+      return;
+    if (!allWallets.length) return;
+    const stored = window.localStorage.getItem(DASHBOARD_WALLET_SELECTION_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as string[];
+        const valid = parsed.filter((addr) =>
+          allWallets.some(
+            (wallet) => wallet.address.toLowerCase() === addr.toLowerCase()
+          )
+        );
+        if (valid.length) {
+          const limited = valid.slice(0, MAX_MULTI_WALLETS);
+          setSelectedWallets(limited);
+          setAppliedWallets(limited);
+          setWalletSelectionDirty(false);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    setLoadedFromStorage(true);
+  }, [allWallets, urlAddress, loadedFromStorage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || urlAddress) return;
+    if (!appliedWallets.length) {
+      window.localStorage.removeItem(DASHBOARD_WALLET_SELECTION_KEY);
+      return;
+    }
+    window.localStorage.setItem(
+      DASHBOARD_WALLET_SELECTION_KEY,
+      JSON.stringify(appliedWallets)
+    );
+  }, [appliedWallets, urlAddress]);
+
+  useEffect(() => {
     if (!enableNetworkSuggestions) {
       setNetworkSuggestions([]);
       setLoadingNetworkHints(false);
@@ -382,26 +666,74 @@ const Dashboard = () => {
     return () => controller.abort();
   }, [address, networks, enableNetworkSuggestions]);
 
+  const fetchOverviewSnapshot = useCallback(
+    async (targetAddress: string) => {
+      const url = `/api/holdings/${encodeURIComponent(
+        targetAddress
+      )}?networks=${encodeURIComponent(
+        networksParam
+      )}&withDelta24h=true&minUsd=0&includeZero=true&spamFilter=hard&_ts=${Date.now()}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        let message = "Failed to load overview";
+        try {
+          const detail = await res.json();
+          message =
+            detail?.error ??
+            detail?.message ??
+            (typeof detail === "string" ? detail : JSON.stringify(detail));
+        } catch {
+          message = await res.text();
+        }
+        throw new Error(message || "Failed to load overview");
+      }
+      const data = (await res.json()) as OverviewResponse;
+      return data;
+    },
+    [networksParam]
+  );
+
   useEffect(() => {
-    if (!address) return;
+    if (!activeWallets.length) return;
+    let cancelled = false;
     setLoadingOv(true);
     setErrorOv(null);
 
-    const url = `/api/holdings/${encodeURIComponent(
-      address
-    )}?networks=${encodeURIComponent(
-      networksParam
-    )}&withDelta24h=true&minUsd=0&includeZero=true&spamFilter=hard&_ts=${Date.now()}`;
-
-    fetch(url, { cache: "no-store" })
-      .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
-      .then((data: OverviewResponse) => {
-        // console.log("[FE] holdings overview kpis =", data.kpis); // sanity log
-        setOv(data);
+    Promise.all(
+      activeWallets.map((walletAddress) =>
+        fetchOverviewSnapshot(walletAddress).then((overview) => ({
+          address: walletAddress,
+          overview,
+        }))
+      )
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        const merged = mergeOverviewResponses(entries);
+        setOv(merged.overview);
+        setWalletStats(merged.walletStats);
       })
-      .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
-      .finally(() => setLoadingOv(false));
-  }, [address, networksParam, userWallet, isConnected]);
+      .catch((e) => {
+        if (cancelled) return;
+        console.error("[Dashboard] Failed to load overview:", e);
+        setOv(null);
+        setWalletStats([]);
+        setErrorOv(
+          typeof e?.message === "string"
+            ? e.message
+            : e?.error ?? "Failed to load overview"
+        );
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingOv(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWallets, fetchOverviewSnapshot]);
 
   const addNetwork = (networkId: string) =>
     setNetworks((prev) => {
@@ -431,52 +763,46 @@ const Dashboard = () => {
 
   // Fetch historical data for 6-month graph
   useEffect(() => {
-    if (!address || !overviewReady) {
+    if (!activeWallets.length || !overviewReady) {
       console.log(
         "[Dashboard] Historical data fetch postponed until overview is ready"
       );
       return;
     }
     let cancelled = false;
-    console.log(
-      `[Dashboard] Fetching historical data for ${address}, networks: ${networksParam}, useFallback: ${useFallbackEstimation}`
-    );
     setLoadingHistorical(true);
-    fetchHistoricalData(address, {
-      networks: networksParam,
-      days: 180,
-      useFallback: useFallbackEstimation,
-    })
-      .then((response) => {
+    Promise.all(
+      activeWallets.map((walletAddress) =>
+        fetchHistoricalData(walletAddress, {
+          networks: networksParam,
+          days: 180,
+          useFallback: useFallbackEstimation,
+        })
+      )
+    )
+      .then((responses) => {
         if (cancelled) return;
-        console.log(
-          `[Dashboard] Historical data received: ${response.data.length} points`
-        );
-        // Clean data by removing internal _isEstimated field
-        const cleanData = response.data.map((point: any) => {
-          const { _isEstimated, ...rest } = point;
-          return rest;
-        });
-        setHistoricalData(cleanData);
-        setIsHistoricalEstimated(response.isEstimated || false);
+        const merged = mergeHistoricalResponses(responses);
+        setHistoricalData(merged);
+        setIsHistoricalEstimated(responses.some((resp) => resp.isEstimated));
       })
       .catch((e) => {
         if (cancelled) return;
         console.error("[Dashboard] Failed to load historical data:", e);
       })
       .finally(() => {
-        if (cancelled) return;
-        setLoadingHistorical(false);
-        console.log("[Dashboard] Historical data fetch completed");
+        if (!cancelled) {
+          setLoadingHistorical(false);
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [address, networksParam, overviewReady, useFallbackEstimation]);
+  }, [activeWallets, networksParam, overviewReady, useFallbackEstimation]);
 
   useEffect(() => {
-    if (!address || !overviewReady) {
+    if (!activeWallets.length || !overviewReady) {
       return;
     }
     let cancelled = false;
@@ -486,16 +812,18 @@ const Dashboard = () => {
         const calculator = new CapitalGainsCalculator(accountingMethod);
         const rows: TxRow[] = [];
         const MAX_PAGES = 3;
-        for (let page = 1; page <= MAX_PAGES; page++) {
-          const resp = await fetchTransactions(address, {
-            networks: networksParam,
-            page,
-            limit: 40,
-            minUsd: 0,
-            spamFilter: "hard",
-          });
-          rows.push(...resp.rows);
-          if (!resp.hasNext) break;
+        for (const walletAddress of activeWallets) {
+          for (let page = 1; page <= MAX_PAGES; page++) {
+            const resp = await fetchTransactions(walletAddress, {
+              networks: networksParam,
+              page,
+              limit: 40,
+              minUsd: 0,
+              spamFilter: "hard",
+            });
+            rows.push(...resp.rows);
+            if (!resp.hasNext) break;
+          }
         }
         rows.sort(
           (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
@@ -632,7 +960,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [address, networksParam, accountingMethod, overviewReady, ov]);
+  }, [activeWallets, networksParam, accountingMethod, overviewReady, ov]);
 
   const historicalChartData = useMemo(() => {
     console.log(
@@ -858,6 +1186,56 @@ const Dashboard = () => {
     }));
   }, [ov]);
 
+  const appliedWalletDisplay = useMemo(() => {
+    const list = urlAddress
+      ? [urlAddress]
+      : appliedWallets.length
+      ? appliedWallets
+      : [];
+    return list.map((addr, idx) => {
+      const meta = walletMetaMap.get(addr.toLowerCase());
+      const label =
+        walletLabelMode === "address" || urlAddress
+          ? shortAddress(addr)
+          : meta?.name ?? shortAddress(addr);
+      const color =
+        meta?.color ?? WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length];
+      return { address: addr, label, color };
+    });
+  }, [urlAddress, appliedWallets, walletLabelMode, walletMetaMap]);
+
+  const walletDisplayItems = useMemo(() => {
+    if (!walletStats.length) return [];
+    return walletStats.map((stat, idx) => {
+      const meta = walletMetaMap.get(stat.address.toLowerCase());
+      const label =
+        walletLabelMode === "address" || !meta
+          ? shortAddress(stat.address)
+          : meta.name;
+      const color =
+        meta?.color ?? WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length];
+      return { ...stat, label, color };
+    });
+  }, [walletStats, walletLabelMode, walletMetaMap]);
+
+  const walletLabelLookup = useMemo(() => {
+    const lookup: Record<string, { label: string; color: string }> = {};
+    walletDisplayItems.forEach((item) => {
+      lookup[item.address.toLowerCase()] = {
+        label: item.label,
+        color: item.color,
+      };
+    });
+    return lookup;
+  }, [walletDisplayItems]);
+
+  const appliedWalletSummary = appliedWalletDisplay
+    .map((wallet) => wallet.label)
+    .join(" + ");
+  const aggregatedWalletCount = urlAddress
+    ? 1
+    : appliedWalletDisplay.length || selectedWallets.length || 0;
+
   const effectiveN = (weightsPct: number[]) => {
     const w = weightsPct.map((p) => p / 100);
     const sumSq = w.reduce((s, x) => s + x * x, 0) || 1;
@@ -967,60 +1345,161 @@ const Dashboard = () => {
                 Track your crypto assets and tax obligations
               </p>
             </div>
-            {isConnected && allWallets.length > 1 && (
-              <div className="relative inline-block">
-                <Select
-                  value={selectedWallet}
-                  onValueChange={setSelectedWallet}
-                >
-                  <SelectTrigger
-                    className="h-12 pl-10 pr-4 border-2 border-slate-200 rounded-xl bg-white shadow-md hover:border-blue-400 focus:ring-2 focus:ring-blue-500 transition-all duration-200 text-slate-800 font-medium"
-                    style={{ width: `${maxWalletWidth}px` }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const selected = allWallets.find(
-                          (w) => w.address === selectedWallet
-                        );
-                        if (!selected) return null;
-                        return (
-                          <>
-                            {selected.isMain && (
-                              <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                            )}
-                            <span className="font-medium">{selected.name}</span>
-                            <span className="text-slate-500 font-mono text-sm">
-                              ({selected.address.slice(0, 10)}...
-                              {selected.address.slice(-8)})
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-2 shadow-lg w-[var(--radix-select-trigger-width)]">
-                    {allWallets.map((wallet) => (
-                      <SelectItem
-                        key={wallet.address}
-                        value={wallet.address}
-                        className="py-3 pl-10 pr-4 text-slate-800 font-medium cursor-pointer hover:bg-blue-50 focus:bg-blue-50"
-                      >
-                        <div className="flex items-center gap-2">
-                          {wallet.isMain && (
-                            <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                          )}
-                          <span className="font-medium">{wallet.name}</span>
-                          <span className="text-slate-500 font-mono text-sm">
-                            ({wallet.address.slice(0, 10)}...
-                            {wallet.address.slice(-8)})
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {urlAddress ? (
+              <div className="text-sm text-slate-500 border border-slate-200 rounded-full px-4 py-2 bg-white shadow-sm">
+                Viewing shared address {shortAddress(urlAddress)}
               </div>
-            )}
+            ) : isConnected && allWallets.length > 0 ? (
+              <div className="flex flex-col items-end gap-3">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="border-2 border-slate-200"
+                      >
+                        Select wallets ({selectedWallets.length}/
+                        {MAX_MULTI_WALLETS})
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-72">
+                      <DropdownMenuLabel>
+                        Wallets (max {MAX_MULTI_WALLETS})
+                      </DropdownMenuLabel>
+                      {allWallets.map((wallet) => {
+                        const checked = selectedWallets.includes(
+                          wallet.address
+                        );
+                        const disabled =
+                          !checked &&
+                          selectedWallets.length >= MAX_MULTI_WALLETS;
+                        return (
+                          <DropdownMenuCheckboxItem
+                            key={wallet.address}
+                            checked={checked}
+                            disabled={disabled}
+                            onCheckedChange={(value) =>
+                              handleToggleWallet(wallet.address, !!value)
+                            }
+                          >
+                            <div className="flex items-center gap-2">
+                              {wallet.isMain && (
+                                <Crown className="w-3.5 h-3.5 text-amber-500" />
+                              )}
+                              <div className="flex flex-col">
+                                <span className="text-sm font-medium text-slate-800">
+                                  {wallet.name}
+                                </span>
+                                <span className="text-[11px] text-slate-500 font-mono">
+                                  {shortAddress(wallet.address)}
+                                </span>
+                              </div>
+                            </div>
+                          </DropdownMenuCheckboxItem>
+                        );
+                      })}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        disabled={!selectedWallets.length}
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          handleClearSelection();
+                        }}
+                      >
+                        Clear selection
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="border-2 border-slate-200"
+                    onClick={handleSelectMainWallet}
+                    disabled={urlAddress || !allWallets.length}
+                    title="Select main wallet"
+                  >
+                    <Crown className="h-4 w-4 text-amber-500" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-2 border-slate-200"
+                    onClick={handleSelectAllWallets}
+                    disabled={urlAddress || !allWallets.length}
+                  >
+                    Select {Math.min(MAX_MULTI_WALLETS, allWallets.length)}
+                  </Button>
+                  <Button
+                    onClick={handleApplyWallets}
+                    disabled={!selectedWallets.length || !walletSelectionDirty}
+                  >
+                    Update selection
+                    {walletSelectionDirty && selectedWallets.length ? (
+                      <span className="ml-2 text-xs text-amber-200">
+                        pending
+                      </span>
+                    ) : null}
+                  </Button>
+                </div>
+                <div className="flex flex-col items-end text-xs text-slate-500 gap-1">
+                  <span>
+                    Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS} wallets
+                  </span>
+                  {walletSelectionDirty && selectedWallets.length > 0 && !urlAddress && (
+                    <span className="inline-flex items-center gap-1 text-amber-600">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      Apply the new selection to refresh data
+                    </span>
+                  )}
+                </div>
+                {walletLimitReached && (
+                  <p className="text-xs text-amber-600">
+                    Free tier limited to {MAX_MULTI_WALLETS} wallets. Manage
+                    additional wallets from the Manage Wallets tab.
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {appliedWalletDisplay.length ? (
+                    appliedWalletDisplay.map((wallet) => (
+                      <Badge
+                        key={wallet.address}
+                        variant="secondary"
+                        className="flex items-center gap-2 rounded-full bg-white text-slate-700 border border-slate-200"
+                      >
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: wallet.color }}
+                        />
+                        {wallet.label}
+                      </Badge>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-500">
+                      Select up to {MAX_MULTI_WALLETS} wallets to aggregate.
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span>Label style:</span>
+                  <Button
+                    size="sm"
+                    variant={walletLabelMode === "name" ? "default" : "outline"}
+                    onClick={() => setWalletLabelMode("name")}
+                  >
+                    Nicknames
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={
+                      walletLabelMode === "address" ? "default" : "outline"
+                    }
+                    onClick={() => setWalletLabelMode("address")}
+                  >
+                    Addresses
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -1205,6 +1684,9 @@ const Dashboard = () => {
               setHideStables={setHideStables}
               filteredHoldings={filteredHoldings}
               riskBuckets={riskBuckets}
+              walletBreakdown={walletDisplayItems}
+              walletLabels={walletLabelLookup}
+              isMultiWalletView={isMultiWalletView}
             />
           </TabsContent>
 
@@ -1227,6 +1709,8 @@ const Dashboard = () => {
               movers={movers}
               netFlowData={netFlowData}
               chainHistory={chainHistory}
+              walletBreakdown={walletDisplayItems}
+              walletSummary={appliedWalletSummary}
             />
           </TabsContent>
 
