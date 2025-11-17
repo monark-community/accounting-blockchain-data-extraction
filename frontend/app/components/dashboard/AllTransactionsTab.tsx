@@ -63,10 +63,10 @@ export default function AllTransactionsTab({
     }
   }, [cache.total, cache.page, cache.hasNext, cache.rows.length]);
 
-  // Block navigation buttons when filters are active
-  const canPrev = !filters.hasActiveFilter && cache.page > 1;
+  // Navigation buttons - now work with filters since filtering is done client-side
+  const canPrev = cache.page > 1;
   const canNext =
-    !filters.hasActiveFilter && cache.hasNext && !(cache.loading && cache.page >= cache.maxLoadedPage);
+    cache.hasNext && !(cache.loading && cache.page >= cache.maxLoadedPage);
   const goPrev = () => {
     const p = Math.max(1, cache.page - 1);
     cache.setPage(p);
