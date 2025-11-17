@@ -41,7 +41,7 @@ const NATIVE_SYMBOL: Record<EvmNetwork, string> = {
   unichain: "ETH",
 };
 const TX_FETCH_WINDOW_CAP = Number(process.env.TX_FETCH_WINDOW_CAP ?? 80);
-const PRICING_BATCH_SIZE = Number(process.env.PRICING_BATCH_SIZE ?? 30); // Increased to 30 for better throughput (DeFiLlama can handle this)
+const PRICING_BATCH_SIZE = Number(process.env.PRICING_BATCH_SIZE ?? 50); // Increased to 50 for better throughput (DeFiLlama can handle this)
 const LOGS_DEBUG =
   String(process.env.LOGS_DEBUG ?? "false").toLowerCase() === "true";
 const debugLog = (...args: any[]) => {
@@ -326,6 +326,7 @@ export async function listTransactionLegs(
   }
 
   all.sort(sortLegs);
+  
   // Return both legs and meta so the route can include it
   (all as any)._gasUsdByTx = gasMeta;
   

@@ -136,17 +136,16 @@ router.get("/:address", async (req, res) => {
     const CAP = Number(process.env.TX_RETURN_CAP ?? 150);
     const pagedLegs = legsAfterCursor.slice(0, CAP);
 
-    // Cursor rule: hasNext is true iff nextCursor !== null.
-    // Provide nextCursor when there are more legs beyond the cap/slice.
+    // Cursor rule: Always create cursor from last sent transaction to ensure progression.
+    // hasNext is true only if there are more legs available beyond what we're sending.
     const hasMoreBeyondCap = legsAfterCursor.length > pagedLegs.length;
-    // hasNext is false only if no legs are sent; otherwise true
+    // Always create cursor from last sent transaction to allow progression, even if we haven't reached CAP
     const nextCursor =
       pagedLegs.length === 0
         ? null
-        : hasMoreBeyondCap
-        ? encodeCursorFromLeg(pagedLegs[pagedLegs.length - 1])
-        : null;
-    const hasNext = pagedLegs.length === 0 ? false : true;
+        : encodeCursorFromLeg(pagedLegs[pagedLegs.length - 1]);
+    // hasNext is true only if there are more legs available (beyond what we sent)
+    const hasNext = hasMoreBeyondCap;
 
     const filterTime = Number(process.hrtime.bigint() - filterStartTime) / 1_000_000;
     const totalTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
