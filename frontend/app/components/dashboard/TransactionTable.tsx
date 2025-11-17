@@ -59,6 +59,7 @@ export function TransactionTable({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12">#</TableHead>
               {visibleColumns.type && <TableHead>Type</TableHead>}
               {visibleColumns.date && <TableHead>Date</TableHead>}
               {visibleColumns.network && <TableHead>Network</TableHead>}
@@ -73,6 +74,9 @@ export function TransactionTable({
           <TableBody>
             {[...Array(6)].map((_, i) => (
               <TableRow key={i}>
+                <TableCell>
+                  <Skeleton className="h-4 w-8" />
+                </TableCell>
                 {Object.keys(visibleColumns).map((k) =>
                   visibleColumns[k as keyof typeof visibleColumnsInit] ? (
                     <TableCell key={k}>
@@ -101,6 +105,7 @@ export function TransactionTable({
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-12">#</TableHead>
             {visibleColumns.type && <TableHead>Type</TableHead>}
             {visibleColumns.date && <TableHead>Date</TableHead>}
             {visibleColumns.network && <TableHead>Network</TableHead>}
@@ -115,6 +120,9 @@ export function TransactionTable({
         <TableBody>
           {rows.map((tx, idx) => (
             <TableRow key={`${tx.hash}-${idx}`}>
+              <TableCell className="text-slate-500 font-medium">
+                {idx + 1}
+              </TableCell>
               {visibleColumns.type && (
                 <TableCell>
                   <div
