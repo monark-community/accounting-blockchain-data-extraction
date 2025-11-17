@@ -104,8 +104,9 @@ export function useTransactionCache({
     if (Array.isArray(selectedTypes) && selectedTypes.length === 1) {
       return selectedTypes[0];
     }
-    // Multiple types selected - use JSON string as key
-    return JSON.stringify(selectedTypes);
+    // Multiple types selected - sort to ensure consistent cache keys
+    const sorted = Array.isArray(selectedTypes) ? [...selectedTypes].sort() : selectedTypes;
+    return JSON.stringify(sorted);
   }, [selectedTypes]);
 
   // Prefetch/cache status: compute how many pages are already cached ahead for current filter
@@ -135,25 +136,69 @@ export function useTransactionCache({
     ? `Chargement…`
     : null;
 
+  // Generate all possible filter combinations
+  const getAllFilterCombinations = useCallback((): Array<string | TxType[]> => {
+    const baseTypes: TxType[] = ["income", "expense", "swap", "gas"];
+    const combinations: Array<string | TxType[]> = ["all"];
+
+    // Add individual types
+    baseTypes.forEach((type) => combinations.push(type));
+
+      // Generate all combinations of 2, 3, and 4 types
+      for (let r = 2; r <= baseTypes.length; r++) {
+        const generateCombinations = (
+          arr: TxType[],
+          size: number,
+          start: number = 0,
+          current: TxType[] = []
+        ): void => {
+          if (current.length === size) {
+            // Sort to ensure consistent cache keys (e.g., ["income","expense"] not ["expense","income"])
+            combinations.push([...current].sort());
+            return;
+          }
+          for (let i = start; i < arr.length; i++) {
+            current.push(arr[i]);
+            generateCombinations(arr, size, i + 1, current);
+            current.pop();
+          }
+        };
+        generateCombinations(baseTypes, r);
+      }
+
+      return combinations;
+  }, []);
+
+  // Check if a transaction matches a filter (single type or combination)
+  const transactionMatchesFilter = useCallback(
+    (row: TxRow, filter: string | TxType[]): boolean => {
+      if (filter === "all") return true;
+      if (typeof filter === "string") {
+        return row.type === filter;
+      }
+      // Filter is an array of types (combination)
+      return filter.includes(row.type);
+    },
+    []
+  );
+
   // Filter and paginate raw transactions for all filter types
   const filterAndPaginate = useCallback(
     (rawRows: TxRow[], baseKey: string, totalCount: number | null) => {
       // Check if there are more raw transactions available (via global cursor)
       const hasMoreRaw = globalNextCursor.current.get(baseKey) !== null;
 
-      // Filter types to process: "all", "income", "expense", "swap", "gas"
-      const filterTypes: Array<"all" | "income" | "expense" | "swap" | "gas"> = [
-        "all",
-        "income",
-        "expense",
-        "swap",
-        "gas",
-      ];
+      // Get all possible filter combinations
+      const allFilters = getAllFilterCombinations();
 
-      filterTypes.forEach((filterType) => {
-        const filterKey = `${baseKey}:${filterType}`;
+      // Process each filter combination
+      allFilters.forEach((filter) => {
+        // Generate filter key (string for single type, JSON for combinations)
+        const filterKeyStr =
+          typeof filter === "string" ? filter : JSON.stringify(filter);
+        const filterKey = `${baseKey}:${filterKeyStr}`;
         const alreadyPaginated = paginatedCount.current.get(filterKey) || 0;
-        
+
         // Only process new raw transactions (those not yet paginated)
         const newRawRows = rawRows.slice(alreadyPaginated);
         if (newRawRows.length === 0) {
@@ -161,24 +206,27 @@ export function useTransactionCache({
           return;
         }
 
-        // Filter new transactions by type
-        let newFiltered: TxRow[];
-        if (filterType === "all") {
-          newFiltered = newRawRows;
-        } else {
-          newFiltered = newRawRows.filter((row) => row.type === filterType);
+        // Filter new transactions: single pass through transactions
+        // Each transaction is checked against this filter and added if it matches
+        const newFiltered: TxRow[] = [];
+        for (const row of newRawRows) {
+          if (transactionMatchesFilter(row, filter)) {
+            newFiltered.push(row);
+          }
         }
 
         if (newFiltered.length === 0) {
-          // No new transactions of this type
+          // No new transactions match this filter
           paginatedCount.current.set(filterKey, rawRows.length);
           return;
         }
 
-        // Collect existing incomplete pages for this filter type
+        // Collect existing incomplete pages for this filter
         const existingIncomplete = new Map<number, TxRow[]>();
-        for (const [key, value] of Array.from(incompletePageCache.current.entries())) {
-          if (key.startsWith(`${baseKey}:${filterType}:`)) {
+        for (const [key, value] of Array.from(
+          incompletePageCache.current.entries()
+        )) {
+          if (key.startsWith(`${baseKey}:${filterKeyStr}:`)) {
             const pageNum = Number(key.split(":")[key.split(":").length - 1]);
             if (Number.isFinite(pageNum)) {
               existingIncomplete.set(pageNum, value.rows);
@@ -193,7 +241,7 @@ export function useTransactionCache({
         // Find the highest page number already cached (complete or incomplete)
         let highestPageNum = 0;
         for (const key of Array.from(pageCache.current.keys())) {
-          if (key.startsWith(`${baseKey}:${filterType}:`)) {
+          if (key.startsWith(`${baseKey}:${filterKeyStr}:`)) {
             const pageNum = Number(key.split(":")[key.split(":").length - 1]);
             if (Number.isFinite(pageNum) && pageNum > highestPageNum) {
               highestPageNum = pageNum;
@@ -201,7 +249,7 @@ export function useTransactionCache({
           }
         }
         for (const key of Array.from(incompletePageCache.current.keys())) {
-          if (key.startsWith(`${baseKey}:${filterType}:`)) {
+          if (key.startsWith(`${baseKey}:${filterKeyStr}:`)) {
             const pageNum = Number(key.split(":")[key.split(":").length - 1]);
             if (Number.isFinite(pageNum) && pageNum > highestPageNum) {
               highestPageNum = pageNum;
@@ -219,7 +267,7 @@ export function useTransactionCache({
 
             if (completed.length === PAGE_SIZE) {
               // Page is now complete
-              const cacheKey = getFilterCacheKey(address!, filterType, pageNum);
+              const cacheKey = getFilterCacheKey(address!, filterKeyStr, pageNum);
               pageCache.current.set(cacheKey, {
                 rows: completed,
                 hasNext: hasMoreRaw || newFilteredIndex < newFiltered.length,
@@ -228,7 +276,7 @@ export function useTransactionCache({
               incompletePageCache.current.delete(cacheKey);
             } else {
               // Still incomplete
-              const cacheKey = getFilterCacheKey(address!, filterType, pageNum);
+              const cacheKey = getFilterCacheKey(address!, filterKeyStr, pageNum);
               incompletePageCache.current.set(cacheKey, { rows: completed });
             }
           }
@@ -238,9 +286,16 @@ export function useTransactionCache({
         // Start from the page after the highest existing page
         currentPageNum = highestPageNum + 1;
         while (newFilteredIndex < newFiltered.length) {
-          const chunk = newFiltered.slice(newFilteredIndex, newFilteredIndex + PAGE_SIZE);
+          const chunk = newFiltered.slice(
+            newFilteredIndex,
+            newFilteredIndex + PAGE_SIZE
+          );
           newFilteredIndex += chunk.length;
-          const cacheKey = getFilterCacheKey(address!, filterType, currentPageNum);
+          const cacheKey = getFilterCacheKey(
+            address!,
+            filterKeyStr,
+            currentPageNum
+          );
 
           if (chunk.length === PAGE_SIZE) {
             // Complete page
@@ -263,7 +318,13 @@ export function useTransactionCache({
 
       bumpCacheVersion();
     },
-    [address, getFilterCacheKey, bumpCacheVersion]
+    [
+      address,
+      getFilterCacheKey,
+      bumpCacheVersion,
+      getAllFilterCombinations,
+      transactionMatchesFilter,
+    ]
   );
 
   // Load current page (with cache check and auto-completion)
