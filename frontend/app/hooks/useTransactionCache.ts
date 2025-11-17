@@ -504,8 +504,42 @@ export function useTransactionCache({
       setTotal(cached.total);
       setMaxLoadedPage((prev) => (page > prev ? page : prev));
     } else {
-      // Page doesn't exist - load it (will fetch if needed)
-      load(page);
+      // Current page doesn't exist - find the last complete page for this filter
+      const baseKey = getBaseCacheKey(address);
+      let lastCompletePage = 0;
+      const prefix = `${baseKey}:${filterType}:`;
+      
+      // Check only complete pages cache (not incomplete pages)
+      for (const key of Array.from(pageCache.current.keys())) {
+        if (key.startsWith(prefix)) {
+          const pageNum = Number(key.split(":")[key.split(":").length - 1]);
+          if (Number.isFinite(pageNum) && pageNum > lastCompletePage) {
+            lastCompletePage = pageNum;
+          }
+        }
+      }
+
+      // If we found a complete cached page, go to it (or page 1 if none found)
+      const targetPage = lastCompletePage > 0 ? lastCompletePage : 1;
+      
+      if (targetPage !== page) {
+        // Redirect to the last complete page
+        setPage(targetPage);
+        const targetCacheKey = getFilterCacheKey(address, filterType, targetPage);
+        const targetCached = pageCache.current.get(targetCacheKey);
+        if (targetCached) {
+          setRows(targetCached.rows);
+          setHasNext(targetCached.hasNext);
+          setTotal(targetCached.total);
+          setMaxLoadedPage((prev) => (targetPage > prev ? targetPage : prev));
+        } else {
+          // Should not happen, but load it just in case
+          load(targetPage);
+        }
+      } else {
+        // We're already on page 1, but it doesn't exist - load it
+        load(page);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTypesKey]);
