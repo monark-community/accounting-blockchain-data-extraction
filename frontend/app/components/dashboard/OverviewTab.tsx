@@ -87,6 +87,15 @@ interface OverviewTabProps {
   setHideStables: (value: boolean) => void;
   filteredHoldings: PricedHolding[];
   riskBuckets: RiskBucket[];
+  walletBreakdown: Array<{
+    address: string;
+    label: string;
+    color: string;
+    totalValueUsd: number;
+    delta24hUsd: number;
+  }>;
+  walletLabels: Record<string, { label: string; color: string }>;
+  isMultiWalletView: boolean;
 }
 
 const CHAIN_COLOR_PALETTE = [
@@ -98,6 +107,8 @@ const CHAIN_COLOR_PALETTE = [
   "#facc15",
 ];
 const OTHER_CHAIN_COLOR = "#94a3b8";
+const shortAddr = (value?: string) =>
+  value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
 
 const OverviewTab = ({
   loadingOv,
@@ -118,6 +129,9 @@ const OverviewTab = ({
   setHideStables,
   filteredHoldings,
   riskBuckets,
+  walletBreakdown,
+  walletLabels,
+  isMultiWalletView,
 }: OverviewTabProps) => {
   const totalValueUsd = ov?.kpis.totalValueUsd ?? 0;
   const largestHolding =
@@ -164,6 +178,8 @@ const OverviewTab = ({
     chain === "other"
       ? OTHER_CHAIN_COLOR
       : CHAIN_COLOR_PALETTE[idx % CHAIN_COLOR_PALETTE.length];
+  const walletColumnVisible =
+    isMultiWalletView && Object.keys(walletLabels).length > 0;
   return (
     <div className="space-y-6">
       {/* Portfolio Summary Cards */}
@@ -186,6 +202,27 @@ const OverviewTab = ({
                   showSign={false}
                 />
               )}
+              {!loadingOv && walletBreakdown.length > 1 && (
+                <div className="mt-3 space-y-1 text-xs text-slate-500">
+                  {walletBreakdown.map((wallet) => (
+                    <div
+                      key={wallet.address}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: wallet.color }}
+                        />
+                        {wallet.label}
+                      </span>
+                      <span className="font-mono text-slate-600">
+                        {fmtUSD(wallet.totalValueUsd)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <Wallet className="w-12 h-12 text-blue-500" />
           </div>
@@ -205,6 +242,33 @@ const OverviewTab = ({
                   currency={userCurrency}
                   variant="large"
                 />
+              )}
+              {!loadingOv && walletBreakdown.length > 1 && (
+                <div className="mt-3 space-y-1 text-xs text-slate-500">
+                  {walletBreakdown.map((wallet) => (
+                    <div
+                      key={`${wallet.address}-delta`}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: wallet.color }}
+                        />
+                        {wallet.label}
+                      </span>
+                      <span
+                        className={`font-mono ${
+                          wallet.delta24hUsd >= 0
+                            ? "text-emerald-600"
+                            : "text-rose-600"
+                        }`}
+                      >
+                        {fmtUSD(wallet.delta24hUsd)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
             {loadingOv ? (
@@ -916,6 +980,26 @@ const OverviewTab = ({
                     <span className="font-medium text-slate-800">
                       {h.symbol || "(unknown)"}
                     </span>
+                    {isMultiWalletView && (h as any).walletAddress && (
+                      <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                        {(() => {
+                          const address = (h as any).walletAddress as string;
+                          const meta =
+                            walletLabels[address?.toLowerCase()] ?? null;
+                          return (
+                            <>
+                              <span
+                                className="inline-block w-1.5 h-1.5 rounded-full"
+                                style={{
+                                  backgroundColor: meta?.color ?? "#94a3b8",
+                                }}
+                              />
+                              {meta?.label ?? shortAddr(address)}
+                            </>
+                          );
+                        })()}
+                      </span>
+                    )}
                   </div>
                   <div className="text-right text-green-700 font-semibold">
                     {fmtUSD(h.delta24hUsd ?? 0)}{" "}
@@ -949,6 +1033,26 @@ const OverviewTab = ({
                     <span className="font-medium text-slate-800">
                       {h.symbol || "(unknown)"}
                     </span>
+                    {isMultiWalletView && (h as any).walletAddress && (
+                      <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                        {(() => {
+                          const address = (h as any).walletAddress as string;
+                          const meta =
+                            walletLabels[address?.toLowerCase()] ?? null;
+                          return (
+                            <>
+                              <span
+                                className="inline-block w-1.5 h-1.5 rounded-full"
+                                style={{
+                                  backgroundColor: meta?.color ?? "#94a3b8",
+                                }}
+                              />
+                              {meta?.label ?? shortAddr(address)}
+                            </>
+                          );
+                        })()}
+                      </span>
+                    )}
                   </div>
                   <div className="text-right text-red-700 font-semibold">
                     {fmtUSD(h.delta24hUsd ?? 0)}{" "}
@@ -1004,6 +1108,9 @@ const OverviewTab = ({
                 <tr className="text-left text-slate-500">
                   <th className="px-2 py-2">Asset</th>
                   <th className="px-2 py-2">Chain</th>
+                  {walletColumnVisible && (
+                    <th className="px-2 py-2">Wallet</th>
+                  )}
                   <th className="px-2 py-2 text-right">Qty</th>
                   <th className="px-2 py-2 text-right">Price</th>
                   <th className="px-2 py-2 text-right">Value</th>
@@ -1034,6 +1141,29 @@ const OverviewTab = ({
                           {CHAIN_LABEL[(h as any).chain] ?? (h as any).chain}
                         </span>
                       </td>
+                      {walletColumnVisible && (
+                        <td className="px-2 py-2">
+                          {(() => {
+                            const key = (
+                              ((h as any).walletAddress as string) || ""
+                            ).toLowerCase();
+                            const meta = walletLabels[key];
+                            return meta ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-slate-600">
+                                <span
+                                  className="inline-block w-2 h-2 rounded-full"
+                                  style={{ backgroundColor: meta.color }}
+                                />
+                                {meta.label}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                {shortAddr((h as any).walletAddress)}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                      )}
                       <td className="px-2 py-2 text-right">
                         {parseFloat(h.qty).toLocaleString()}
                       </td>

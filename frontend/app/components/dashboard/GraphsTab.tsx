@@ -74,6 +74,8 @@ const STABLE_SYMBOLS = new Set([
   "PYUSD",
   "BUSD",
 ]);
+const shortAddr = (value?: string) =>
+  value ? `${value.slice(0, 6)}…${value.slice(-4)}` : "—";
 
 const InfoHover = ({ description }: { description: string }) => (
   <Tooltip>
@@ -132,6 +134,14 @@ interface GraphsTabProps {
   movers: Movers;
   netFlowData: NetFlowPoint[];
   chainHistory: ChainHistorySeries;
+  walletBreakdown: Array<{
+    address: string;
+    label: string;
+    color: string;
+    totalValueUsd: number;
+    delta24hUsd: number;
+  }>;
+  walletSummary: string;
 }
 
 const GraphsTab = ({
@@ -152,6 +162,8 @@ const GraphsTab = ({
   movers,
   netFlowData,
   chainHistory,
+  walletBreakdown,
+  walletSummary,
 }: GraphsTabProps) => {
   const [visibleCharts, setVisibleCharts] = useState<ChartVisibilityState>({
     ...chartVisibilityDefaults,
@@ -217,7 +229,7 @@ const GraphsTab = ({
           <Skeleton className="h-[300px] w-full" />
         ) : !ov ? (
           <div className="text-sm text-slate-500">
-            Load an address to see asset distribution.
+          Select at least one wallet to see asset distribution.
           </div>
         ) : allocationData.length === 0 ? (
           <div className="text-sm text-slate-500">No assets to display.</div>
@@ -534,8 +546,32 @@ const GraphsTab = ({
               </span>
             </div>
           ))}
+      </div>
+    </Card>
+    {walletBreakdown.length > 1 && (
+      <Card className="p-4 bg-white shadow-sm">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-sm font-semibold text-slate-800">
+            Aggregated wallets
+          </p>
+          <span className="text-xs text-slate-500">{walletSummary}</span>
+        </div>
+        <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+          {walletBreakdown.map((wallet) => (
+            <span
+              key={wallet.address}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 bg-slate-50"
+            >
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ backgroundColor: wallet.color }}
+              />
+              {wallet.label} · {fmtUSD(wallet.totalValueUsd)}
+            </span>
+          ))}
         </div>
       </Card>
+    )}
 
       {/* 6-Month Portfolio Fluctuation Chart */}
       {visibleCharts.portfolioEvolution && (
@@ -586,7 +622,7 @@ const GraphsTab = ({
       ) : historicalChartData.length === 0 ? (
         <div className="text-center py-12">
           <p className="text-sm text-slate-500 mb-2">
-            No historical data available for this address.
+            No historical data available for the selected wallets.
           </p>
           <p className="text-xs text-slate-400 mb-4">
             Historical data requires transactions over the last 6
@@ -597,7 +633,10 @@ const GraphsTab = ({
               Debug Information
             </summary>
             <div className="bg-slate-50 p-3 rounded mt-2 space-y-1">
-              <p>Address: {address?.substring(0, 10)}...</p>
+              <p>
+                Wallets:{" "}
+                {walletSummary || shortAddr(address)}
+              </p>
               <p>
                 Networks: {networks?.split(",").length || 0} network(s)
               </p>
@@ -810,7 +849,7 @@ const GraphsTab = ({
         </div>
       ) : !ov ? (
         <div className="text-sm text-slate-500">
-          Load an address to see allocation by chain.
+          Select at least one wallet to see allocation by chain.
         </div>
       ) : chainBreakdown.length === 0 ? (
         <div className="text-sm text-slate-500">
