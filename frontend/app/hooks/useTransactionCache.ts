@@ -29,7 +29,15 @@ export function useTransactionCache({
   const [cacheVersion, setCacheVersion] = useState(0);
   const bumpCacheVersion = useCallback(() => setCacheVersion((v) => v + 1), []);
 
-  // Cache for pages: key = "address:filterKey:page" -> { rows, hasNext, total }
+  // Raw transactions cache: stores all transactions without type filtering
+  // Key: "address:networks:dateRange" (SANS selectedTypes)
+  const rawTransactionsCache = useRef(new Map<string, TxRow[]>());
+
+  // Global next cursor: one cursor per base context (address + networks + dateRange)
+  // Key: "address:networks:dateRange" (SANS selectedTypes)
+  const globalNextCursor = useRef(new Map<string, string | null>());
+
+  // Cache for pages: key = "baseKey:filterType:page" -> { rows, hasNext, total }
   const pageCache = useRef(
     new Map<
       string,
@@ -37,11 +45,18 @@ export function useTransactionCache({
         rows: TxRow[];
         hasNext: boolean;
         total: number | null;
-        nextCursor: string | null;
       }
     >()
   );
-  const cursorCache = useRef(new Map<string, Map<number, string | null>>());
+
+  // Incomplete pages cache: pages with < 20 legs
+  const incompletePageCache = useRef(
+    new Map<string, { rows: TxRow[] }>()
+  );
+
+  // Track how many raw transactions have been paginated for each filter type
+  // Key: "baseKey:filterType" -> number of raw transactions already paginated
+  const paginatedCount = useRef(new Map<string, number>());
 
   // Local pagination state
   const [rows, setRows] = useState<TxRow[]>([]);
@@ -51,25 +66,54 @@ export function useTransactionCache({
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
 
-  // Generate cache key for current filters
+  // Generate base cache key (without selectedTypes): "address:networks:dateRange"
   const getBaseCacheKey = useCallback((addr: string) => {
-    const filterKey = JSON.stringify(selectedTypes);
     const nets = networksParam || "(all)";
-    return `${addr}:${nets}:${filterKey}:${dateRangeKey}`;
-  }, [selectedTypes, networksParam, dateRangeKey]);
-  
-  const getCacheKey = useCallback((addr: string, pageNum: number) =>
-    `${getBaseCacheKey(addr)}:${pageNum}`, [getBaseCacheKey]);
-    
+    return `${addr}:${nets}:${dateRangeKey}`;
+  }, [networksParam, dateRangeKey]);
+
+  // Generate cache key for a specific filter type and page
+  const getFilterCacheKey = useCallback(
+    (addr: string, filterType: string, pageNum: number) => {
+      const baseKey = getBaseCacheKey(addr);
+      return `${baseKey}:${filterType}:${pageNum}`;
+    },
+    [getBaseCacheKey]
+  );
+
+  // Legacy: keep for compatibility with existing code
+  const getCacheKey = useCallback(
+    (addr: string, pageNum: number) => {
+      const filterKey = JSON.stringify(selectedTypes);
+      const baseKey = getBaseCacheKey(addr);
+      return `${baseKey}:${filterKey}:${pageNum}`;
+    },
+    [getBaseCacheKey, selectedTypes]
+  );
+
   const namespaceKey = useMemo(
     () => (address ? getBaseCacheKey(address) : null),
     [address, getBaseCacheKey]
   );
 
-  // Prefetch/cache status: compute how many pages are already cached ahead
+  // Get filter type string from selectedTypes
+  const getFilterType = useCallback((): string => {
+    if (Array.isArray(selectedTypes) && selectedTypes.length === 1 && selectedTypes[0] === "all") {
+      return "all";
+    }
+    if (Array.isArray(selectedTypes) && selectedTypes.length === 1) {
+      return selectedTypes[0];
+    }
+    // Multiple types selected - use JSON string as key
+    return JSON.stringify(selectedTypes);
+  }, [selectedTypes]);
+
+  // Prefetch/cache status: compute how many pages are already cached ahead for current filter
   const cachedAheadCount = useMemo(() => {
-    if (!address || !namespaceKey) return 0;
-    const prefix = `${namespaceKey}:`;
+    if (!address) return 0;
+    const filterType = getFilterType();
+    const baseKey = getBaseCacheKey(address);
+    const prefix = `${baseKey}:${filterType}:`;
     let count = 0;
     for (const key of Array.from(pageCache.current.keys())) {
       if (key.startsWith(prefix)) {
@@ -81,7 +125,7 @@ export function useTransactionCache({
       }
     }
     return count;
-  }, [address, namespaceKey, page, cacheVersion]);
+  }, [address, page, getBaseCacheKey, getFilterType, cacheVersion]);
   const isOverloaded = cachedAheadCount >= 3 || (loading && cachedAheadCount >= 1);
   const loadIndicatorLabel = isOverloaded
     ? `Préchargement élevé: ${cachedAheadCount} page(s)`
@@ -91,201 +135,338 @@ export function useTransactionCache({
     ? `Chargement…`
     : null;
 
-  const ensureCursorMap = useCallback((addr: string) => {
-    const ns = getBaseCacheKey(addr);
-    if (!cursorCache.current.has(ns)) {
-      cursorCache.current.set(ns, new Map([[1, null]]));
-    }
-    return { map: cursorCache.current.get(ns)!, namespace: ns };
-  }, [getBaseCacheKey]);
+  // Filter and paginate raw transactions for all filter types
+  const filterAndPaginate = useCallback(
+    (rawRows: TxRow[], baseKey: string, totalCount: number | null) => {
+      // Check if there are more raw transactions available (via global cursor)
+      const hasMoreRaw = globalNextCursor.current.get(baseKey) !== null;
 
-  // Load current page (with cache check)
-  const load = useCallback(async (p: number) => {
-    if (!address) return;
+      // Filter types to process: "all", "income", "expense", "swap", "gas"
+      const filterTypes: Array<"all" | "income" | "expense" | "swap" | "gas"> = [
+        "all",
+        "income",
+        "expense",
+        "swap",
+        "gas",
+      ];
 
-    // Check cache first
-    const cacheKey = getCacheKey(address, p);
-    const cached = pageCache.current.get(cacheKey);
-    const { map: cursorMap } = ensureCursorMap(address);
-    const cursorParam = cursorMap.get(p) ?? null;
+      filterTypes.forEach((filterType) => {
+        const filterKey = `${baseKey}:${filterType}`;
+        const alreadyPaginated = paginatedCount.current.get(filterKey) || 0;
+        
+        // Only process new raw transactions (those not yet paginated)
+        const newRawRows = rawRows.slice(alreadyPaginated);
+        if (newRawRows.length === 0) {
+          // No new transactions to process
+          return;
+        }
 
-    if (cached) {
-      // Use cached data immediately (no loading state)
-      setRows(cached.rows);
-      setHasNext(cached.hasNext);
-      setTotal(cached.total);
-      setMaxLoadedPage((prev) => (p > prev ? p : prev));
-      cursorMap.set(p + 1, cached.nextCursor ?? null);
+        // Filter new transactions by type
+        let newFiltered: TxRow[];
+        if (filterType === "all") {
+          newFiltered = newRawRows;
+        } else {
+          newFiltered = newRawRows.filter((row) => row.type === filterType);
+        }
 
-      // Prefetch next page in background (if available)
-      if (cached.hasNext && cached.nextCursor) {
-        preloadNextPage(p + 1);
-      }
-      return;
-    }
+        if (newFiltered.length === 0) {
+          // No new transactions of this type
+          paginatedCount.current.set(filterKey, rawRows.length);
+          return;
+        }
 
-    // Not in cache, fetch from API
-    setLoading(true);
-    setError(null);
-    try {
-      const classParam = uiTypesToClassParam(selectedTypes);
-      const resp = await fetchTransactions(address, {
-        // networks: if undefined → backend default = all supported EVM networks
-        ...(networksParam ? { networks: networksParam } : {}),
-        page: p,
-        limit: PAGE_SIZE,
-        minUsd: 0,
-        spamFilter: "hard",
-        ...(cursorParam ? { cursor: cursorParam } : {}),
-        ...(classParam ? { class: classParam } : {}),
-        ...(dateRange.from ? { from: dateRange.from } : {}),
-        ...(dateRange.to ? { to: dateRange.to } : {}),
+        // Collect existing incomplete pages for this filter type
+        const existingIncomplete = new Map<number, TxRow[]>();
+        for (const [key, value] of Array.from(incompletePageCache.current.entries())) {
+          if (key.startsWith(`${baseKey}:${filterType}:`)) {
+            const pageNum = Number(key.split(":")[key.split(":").length - 1]);
+            if (Number.isFinite(pageNum)) {
+              existingIncomplete.set(pageNum, value.rows);
+            }
+          }
+        }
+
+        // Start pagination, completing incomplete pages first
+        let newFilteredIndex = 0;
+        let currentPageNum = 1;
+
+        // Find the highest page number already cached (complete or incomplete)
+        let highestPageNum = 0;
+        for (const key of Array.from(pageCache.current.keys())) {
+          if (key.startsWith(`${baseKey}:${filterType}:`)) {
+            const pageNum = Number(key.split(":")[key.split(":").length - 1]);
+            if (Number.isFinite(pageNum) && pageNum > highestPageNum) {
+              highestPageNum = pageNum;
+            }
+          }
+        }
+        for (const key of Array.from(incompletePageCache.current.keys())) {
+          if (key.startsWith(`${baseKey}:${filterType}:`)) {
+            const pageNum = Number(key.split(":")[key.split(":").length - 1]);
+            if (Number.isFinite(pageNum) && pageNum > highestPageNum) {
+              highestPageNum = pageNum;
+            }
+          }
+        }
+
+        // First, complete existing incomplete pages
+        for (const [pageNum, existingRows] of Array.from(existingIncomplete.entries()).sort((a, b) => a[0] - b[0])) {
+          const needed = PAGE_SIZE - existingRows.length;
+          if (needed > 0 && newFilteredIndex < newFiltered.length) {
+            const toAdd = newFiltered.slice(newFilteredIndex, newFilteredIndex + needed);
+            const completed = [...existingRows, ...toAdd];
+            newFilteredIndex += toAdd.length;
+
+            if (completed.length === PAGE_SIZE) {
+              // Page is now complete
+              const cacheKey = getFilterCacheKey(address!, filterType, pageNum);
+              pageCache.current.set(cacheKey, {
+                rows: completed,
+                hasNext: hasMoreRaw || newFilteredIndex < newFiltered.length,
+                total: totalCount,
+              });
+              incompletePageCache.current.delete(cacheKey);
+            } else {
+              // Still incomplete
+              const cacheKey = getFilterCacheKey(address!, filterType, pageNum);
+              incompletePageCache.current.set(cacheKey, { rows: completed });
+            }
+          }
+        }
+
+        // Then, paginate remaining new filtered transactions into new pages
+        // Start from the page after the highest existing page
+        currentPageNum = highestPageNum + 1;
+        while (newFilteredIndex < newFiltered.length) {
+          const chunk = newFiltered.slice(newFilteredIndex, newFilteredIndex + PAGE_SIZE);
+          newFilteredIndex += chunk.length;
+          const cacheKey = getFilterCacheKey(address!, filterType, currentPageNum);
+
+          if (chunk.length === PAGE_SIZE) {
+            // Complete page
+            const isLast = newFilteredIndex >= newFiltered.length;
+            pageCache.current.set(cacheKey, {
+              rows: chunk,
+              hasNext: !isLast || hasMoreRaw,
+              total: totalCount,
+            });
+          } else if (chunk.length > 0) {
+            // Incomplete page
+            incompletePageCache.current.set(cacheKey, { rows: chunk });
+          }
+          currentPageNum++;
+        }
+
+        // Update paginated count for this filter
+        paginatedCount.current.set(filterKey, rawRows.length);
       });
-      const { rows, hasNext, nextCursor } = resp as any;
-      const totalCount = (resp as any)?.total ?? null;
 
-      // Chunk and cache: build 20-sized pages starting at requested page p
-      const chunks: TxRow[][] = [];
-      for (let i = 0; i < rows.length; i += PAGE_SIZE) {
-        chunks.push(rows.slice(i, i + PAGE_SIZE));
+      bumpCacheVersion();
+    },
+    [address, getFilterCacheKey, bumpCacheVersion]
+  );
+
+  // Load current page (with cache check and auto-completion)
+  const load = useCallback(
+    async (p: number, retryCount = 0) => {
+      if (!address) return;
+
+      const baseKey = getBaseCacheKey(address);
+      const filterType = getFilterType();
+      const filterCacheKey = getFilterCacheKey(address, filterType, p);
+
+      // Check complete page cache first
+      const cached = pageCache.current.get(filterCacheKey);
+      if (cached) {
+        setRows(cached.rows);
+        setHasNext(cached.hasNext);
+        setTotal(cached.total);
+        setMaxLoadedPage((prev) => (p > prev ? p : prev));
+        return;
       }
-      chunks.forEach((chunk, idx) => {
-        const logicalPage = p + idx;
-        const key = getCacheKey(address, logicalPage);
-        const isLast = idx === chunks.length - 1;
-        const pageHasNext = !isLast || hasNext;
-        const pageNextCursor = isLast ? nextCursor ?? null : null;
-        pageCache.current.set(key, {
-          rows: chunk,
-          hasNext: pageHasNext,
-          total: totalCount,
-          nextCursor: pageNextCursor,
+
+      // Check incomplete page cache
+      const incomplete = incompletePageCache.current.get(filterCacheKey);
+      if (incomplete && incomplete.rows.length === PAGE_SIZE) {
+        // Page was completed, move to complete cache
+        pageCache.current.set(filterCacheKey, {
+          rows: incomplete.rows,
+          hasNext: true, // Assume more available
+          total: null,
         });
-        // Prepare cursor for following page (only meaningful after last chunk)
-        cursorMap.set(logicalPage + 1, pageNextCursor);
-      });
-      bumpCacheVersion();
-
-      // Drive UI from the requested page slice we just cached
-      const current = pageCache.current.get(cacheKey)!;
-      setRows(current.rows);
-      setHasNext(current.hasNext);
-      setTotal(totalCount);
-      setMaxLoadedPage((prev) => (p > prev ? p : prev));
-
-      // Prefetch next page in background (if available)
-      if (current.hasNext && cursorMap.get(p + 1)) {
-        preloadNextPage(p + 1);
+        incompletePageCache.current.delete(filterCacheKey);
+        setRows(incomplete.rows);
+        setHasNext(true);
+        setTotal(null);
+        setMaxLoadedPage((prev) => (p > prev ? p : prev));
+        return;
       }
-    } catch (e: any) {
-      setError(e?.message || "Failed to load transactions");
-      setRows([]);
-      setHasNext(false);
-      setTotal(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [address, selectedTypes, networksParam, dateRange, getCacheKey, ensureCursorMap, bumpCacheVersion]);
 
-  // Preload next page in background (silent, no loading state)
-  const preloadNextPage = useCallback(async (nextPage: number) => {
-    if (!address) return;
+      // Page not in cache or incomplete - need to fetch more raw transactions
+      setLoading(true);
+      setError(null);
 
-    // Check if already cached
-    const cacheKey = getCacheKey(address, nextPage);
-    if (pageCache.current.has(cacheKey)) {
-      return; // Already cached
-    }
+      try {
+        // Get global cursor for this base context
+        const cursor = globalNextCursor.current.get(baseKey) ?? null;
 
-    const cursorInfo = ensureCursorMap(address);
-    const cursorParam = cursorInfo.map.get(nextPage);
-    if (cursorParam === undefined) {
-      // We don't have a cursor for this page yet
-      return;
-    }
+        // Fetch raw transactions (all types, no class filter)
+        const resp = await fetchTransactions(address, {
+          ...(networksParam ? { networks: networksParam } : {}),
+          page: 1, // Always page 1, cursor handles pagination
+          limit: PAGE_SIZE,
+          minUsd: 0,
+          spamFilter: "hard",
+          ...(cursor ? { cursor } : {}),
+          // NO class param - we want all transactions
+          ...(dateRange.from ? { from: dateRange.from } : {}),
+          ...(dateRange.to ? { to: dateRange.to } : {}),
+        });
 
-    try {
-      const classParam = uiTypesToClassParam(selectedTypes);
-      const resp = await fetchTransactions(address, {
-        ...(networksParam ? { networks: networksParam } : {}),
-        page: nextPage,
-        limit: PAGE_SIZE,
-        minUsd: 0,
-        spamFilter: "hard",
-        ...(cursorParam ? { cursor: cursorParam } : {}),
-        ...(classParam ? { class: classParam } : {}),
-        ...(dateRange.from ? { from: dateRange.from } : {}),
-        ...(dateRange.to ? { to: dateRange.to } : {}),
-      });
-      const { rows, hasNext, nextCursor } = resp as any;
-      const totalCount = (resp as any)?.total ?? null;
+        const { rows: newRows, hasNext, nextCursor } = resp as any;
+        const totalCount = (resp as any)?.total ?? null;
 
-      // Store in cache (silently, no state updates)
-      pageCache.current.set(cacheKey, {
-        rows,
-        hasNext,
-        total: totalCount,
-        nextCursor: nextCursor ?? null,
-      });
-      bumpCacheVersion();
-      cursorInfo.map.set(nextPage + 1, nextCursor ?? null);
-    } catch (e) {
-      // Silent failure - prefetch errors should not affect UI
-      console.debug("[Prefetch] Failed to preload page", nextPage, e);
-    }
-  }, [address, selectedTypes, networksParam, dateRange, getCacheKey, ensureCursorMap, bumpCacheVersion]);
+        // Add new raw transactions to cache
+        const existingRaw = rawTransactionsCache.current.get(baseKey) || [];
+        const updatedRaw = [...existingRaw, ...newRows];
+        rawTransactionsCache.current.set(baseKey, updatedRaw);
+
+        // Update global cursor
+        if (nextCursor) {
+          globalNextCursor.current.set(baseKey, nextCursor);
+        }
+
+        // Filter and paginate for all filter types
+        filterAndPaginate(updatedRaw, baseKey, totalCount);
+
+        // Check if requested page is now complete
+        const nowCached = pageCache.current.get(filterCacheKey);
+        if (nowCached && nowCached.rows.length === PAGE_SIZE) {
+          // Page is complete
+          setRows(nowCached.rows);
+          setHasNext(nowCached.hasNext);
+          setTotal(nowCached.total);
+          setMaxLoadedPage((prev) => (p > prev ? p : prev));
+        } else {
+          // Page still incomplete - recursively fetch more until complete
+          // Prevent infinite loop with retry limit
+          if (retryCount < 10 && hasNext && nextCursor) {
+            await load(p, retryCount + 1);
+          } else {
+            // Show incomplete page or error
+            const incompleteNow = incompletePageCache.current.get(filterCacheKey);
+            if (incompleteNow) {
+              setRows(incompleteNow.rows);
+              setHasNext(false);
+              setTotal(totalCount);
+            } else {
+              setRows([]);
+              setHasNext(false);
+              setTotal(totalCount);
+            }
+          }
+        }
+      } catch (e: any) {
+        setError(e?.message || "Failed to load transactions");
+        setRows([]);
+        setHasNext(false);
+        setTotal(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      address,
+      networksParam,
+      dateRange,
+      getBaseCacheKey,
+      getFilterType,
+      getFilterCacheKey,
+      filterAndPaginate,
+    ]
+  );
 
   const refresh = useCallback(() => {
     if (!address) return;
+    const baseKey = getBaseCacheKey(address);
+    // Clear all caches
+    rawTransactionsCache.current.delete(baseKey);
+    globalNextCursor.current.delete(baseKey);
     pageCache.current.clear();
-    cursorCache.current.clear();
+    incompletePageCache.current.clear();
+    // Clear paginated counts for this base context
+    for (const key of Array.from(paginatedCount.current.keys())) {
+      if (key.startsWith(baseKey)) {
+        paginatedCount.current.delete(key);
+      }
+    }
     setMaxLoadedPage(0);
     bumpCacheVersion();
     setPage(1);
     load(1);
-  }, [address, bumpCacheVersion, load]);
+  }, [address, getBaseCacheKey, bumpCacheVersion, load]);
 
-  // Initial/refresh - clear cache when address or filters change
+  // Initial/refresh - clear cache when address or base filters change (networks, dateRange)
   useEffect(() => {
     if (!address) return;
+    const baseKey = getBaseCacheKey(address);
     setPage(1);
-    pageCache.current.clear(); // Clear cache when address or filters change
-    cursorCache.current.clear();
+    // Clear raw cache and cursor for this base context
+    rawTransactionsCache.current.delete(baseKey);
+    globalNextCursor.current.delete(baseKey);
+    // Clear all page caches (they depend on base context)
+    pageCache.current.clear();
+    incompletePageCache.current.clear();
+    // Clear paginated counts for this base context
+    for (const key of Array.from(paginatedCount.current.keys())) {
+      if (key.startsWith(baseKey)) {
+        paginatedCount.current.delete(key);
+      }
+    }
     setMaxLoadedPage(0);
     bumpCacheVersion();
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, refreshKey, networksParam, dateRangeKey, bumpCacheVersion]);
 
-  // When server-side class filter changes (chips), reload current page with new filter
+  // When filter type changes (selectedTypes), just switch to cached pages (no API call)
   useEffect(() => {
     if (!address) return;
-    // Don't clear cache - it's already organized by filter via getCacheKey
-    // This allows instant navigation when returning to previously visited filters
-    // Load current page with new filter (if page doesn't exist, backend will handle it)
-    load(page);
+    const filterType = getFilterType();
+    const filterCacheKey = getFilterCacheKey(address, filterType, page);
+    
+    // Check if page exists in cache
+    const cached = pageCache.current.get(filterCacheKey);
+    if (cached) {
+      setRows(cached.rows);
+      setHasNext(cached.hasNext);
+      setTotal(cached.total);
+      setMaxLoadedPage((prev) => (page > prev ? page : prev));
+    } else {
+      // Page doesn't exist - load it (will fetch if needed)
+      load(page);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTypesKey]);
 
-  // Get all loaded rows for stats calculation
+  // Get all loaded rows for stats calculation (from raw transactions cache)
   const loadedRowsAll = useMemo(() => {
-    if (!address || !namespaceKey) return [];
-    const prefix = `${namespaceKey}:`;
+    if (!address) return [];
+    const baseKey = getBaseCacheKey(address);
+    const rawRows = rawTransactionsCache.current.get(baseKey) || [];
+    
+    // Deduplicate by hash + direction + asset + qty + timestamp
     const dedup = new Map<string, TxRow>();
-    Array.from(pageCache.current.entries()).forEach(([key, value]) => {
-      if (key === namespaceKey || key.startsWith(prefix)) {
-        value.rows.forEach((row) => {
-          const dedupKey = `${row.hash}:${row.direction}:${
-            row.asset?.symbol ?? row.asset?.contract ?? "asset"
-          }:${row.qty}:${row.ts}`;
-          if (!dedup.has(dedupKey)) {
-            dedup.set(dedupKey, row);
-          }
-        });
+    rawRows.forEach((row) => {
+      const dedupKey = `${row.hash}:${row.direction}:${
+        row.asset?.symbol ?? row.asset?.contract ?? "asset"
+      }:${row.qty}:${row.ts}`;
+      if (!dedup.has(dedupKey)) {
+        dedup.set(dedupKey, row);
       }
     });
     return Array.from(dedup.values());
-  }, [address, namespaceKey, cacheVersion]);
+  }, [address, getBaseCacheKey, cacheVersion]);
 
   return {
     rows,
