@@ -17,7 +17,24 @@ const ENABLE_DEX =
 const DEX_BASE = "https://api.dexscreener.com/latest/dex";
 const DEX_CHART_BASE = "https://api.dexscreener.com/chart/bars";
 
-const inMem = new Map<string, number>(); // key: `${ts}:${coinId}` → priceUsd
+// Global cache with TTL (24 hours) to persist across requests
+const inMem = new Map<string, { price: number; timestamp: number }>(); // key: `${ts}:${coinId}` → {price, timestamp}
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
+
+function getCachedPrice(key: string): number | undefined {
+  const cached = inMem.get(key);
+  if (!cached) return undefined;
+  // Check if cache is still valid (within 24h)
+  if (Date.now() - cached.timestamp > CACHE_TTL) {
+    inMem.delete(key);
+    return undefined;
+  }
+  return cached.price;
+}
+
+function setCachedPrice(key: string, price: number): void {
+  inMem.set(key, { price, timestamp: Date.now() });
+}
 
 function platformOf(network: string): PlatformId | null {
   switch (network) {
@@ -198,7 +215,9 @@ async function getUsdAtTs(
   ts: number
 ): Promise<number | undefined> {
   const key = `${ts}:${coinId}`;
-  if (inMem.has(key)) return inMem.get(key);
+  const cached = getCachedPrice(key);
+  if (cached !== undefined) return cached;
+  
   try {
     const url = `${LLAMA_BASE}/prices/historical/${ts}/${encodeURIComponent(
       coinId
@@ -208,7 +227,7 @@ async function getUsdAtTs(
     const json = await res.json();
     const price = json?.coins?.[coinId]?.price;
     if (typeof price === "number") {
-      inMem.set(key, price);
+      setCachedPrice(key, price);
       return price;
     }
   } catch {

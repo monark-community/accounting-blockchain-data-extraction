@@ -367,18 +367,42 @@ export async function getPricesAtTimestamp(
 
   if (llamaKeys.length) {
     await rateLimitLlama();
-    try {
-      const url = `https://coins.llama.fi/prices/historical/${timestampSec}/${llamaKeys.join(
-        ","
-      )}`;
-      dbg("[DeFiLlama Historical] Fetching prices from:", url);
-      const res = await fetch(url);
-      if (!res.ok) {
-        console.error(
-          "[DeFiLlama Historical] Error fetching prices:",
-          res.status
-        );
-      } else {
+    const url = `https://coins.llama.fi/prices/historical/${timestampSec}/${llamaKeys.join(
+      ","
+    )}`;
+    dbg("[DeFiLlama Historical] Fetching prices from:", url);
+    
+    // Retry logic for 429 errors with exponential backoff
+    let retries = 3;
+    let delay = 1000; // Start with 1 second
+    while (retries > 0) {
+      try {
+        const res = await fetch(url);
+        if (res.status === 429) {
+          // Rate limited - wait and retry
+          retries--;
+          if (retries > 0) {
+            console.warn(
+              `[DeFiLlama Historical] Rate limited (429), retrying in ${delay}ms... (${retries} retries left)`
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            delay *= 2; // Exponential backoff: 1s, 2s, 4s
+            continue;
+          } else {
+            console.error(
+              "[DeFiLlama Historical] Rate limited (429) - max retries exceeded"
+            );
+            break;
+          }
+        }
+        if (!res.ok) {
+          console.error(
+            "[DeFiLlama Historical] Error fetching prices:",
+            res.status
+          );
+          break;
+        }
+        // Success - parse response
         const json = await res.json();
         dbg("[DeFiLlama Historical] Got response:", json);
         const coins = json?.coins ?? {};
@@ -392,9 +416,20 @@ export async function getPricesAtTimestamp(
             if (Number.isFinite(price)) map.set(`${network}:${addr}`, price);
           }
         }
+        break; // Success - exit retry loop
+      } catch (err) {
+        retries--;
+        if (retries > 0) {
+          console.warn(
+            `[DeFiLlama Historical] Fetch error, retrying in ${delay}ms... (${retries} retries left):`,
+            err
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          console.error("[DeFiLlama Historical] Fetch error:", err);
+        }
       }
-    } catch (err) {
-      console.error("[DeFiLlama Historical] Fetch error:", err);
     }
   }
 

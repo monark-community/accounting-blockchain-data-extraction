@@ -12,6 +12,14 @@ import analyticsRouter from "./routes/analytics.routes";
 import networksRouter from "./routes/networks.routes";
 
 const app = express();
+
+// Increase timeout for long-running requests (pricing API calls can take 20-30s)
+app.use((req, res, next) => {
+  req.setTimeout(120000); // 2 minutes
+  res.setTimeout(120000);
+  next();
+});
+
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
