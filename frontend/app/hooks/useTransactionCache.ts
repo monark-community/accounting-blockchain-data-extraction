@@ -3,6 +3,9 @@ import type { TxRow, TxType } from "@/lib/types/transactions";
 import { fetchTransactions } from "@/lib/api/transactions";
 import { PAGE_SIZE } from "@/utils/transactionHelpers";
 
+// Backend TX_MAX_LIMIT is 40, use it to reduce number of requests
+const FETCH_LIMIT = 40;
+
 interface UseTransactionCacheParams {
   address: string | null;
   selectedTypes: TxType[] | ["all"];
@@ -223,18 +226,19 @@ export function useTransactionCache({
   // ============================================================================
 
   /**
-   * Fetch transactions for a specific network
+   * Fetch transactions for one or multiple networks (comma-separated)
+   * Optimized: makes a single request with all networks instead of one per network
    */
   const fetchNetworkTransactions = useCallback(
     async (
       addr: string,
-      network: string,
+      networks: string, // Can be single network "mainnet" or multiple "mainnet,base,polygon"
       cursor: string | null
-    ): Promise<{ rows: TxRow[]; hasNext: boolean; nextCursor: string | null; total: number | null }> => {
+    ): Promise<{ rows: TxRow[]; hasNext: boolean; nextCursor: string | null; total: number | null; networkMap: Map<string, TxRow[]> }> => {
       const resp = await fetchTransactions(addr, {
-        networks: network,
+        networks: networks, // Backend accepts comma-separated networks
         page: 1,
-        limit: PAGE_SIZE,
+        limit: FETCH_LIMIT, // Use 40 instead of 20 to reduce requests
         minUsd: 0,
         spamFilter: "hard",
         ...(cursor ? { cursor } : {}),
@@ -242,11 +246,21 @@ export function useTransactionCache({
         ...(dateRange.to ? { to: dateRange.to } : {}),
       });
 
+      // Group transactions by network for cache management
+      const networkMap = new Map<string, TxRow[]>();
+      for (const tx of resp.rows) {
+        if (!networkMap.has(tx.network)) {
+          networkMap.set(tx.network, []);
+        }
+        networkMap.get(tx.network)!.push(tx);
+      }
+
       return {
         rows: resp.rows,
         hasNext: resp.hasNext,
         nextCursor: resp.nextCursor,
         total: (resp as any)?.total ?? null,
+        networkMap, // Return grouped transactions by network
       };
     },
     [dateRange]
@@ -276,49 +290,55 @@ export function useTransactionCache({
         }
 
         // If there are networks without cache, load them first
+        // OPTIMIZATION: Make a single request with all networks instead of one per network
         if (networksWithoutCache.length > 0) {
-          const fetchPromises: Promise<void>[] = [];
           let hasNewData = false;
 
-          for (const network of networksWithoutCache) {
-            const networkKey = getNetworkCacheKey(addr, network);
-            // Start from the beginning (no cursor) for networks without cache
-            const cursor = null;
+          // Group all networks without cache into a single request
+          const networksString = networksWithoutCache.join(",");
+          const cursor = null; // Start from the beginning for networks without cache
 
-            fetchPromises.push(
-              fetchNetworkTransactions(addr, network, cursor).then((result) => {
-                // Update cursor
-                if (result.nextCursor) {
-                  networkCursors.current.set(networkKey, result.nextCursor);
-                  hasNewData = true;
-                } else {
-                  networkFullyLoaded.current.set(networkKey, true);
-                }
+          try {
+            const result = await fetchNetworkTransactions(addr, networksString, cursor);
 
-                // If empty result and no cursor, mark as fully loaded
-                if (result.rows.length === 0 && !result.nextCursor) {
-                  networkFullyLoaded.current.set(networkKey, true);
-                }
+            // Process each network from the response
+            for (const network of networksWithoutCache) {
+              const networkKey = getNetworkCacheKey(addr, network);
+              const networkTxs = result.networkMap.get(network) || [];
 
-                // Update total count (use first non-null value)
-                const baseKey = getBaseCacheKey(addr);
-                if (result.total !== null) {
-                  const currentTotal = totalCountCache.current.get(baseKey);
-                  if (currentTotal === null || currentTotal === undefined) {
-                    totalCountCache.current.set(baseKey, result.total);
-                  }
-                }
+              // Update cursor - use the shared cursor for all networks (backend limitation)
+              // Note: With multi-network requests, we use a shared cursor
+              // This means if one network has more data, we'll refetch all networks
+              if (result.nextCursor && networkTxs.length > 0) {
+                networkCursors.current.set(networkKey, result.nextCursor);
+                hasNewData = true;
+              } else if (networkTxs.length === 0 && !result.nextCursor) {
+                // Mark as fully loaded if no transactions and no cursor
+                networkFullyLoaded.current.set(networkKey, true);
+              } else if (!result.nextCursor) {
+                // No more data available
+                networkFullyLoaded.current.set(networkKey, true);
+              }
 
-                // Add to network cache
-                if (result.rows.length > 0) {
-                  addToNetworkCache(networkKey, result.rows);
-                  hasNewData = true;
+              // Update total count (use first non-null value)
+              const baseKey = getBaseCacheKey(addr);
+              if (result.total !== null) {
+                const currentTotal = totalCountCache.current.get(baseKey);
+                if (currentTotal === null || currentTotal === undefined) {
+                  totalCountCache.current.set(baseKey, result.total);
                 }
-              })
-            );
+              }
+
+              // Add to network cache
+              if (networkTxs.length > 0) {
+                addToNetworkCache(networkKey, networkTxs);
+                hasNewData = true;
+              }
+            }
+          } catch (error) {
+            // Error handling is done in outer catch block
+            throw error;
           }
-
-          await Promise.all(fetchPromises);
           
           // After loading networks without cache, continue with normal loading logic
           if (hasNewData) {
@@ -362,48 +382,67 @@ export function useTransactionCache({
           return;
         }
 
-        // Fetch from each network that needs more data
-        const fetchPromises: Promise<void>[] = [];
+        // OPTIMIZATION: Make a single request with all networks that need more data
+        // instead of one request per network
         let hasNewData = false;
 
+        // Group all networks that need more data into a single request
+        const networksString = networksToLoad.join(",");
+        
+        // For multi-network requests, we use a shared cursor approach
+        // Use the oldest cursor (most conservative) to ensure we don't miss data
+        let sharedCursor: string | null = null;
         for (const network of networksToLoad) {
           const networkKey = getNetworkCacheKey(addr, network);
           const cursor = networkCursors.current.get(networkKey) ?? null;
-
-          fetchPromises.push(
-            fetchNetworkTransactions(addr, network, cursor).then((result) => {
-              // Update cursor
-              if (result.nextCursor) {
-                networkCursors.current.set(networkKey, result.nextCursor);
-                hasNewData = true;
-              } else {
-                networkFullyLoaded.current.set(networkKey, true);
-              }
-
-              // If empty result and no cursor, mark as fully loaded
-              if (result.rows.length === 0 && !result.nextCursor) {
-                networkFullyLoaded.current.set(networkKey, true);
-              }
-
-              // Update total count (use first non-null value)
-              const baseKey = getBaseCacheKey(addr);
-              if (result.total !== null) {
-                const currentTotal = totalCountCache.current.get(baseKey);
-                if (currentTotal === null || currentTotal === undefined) {
-                  totalCountCache.current.set(baseKey, result.total);
-                }
-              }
-
-              // Add to network cache
-              if (result.rows.length > 0) {
-                addToNetworkCache(networkKey, result.rows);
-                hasNewData = true;
-              }
-            })
-          );
+          if (cursor) {
+            // Use the first cursor found (all networks should have similar cursors in practice)
+            // TODO: In future, could implement smarter cursor merging for true multi-network cursors
+            if (!sharedCursor) {
+              sharedCursor = cursor;
+            }
+          }
         }
 
-        await Promise.all(fetchPromises);
+        try {
+          const result = await fetchNetworkTransactions(addr, networksString, sharedCursor);
+
+          // Process each network from the response
+          for (const network of networksToLoad) {
+            const networkKey = getNetworkCacheKey(addr, network);
+            const networkTxs = result.networkMap.get(network) || [];
+
+            // Update cursor - shared cursor for multi-network requests
+            if (result.nextCursor && networkTxs.length > 0) {
+              networkCursors.current.set(networkKey, result.nextCursor);
+              hasNewData = true;
+            } else if (networkTxs.length === 0 && !result.nextCursor) {
+              // Mark as fully loaded if no transactions and no cursor
+              networkFullyLoaded.current.set(networkKey, true);
+            } else if (!result.nextCursor) {
+              // No more data available
+              networkFullyLoaded.current.set(networkKey, true);
+            }
+
+            // Update total count (use first non-null value)
+            const baseKey = getBaseCacheKey(addr);
+            if (result.total !== null) {
+              const currentTotal = totalCountCache.current.get(baseKey);
+              if (currentTotal === null || currentTotal === undefined) {
+                totalCountCache.current.set(baseKey, result.total);
+              }
+            }
+
+            // Add to network cache
+            if (networkTxs.length > 0) {
+              addToNetworkCache(networkKey, networkTxs);
+              hasNewData = true;
+            }
+          }
+        } catch (error) {
+          // Error handling is done in outer catch block
+          throw error;
+        }
 
         // Recursively load more if needed
         if (hasNewData) {

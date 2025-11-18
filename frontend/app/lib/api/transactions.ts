@@ -14,7 +14,7 @@ export type TxQuery = {
   cursor?: string | null;
 };
 
-export async function fetchTransactions(address: string, q: TxQuery) {
+export async function fetchTransactions(address: string, q: TxQuery, retryCount = 0) {
   const fetchStartTime = performance.now();
   const qs = new URLSearchParams();
   if (q.networks) qs.set("networks", q.networks);
@@ -43,6 +43,25 @@ export async function fetchTransactions(address: string, q: TxQuery) {
     clearTimeout(timeoutId);
   } catch (error: any) {
     clearTimeout(timeoutId);
+    
+    // Retry on network errors (ECONNRESET, socket hang up, timeout)
+    const isNetworkError = 
+      error.name === 'AbortError' ||
+      error.message?.includes('socket hang up') ||
+      error.message?.includes('ECONNRESET') ||
+      error.message?.includes('Failed to fetch') ||
+      error.code === 'ECONNRESET';
+    
+    const maxRetries = 2;
+    const baseDelay = 3000; // 3 seconds
+    
+    if (isNetworkError && retryCount < maxRetries) {
+      const delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff: 3s, 6s
+      console.log(`[Transactions] Retrying (${retryCount + 1}/${maxRetries}) after ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return fetchTransactions(address, q, retryCount + 1);
+    }
+    
     if (error.name === 'AbortError') {
       throw new Error('Request timeout: The server took too long to respond (>120s)');
     }
