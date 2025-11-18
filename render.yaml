@@ -12,7 +12,7 @@ services:
     dockerContext: ./backend
     dockerTarget: prod
     plan: free
-    region: frankfurt  # Choix: frankfurt, oregon, singapore, ohio
+    region: frankfurt
     healthCheckPath: /api/health
     autoDeploy: true
     
@@ -21,7 +21,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 8080
+        value: "8080"
       
       # === Base de données ===
       - key: DATABASE_URL
@@ -31,11 +31,11 @@ services:
       
       # === Session & Sécurité ===
       - key: SESSION_SECRET
-        generateValue: true  # Render génère une valeur aléatoire sécurisée
+        generateValue: true
       - key: SESSION_NAME
         value: ll_session
       - key: SESSION_TTL_SECONDS
-        value: 604800  # 7 jours
+        value: "604800"
       
       # === Frontend URL ===
       - key: FRONTEND_URL
@@ -43,63 +43,63 @@ services:
       
       # === API Keys (à configurer manuellement dans Render Dashboard) ===
       - key: ANKR_API_KEY
-        sync: false  # Doit être ajouté manuellement
+        value: ""
       - key: ALCHEMY_API_KEY
-        sync: false
+        value: ""
       - key: GRAPH_TOKEN_API_JWT
-        sync: false
+        value: ""
       - key: GRAPH_TOKEN_API_KEY
-        sync: false
+        value: ""
       
       # === Configuration API & URLs ===
       - key: TOKEN_API_BASE_URL
         value: https://token-api.thegraph.com/v1
       - key: PINAX_RPC_URL
-        sync: false  # Optionnel
+        value: ""
       - key: RPC_URL_MAINNET
-        sync: false  # Optionnel
+        value: ""
       
       # === Paramètres de Debugging ===
       - key: LOGS_DEBUG
-        value: false
+        value: "false"
       - key: DEBUG_TOKEN_API
-        value: false
+        value: "false"
       
       # === Filtres & Limites ===
       - key: SPAM_FILTER_MODE
-        value: hard  # Options: off, soft, hard
+        value: hard
       - key: ENABLE_SPAM_FILTER
-        value: true
+        value: "true"
       - key: TX_DEFAULT_LIMIT
-        value: 20
+        value: "20"
       - key: TX_MAX_LIMIT
-        value: 40
+        value: "40"
       - key: TX_RETURN_CAP
-        value: 150
+        value: "150"
       - key: TX_FETCH_WINDOW_CAP
-        value: 80
+        value: "80"
       
       # === Performance & Concurrence ===
       - key: PRICING_BATCH_SIZE
-        value: 50
+        value: "50"
       - key: NETWORK_FETCH_CONCURRENCY
-        value: 2
+        value: "2"
       - key: NETWORK_ACTIVITY_CONCURRENCY
-        value: 2
+        value: "2"
       - key: NETWORK_ACTIVITY_PAGE_LIMIT
-        value: 5
+        value: "5"
       - key: LLAMA_RPM
-        value: 60
+        value: "60"
       - key: HTTP_TIMEOUT_MS
-        value: 15000
+        value: "15000"
       - key: TOKEN_API_LIMIT_MAX
-        value: 40
+        value: "40"
       
       # === Feature Flags ===
       - key: ENABLE_DEXSCREENER
-        value: false
+        value: "false"
       - key: ENABLE_DEFI_LLAMA
-        value: false
+        value: "false"
 
   # ========================================
   # Frontend Service
@@ -119,7 +119,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_TELEMETRY_DISABLED
-        value: 1
+        value: "1"
       
       # === Backend API URL ===
       - key: API_BASE
@@ -127,11 +127,11 @@ services:
       
       # === API Keys publiques (à configurer manuellement) ===
       - key: NEXT_PUBLIC_WEB3AUTH_CLIENT_ID
-        sync: false
+        value: ""
       - key: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
-        sync: false
+        value: ""
       - key: NEXT_PUBLIC_ANKR_API_KEY
-        sync: false
+        value: ""
       
       # === Configuration par défaut ===
       - key: NEXT_PUBLIC_DEFAULT_NETWORKS
@@ -139,7 +139,7 @@ services:
       - key: NEXT_PUBLIC_DASHBOARD_DEFAULT_NETWORKS
         value: ethereum,polygon
       - key: NEXT_PUBLIC_DASHBOARD_MULTI_LIMIT
-        value: 3
+        value: "3"
 
 # ========================================
 # Base de données PostgreSQL
@@ -148,8 +148,8 @@ databases:
   - name: ledgerlift-db
     databaseName: ledgerlift
     user: ledgerlift
-    plan: free  # Gratuit pendant 90 jours
+    plan: free
     region: frankfurt
     postgresMajorVersion: 16
-    ipAllowList: []  # Autorise toutes les connexions (services Render)
+    ipAllowList: []
 
