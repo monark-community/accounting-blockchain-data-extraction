@@ -56,6 +56,9 @@ export function useTransactionCache({
 
   // Track previous selectedTypesKey to detect filter changes
   const prevSelectedTypesKeyRef = useRef<string | null>(null);
+  
+  // Track if networks are being loaded to prevent premature updates
+  const networksLoadingRef = useRef(false);
 
   // ============================================================================
   // Cache Key Helpers
@@ -262,6 +265,64 @@ export function useTransactionCache({
       setError(null);
 
       try {
+        // First, identify networks that have no cache at all (must load first)
+        const networksWithoutCache: string[] = [];
+        for (const network of selectedNetworks) {
+          const networkKey = getNetworkCacheKey(addr, network);
+          const cache = networkCache.current.get(networkKey);
+          if (!cache || cache.length === 0) {
+            networksWithoutCache.push(network);
+          }
+        }
+
+        // If there are networks without cache, load them first
+        if (networksWithoutCache.length > 0) {
+          const fetchPromises: Promise<void>[] = [];
+          let hasNewData = false;
+
+          for (const network of networksWithoutCache) {
+            const networkKey = getNetworkCacheKey(addr, network);
+            // Start from the beginning (no cursor) for networks without cache
+            const cursor = null;
+
+            fetchPromises.push(
+              fetchNetworkTransactions(addr, network, cursor).then((result) => {
+                // Update cursor
+                if (result.nextCursor) {
+                  networkCursors.current.set(networkKey, result.nextCursor);
+                  hasNewData = true;
+                } else {
+                  networkFullyLoaded.current.set(networkKey, true);
+                }
+
+                // Update total count (use first non-null value)
+                const baseKey = getBaseCacheKey(addr);
+                if (result.total !== null) {
+                  const currentTotal = totalCountCache.current.get(baseKey);
+                  if (currentTotal === null || currentTotal === undefined) {
+                    totalCountCache.current.set(baseKey, result.total);
+                  }
+                }
+
+                // Add to network cache
+                if (result.rows.length > 0) {
+                  addToNetworkCache(networkKey, result.rows);
+                  hasNewData = true;
+                }
+              })
+            );
+          }
+
+          await Promise.all(fetchPromises);
+          
+          // After loading networks without cache, continue with normal loading logic
+          if (hasNewData) {
+            // Recursively call to continue loading
+            await loadTransactions(addr, selectedNetworks, neededCount, retryCount + 1);
+            return;
+          }
+        }
+
         // Get cutoff date (oldest date in all caches)
         const cutoffDate = getOldestDateInCache(selectedNetworks);
         
@@ -388,6 +449,17 @@ export function useTransactionCache({
     // Apply type filter
     const filtered = filterTransactions(combined, selectedNetworks);
 
+    // Log for debugging: show how transactions are sorted before pagination
+    console.log("[DEBUG CACHE] useTransactionCache - updateDisplayedRows:", {
+      page,
+      cutoffDate,
+      selectedNetworks,
+      combinedCount: combined.length,
+      filteredCount: filtered.length,
+      first5Dates: filtered.slice(0, 5).map(tx => ({ date: tx.ts, hash: tx.hash?.slice(0, 10) })),
+      last5Dates: filtered.slice(-5).map(tx => ({ date: tx.ts, hash: tx.hash?.slice(0, 10) })),
+    });
+
     // Paginate
     const startIndex = (page - 1) * PAGE_SIZE;
     const endIndex = startIndex + PAGE_SIZE;
@@ -510,7 +582,11 @@ export function useTransactionCache({
   // When networks change, reset to page 1 and load missing networks
   useEffect(() => {
     if (!address) return;
+    
+    // Reset to page 1 first (this will trigger filter/page effect, but loading check will prevent execution)
     setPage(1);
+    networksLoadingRef.current = false; // Reset flag
+    
     const selectedNetworks = getSelectedNetworks();
     if (selectedNetworks.length === 0) {
       updateDisplayedRows();
@@ -525,9 +601,13 @@ export function useTransactionCache({
     });
 
     if (missingNetworks.length > 0) {
+      // Mark that networks are loading
+      networksLoadingRef.current = true;
+      
       // Load missing networks - start with PAGE_SIZE
       loadTransactions(address, selectedNetworks, PAGE_SIZE).then(() => {
-        // After loading, update displayed rows
+        // Mark loading complete and update display
+        networksLoadingRef.current = false;
         updateDisplayedRows();
       });
     } else {
@@ -541,6 +621,10 @@ export function useTransactionCache({
   // When filters or page change, update displayed rows and load if needed
   useEffect(() => {
     if (!address) return;
+    
+    // Don't update display while loading - wait for loading to complete
+    // This prevents multiple updates during network loading
+    if (loading || networksLoadingRef.current) return;
     
     // Track previous selectedTypesKey to detect filter changes
     const prevSelectedTypesKey = prevSelectedTypesKeyRef.current;
@@ -574,7 +658,7 @@ export function useTransactionCache({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // Note: updateDisplayedRows is intentionally excluded from dependencies to prevent double-triggering
     // when it's recreated due to filterTransactions changes. It's safe because it reads current values via closure.
-  }, [selectedTypesKey, page, address, getSelectedNetworks, getBaseCacheKey, filterTransactions, loadTransactions, getOldestDateInCache, combineAndFilterByDate]);
+  }, [selectedTypesKey, page, address, loading, getSelectedNetworks, getBaseCacheKey, filterTransactions, loadTransactions, getOldestDateInCache, combineAndFilterByDate]);
 
   // Get all loaded rows for stats (combine all networks)
   const loadedRowsAll = useMemo(() => {
