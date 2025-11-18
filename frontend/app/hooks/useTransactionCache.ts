@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { TxRow, TxType } from "@/lib/types/transactions";
 import { fetchTransactions } from "@/lib/api/transactions";
-import {
-  PAGE_SIZE,
-  uiTypesToClassParam,
-} from "@/utils/transactionHelpers";
+import { PAGE_SIZE, uiTypesToClassParam } from "@/utils/transactionHelpers";
 
 interface UseTransactionCacheParams {
-  address: string | null;
+  addresses: string[];
   selectedTypes: TxType[] | ["all"];
   networksParam?: string;
   dateRange: { from?: string; to?: string; label: string };
@@ -17,7 +14,7 @@ interface UseTransactionCacheParams {
 }
 
 export function useTransactionCache({
-  address,
+  addresses,
   selectedTypes,
   networksParam,
   dateRange,
@@ -29,13 +26,25 @@ export function useTransactionCache({
   const [cacheVersion, setCacheVersion] = useState(0);
   const bumpCacheVersion = useCallback(() => setCacheVersion((v) => v + 1), []);
 
+  const activeAddresses = useMemo(
+    () =>
+      addresses.filter((addr) => typeof addr === "string" && addr.length > 0),
+    [addresses]
+  );
+  const addressesKey = useMemo(() => {
+    const normalized = activeAddresses.map((addr) => addr.toLowerCase()).sort();
+    return normalized.join("|");
+  }, [activeAddresses]);
+
   // Raw transactions cache: stores all transactions without type filtering
   // Key: "address:networks:dateRange" (SANS selectedTypes)
   const rawTransactionsCache = useRef(new Map<string, TxRow[]>());
 
   // Global next cursor: one cursor per base context (address + networks + dateRange)
   // Key: "address:networks:dateRange" (SANS selectedTypes)
-  const globalNextCursor = useRef(new Map<string, string | null>());
+  const globalNextCursor = useRef(
+    new Map<string, Map<string, string | null>>()
+  );
 
   // Cache for pages: key = "baseKey:filterType:page" -> { rows, hasNext, total }
   const pageCache = useRef(
@@ -50,9 +59,7 @@ export function useTransactionCache({
   );
 
   // Incomplete pages cache: pages with < 20 legs
-  const incompletePageCache = useRef(
-    new Map<string, { rows: TxRow[] }>()
-  );
+  const incompletePageCache = useRef(new Map<string, { rows: TxRow[] }>());
 
   // Track how many raw transactions have been paginated for each filter type
   // Key: "baseKey:filterType" -> number of raw transactions already paginated
@@ -67,15 +74,16 @@ export function useTransactionCache({
   const [total, setTotal] = useState<number | null>(null);
 
   // Generate base cache key (without selectedTypes): "address:networks:dateRange"
-  const getBaseCacheKey = useCallback((addr: string) => {
+  const getBaseCacheKey = useCallback(() => {
     const nets = networksParam || "(all)";
-    return `${addr}:${nets}:${dateRangeKey}`;
-  }, [networksParam, dateRangeKey]);
+    const addrKey = addressesKey || "(none)";
+    return `${addrKey}:${nets}:${dateRangeKey}`;
+  }, [addressesKey, networksParam, dateRangeKey]);
 
   // Generate cache key for a specific filter type and page
   const getFilterCacheKey = useCallback(
-    (addr: string, filterType: string, pageNum: number) => {
-      const baseKey = getBaseCacheKey(addr);
+    (filterType: string, pageNum: number) => {
+      const baseKey = getBaseCacheKey();
       return `${baseKey}:${filterType}:${pageNum}`;
     },
     [getBaseCacheKey]
@@ -83,37 +91,43 @@ export function useTransactionCache({
 
   // Legacy: keep for compatibility with existing code
   const getCacheKey = useCallback(
-    (addr: string, pageNum: number) => {
+    (pageNum: number) => {
       const filterKey = JSON.stringify(selectedTypes);
-      const baseKey = getBaseCacheKey(addr);
+      const baseKey = getBaseCacheKey();
       return `${baseKey}:${filterKey}:${pageNum}`;
     },
     [getBaseCacheKey, selectedTypes]
   );
 
   const namespaceKey = useMemo(
-    () => (address ? getBaseCacheKey(address) : null),
-    [address, getBaseCacheKey]
+    () => (activeAddresses.length ? getBaseCacheKey() : null),
+    [activeAddresses.length, getBaseCacheKey]
   );
 
   // Get filter type string from selectedTypes
   const getFilterType = useCallback((): string => {
-    if (Array.isArray(selectedTypes) && selectedTypes.length === 1 && selectedTypes[0] === "all") {
+    if (
+      Array.isArray(selectedTypes) &&
+      selectedTypes.length === 1 &&
+      selectedTypes[0] === "all"
+    ) {
       return "all";
     }
     if (Array.isArray(selectedTypes) && selectedTypes.length === 1) {
       return selectedTypes[0];
     }
     // Multiple types selected - sort to ensure consistent cache keys
-    const sorted = Array.isArray(selectedTypes) ? [...selectedTypes].sort() : selectedTypes;
+    const sorted = Array.isArray(selectedTypes)
+      ? [...selectedTypes].sort()
+      : selectedTypes;
     return JSON.stringify(sorted);
   }, [selectedTypes]);
 
   // Prefetch/cache status: compute how many pages are already cached ahead for current filter
   const cachedAheadCount = useMemo(() => {
-    if (!address) return 0;
+    if (!activeAddresses.length) return 0;
     const filterType = getFilterType();
-    const baseKey = getBaseCacheKey(address);
+    const baseKey = getBaseCacheKey();
     const prefix = `${baseKey}:${filterType}:`;
     let count = 0;
     for (const key of Array.from(pageCache.current.keys())) {
@@ -126,8 +140,15 @@ export function useTransactionCache({
       }
     }
     return count;
-  }, [address, page, getBaseCacheKey, getFilterType, cacheVersion]);
-  const isOverloaded = cachedAheadCount >= 3 || (loading && cachedAheadCount >= 1);
+  }, [
+    activeAddresses.length,
+    page,
+    getBaseCacheKey,
+    getFilterType,
+    cacheVersion,
+  ]);
+  const isOverloaded =
+    cachedAheadCount >= 3 || (loading && cachedAheadCount >= 1);
   const loadIndicatorLabel = isOverloaded
     ? `Préchargement élevé: ${cachedAheadCount} page(s)`
     : cachedAheadCount > 0
@@ -144,29 +165,29 @@ export function useTransactionCache({
     // Add individual types
     baseTypes.forEach((type) => combinations.push(type));
 
-      // Generate all combinations of 2, 3, and 4 types
-      for (let r = 2; r <= baseTypes.length; r++) {
-        const generateCombinations = (
-          arr: TxType[],
-          size: number,
-          start: number = 0,
-          current: TxType[] = []
-        ): void => {
-          if (current.length === size) {
-            // Sort to ensure consistent cache keys (e.g., ["income","expense"] not ["expense","income"])
-            combinations.push([...current].sort());
-            return;
-          }
-          for (let i = start; i < arr.length; i++) {
-            current.push(arr[i]);
-            generateCombinations(arr, size, i + 1, current);
-            current.pop();
-          }
-        };
-        generateCombinations(baseTypes, r);
-      }
+    // Generate all combinations of 2, 3, and 4 types
+    for (let r = 2; r <= baseTypes.length; r++) {
+      const generateCombinations = (
+        arr: TxType[],
+        size: number,
+        start: number = 0,
+        current: TxType[] = []
+      ): void => {
+        if (current.length === size) {
+          // Sort to ensure consistent cache keys (e.g., ["income","expense"] not ["expense","income"])
+          combinations.push([...current].sort());
+          return;
+        }
+        for (let i = start; i < arr.length; i++) {
+          current.push(arr[i]);
+          generateCombinations(arr, size, i + 1, current);
+          current.pop();
+        }
+      };
+      generateCombinations(baseTypes, r);
+    }
 
-      return combinations;
+    return combinations;
   }, []);
 
   // Check if a transaction matches a filter (single type or combination)
@@ -186,7 +207,10 @@ export function useTransactionCache({
   const filterAndPaginate = useCallback(
     (rawRows: TxRow[], baseKey: string, totalCount: number | null) => {
       // Check if there are more raw transactions available (via global cursor)
-      const hasMoreRaw = globalNextCursor.current.get(baseKey) !== null;
+      const cursorMap = globalNextCursor.current.get(baseKey);
+      const hasMoreRaw = !!cursorMap
+        ? Array.from(cursorMap.values()).some((value) => value !== null)
+        : false;
 
       // Get all possible filter combinations
       const allFilters = getAllFilterCombinations();
@@ -258,16 +282,21 @@ export function useTransactionCache({
         }
 
         // First, complete existing incomplete pages
-        for (const [pageNum, existingRows] of Array.from(existingIncomplete.entries()).sort((a, b) => a[0] - b[0])) {
+        for (const [pageNum, existingRows] of Array.from(
+          existingIncomplete.entries()
+        ).sort((a, b) => a[0] - b[0])) {
           const needed = PAGE_SIZE - existingRows.length;
           if (needed > 0 && newFilteredIndex < newFiltered.length) {
-            const toAdd = newFiltered.slice(newFilteredIndex, newFilteredIndex + needed);
+            const toAdd = newFiltered.slice(
+              newFilteredIndex,
+              newFilteredIndex + needed
+            );
             const completed = [...existingRows, ...toAdd];
             newFilteredIndex += toAdd.length;
 
             if (completed.length === PAGE_SIZE) {
               // Page is now complete
-              const cacheKey = getFilterCacheKey(address!, filterKeyStr, pageNum);
+              const cacheKey = getFilterCacheKey(filterKeyStr, pageNum);
               pageCache.current.set(cacheKey, {
                 rows: completed,
                 hasNext: hasMoreRaw || newFilteredIndex < newFiltered.length,
@@ -276,7 +305,7 @@ export function useTransactionCache({
               incompletePageCache.current.delete(cacheKey);
             } else {
               // Still incomplete
-              const cacheKey = getFilterCacheKey(address!, filterKeyStr, pageNum);
+              const cacheKey = getFilterCacheKey(filterKeyStr, pageNum);
               incompletePageCache.current.set(cacheKey, { rows: completed });
             }
           }
@@ -291,11 +320,7 @@ export function useTransactionCache({
             newFilteredIndex + PAGE_SIZE
           );
           newFilteredIndex += chunk.length;
-          const cacheKey = getFilterCacheKey(
-            address!,
-            filterKeyStr,
-            currentPageNum
-          );
+          const cacheKey = getFilterCacheKey(filterKeyStr, currentPageNum);
 
           if (chunk.length === PAGE_SIZE) {
             // Complete page
@@ -319,7 +344,7 @@ export function useTransactionCache({
       bumpCacheVersion();
     },
     [
-      address,
+      addressesKey,
       getFilterCacheKey,
       bumpCacheVersion,
       getAllFilterCombinations,
@@ -328,13 +353,20 @@ export function useTransactionCache({
   );
 
   // Load current page (with cache check and auto-completion)
+  const getCursorMap = useCallback((baseKey: string) => {
+    if (!globalNextCursor.current.has(baseKey)) {
+      globalNextCursor.current.set(baseKey, new Map());
+    }
+    return globalNextCursor.current.get(baseKey)!;
+  }, []);
+
   const load = useCallback(
     async (p: number, retryCount = 0) => {
-      if (!address) return;
+      if (!activeAddresses.length) return;
 
-      const baseKey = getBaseCacheKey(address);
+      const baseKey = getBaseCacheKey();
       const filterType = getFilterType();
-      const filterCacheKey = getFilterCacheKey(address, filterType, p);
+      const filterCacheKey = getFilterCacheKey(filterType, p);
 
       // Check complete page cache first
       const cached = pageCache.current.get(filterCacheKey);
@@ -368,34 +400,70 @@ export function useTransactionCache({
       setError(null);
 
       try {
-        // Get global cursor for this base context
-        const cursor = globalNextCursor.current.get(baseKey) ?? null;
+        const cursorMap = getCursorMap(baseKey);
+        const aggregatedNewRows: TxRow[] = [];
+        const totalCandidates: Array<number | null> = [];
 
-        // Fetch raw transactions (all types, no class filter)
-        const resp = await fetchTransactions(address, {
-          ...(networksParam ? { networks: networksParam } : {}),
-          page: 1, // Always page 1, cursor handles pagination
-          limit: PAGE_SIZE,
-          minUsd: 0,
-          spamFilter: "hard",
-          ...(cursor ? { cursor } : {}),
-          // NO class param - we want all transactions
-          ...(dateRange.from ? { from: dateRange.from } : {}),
-          ...(dateRange.to ? { to: dateRange.to } : {}),
-        });
+        for (const walletAddress of activeAddresses) {
+          const addrKey = walletAddress.toLowerCase();
+          const cursor = cursorMap.get(addrKey) ?? null;
+          const resp = await fetchTransactions(walletAddress, {
+            ...(networksParam ? { networks: networksParam } : {}),
+            page: 1,
+            limit: PAGE_SIZE,
+            minUsd: 0,
+            spamFilter: "hard",
+            ...(cursor ? { cursor } : {}),
+            ...(dateRange.from ? { from: dateRange.from } : {}),
+            ...(dateRange.to ? { to: dateRange.to } : {}),
+          });
 
-        const { rows: newRows, hasNext, nextCursor } = resp as any;
-        const totalCount = (resp as any)?.total ?? null;
+          const { rows: newRows, nextCursor } = resp as any;
+          totalCandidates.push((resp as any)?.total ?? null);
 
-        // Add new raw transactions to cache
+          if (Array.isArray(newRows) && newRows.length) {
+            aggregatedNewRows.push(
+              ...newRows.map((row: TxRow) => ({
+                ...row,
+                walletAddress,
+              }))
+            );
+          }
+
+          if (nextCursor) {
+            cursorMap.set(addrKey, nextCursor);
+          } else {
+            cursorMap.set(addrKey, null);
+          }
+        }
+
         const existingRaw = rawTransactionsCache.current.get(baseKey) || [];
-        const updatedRaw = [...existingRaw, ...newRows];
+        const combined = [...existingRaw, ...aggregatedNewRows];
+        const dedupMap = new Map<string, TxRow>();
+        combined.forEach((row) => {
+          const dedupKey = `${row.hash}:${row.direction}:${
+            row.walletAddress ?? ""
+          }:${row.asset?.symbol ?? row.asset?.contract ?? "asset"}:${row.qty}:${
+            row.ts
+          }`;
+          if (!dedupMap.has(dedupKey)) {
+            dedupMap.set(dedupKey, row);
+          }
+        });
+        const updatedRaw = Array.from(dedupMap.values()).sort(
+          (a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()
+        );
         rawTransactionsCache.current.set(baseKey, updatedRaw);
 
-        // Update global cursor
-        if (nextCursor) {
-          globalNextCursor.current.set(baseKey, nextCursor);
-        }
+        const hasMoreRaw = Array.from(cursorMap.values()).some(
+          (value) => value !== null
+        );
+
+        const totalCount = totalCandidates.every(
+          (value) => typeof value === "number"
+        )
+          ? totalCandidates.reduce((sum, value) => sum + (value ?? 0), 0)
+          : null;
 
         // Filter and paginate for all filter types
         filterAndPaginate(updatedRaw, baseKey, totalCount);
@@ -411,18 +479,19 @@ export function useTransactionCache({
         } else {
           // Page still incomplete - recursively fetch more until complete
           // Prevent infinite loop with retry limit
-          if (retryCount < 10 && hasNext && nextCursor) {
+          if (retryCount < 10 && hasMoreRaw) {
             await load(p, retryCount + 1);
           } else {
             // Show incomplete page or error
-            const incompleteNow = incompletePageCache.current.get(filterCacheKey);
+            const incompleteNow =
+              incompletePageCache.current.get(filterCacheKey);
             if (incompleteNow) {
               setRows(incompleteNow.rows);
-              setHasNext(false);
+              setHasNext(hasMoreRaw);
               setTotal(totalCount);
             } else {
               setRows([]);
-              setHasNext(false);
+              setHasNext(hasMoreRaw);
               setTotal(totalCount);
             }
           }
@@ -437,19 +506,21 @@ export function useTransactionCache({
       }
     },
     [
-      address,
+      activeAddresses,
+      addressesKey,
       networksParam,
       dateRange,
       getBaseCacheKey,
       getFilterType,
       getFilterCacheKey,
       filterAndPaginate,
+      getCursorMap,
     ]
   );
 
   const refresh = useCallback(() => {
-    if (!address) return;
-    const baseKey = getBaseCacheKey(address);
+    if (!activeAddresses.length) return;
+    const baseKey = getBaseCacheKey();
     // Clear all caches
     rawTransactionsCache.current.delete(baseKey);
     globalNextCursor.current.delete(baseKey);
@@ -465,12 +536,12 @@ export function useTransactionCache({
     bumpCacheVersion();
     setPage(1);
     load(1);
-  }, [address, getBaseCacheKey, bumpCacheVersion, load]);
+  }, [activeAddresses.length, getBaseCacheKey, bumpCacheVersion, load]);
 
   // Initial/refresh - clear cache when address or base filters change (networks, dateRange)
   useEffect(() => {
-    if (!address) return;
-    const baseKey = getBaseCacheKey(address);
+    if (!activeAddresses.length) return;
+    const baseKey = getBaseCacheKey();
     setPage(1);
     // Clear raw cache and cursor for this base context
     rawTransactionsCache.current.delete(baseKey);
@@ -488,14 +559,14 @@ export function useTransactionCache({
     bumpCacheVersion();
     load(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey, networksParam, dateRangeKey, bumpCacheVersion]);
+  }, [addressesKey, refreshKey, networksParam, dateRangeKey, bumpCacheVersion]);
 
   // When filter type changes (selectedTypes), just switch to cached pages (no API call)
   useEffect(() => {
-    if (!address) return;
+    if (!activeAddresses.length) return;
     const filterType = getFilterType();
-    const filterCacheKey = getFilterCacheKey(address, filterType, page);
-    
+    const filterCacheKey = getFilterCacheKey(filterType, page);
+
     // Check if page exists in cache
     const cached = pageCache.current.get(filterCacheKey);
     if (cached) {
@@ -505,10 +576,10 @@ export function useTransactionCache({
       setMaxLoadedPage((prev) => (page > prev ? page : prev));
     } else {
       // Current page doesn't exist - find the last complete page for this filter
-      const baseKey = getBaseCacheKey(address);
+      const baseKey = getBaseCacheKey();
       let lastCompletePage = 0;
       const prefix = `${baseKey}:${filterType}:`;
-      
+
       // Check only complete pages cache (not incomplete pages)
       for (const key of Array.from(pageCache.current.keys())) {
         if (key.startsWith(prefix)) {
@@ -521,11 +592,11 @@ export function useTransactionCache({
 
       // If we found a complete cached page, go to it (or page 1 if none found)
       const targetPage = lastCompletePage > 0 ? lastCompletePage : 1;
-      
+
       if (targetPage !== page) {
         // Redirect to the last complete page
         setPage(targetPage);
-        const targetCacheKey = getFilterCacheKey(address, filterType, targetPage);
+        const targetCacheKey = getFilterCacheKey(filterType, targetPage);
         const targetCached = pageCache.current.get(targetCacheKey);
         if (targetCached) {
           setRows(targetCached.rows);
@@ -542,14 +613,14 @@ export function useTransactionCache({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTypesKey]);
+  }, [addressesKey, selectedTypesKey]);
 
   // Get all loaded rows for stats calculation (from raw transactions cache)
   const loadedRowsAll = useMemo(() => {
-    if (!address) return [];
-    const baseKey = getBaseCacheKey(address);
+    if (!activeAddresses.length) return [];
+    const baseKey = getBaseCacheKey();
     const rawRows = rawTransactionsCache.current.get(baseKey) || [];
-    
+
     // Deduplicate by hash + direction + asset + qty + timestamp
     const dedup = new Map<string, TxRow>();
     rawRows.forEach((row) => {
@@ -561,7 +632,7 @@ export function useTransactionCache({
       }
     });
     return Array.from(dedup.values());
-  }, [address, getBaseCacheKey, cacheVersion]);
+  }, [addressesKey, getBaseCacheKey, cacheVersion, activeAddresses.length]);
 
   return {
     rows,
@@ -582,4 +653,3 @@ export function useTransactionCache({
     loadIndicatorLabel,
   };
 }
-

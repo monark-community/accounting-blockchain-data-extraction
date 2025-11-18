@@ -16,8 +16,14 @@ import type { DatePreset } from "@/hooks/useTransactionFilters";
 import { exportCsv, exportJson } from "@/utils/transactionExport";
 import type { TxRow } from "@/lib/types/transactions";
 
-interface TransactionToolbarProps {
+interface WalletPickerOption {
   address: string;
+  label: string;
+  color?: string;
+}
+
+interface TransactionToolbarProps {
+  exportLabel: string;
   loading: boolean;
   page: number;
   rows: TxRow[];
@@ -35,7 +41,9 @@ interface TransactionToolbarProps {
   resetToDefaultNetworks: () => void;
   visibleColumns: Record<string, boolean>;
   visibleColumnsInit: Record<string, boolean>;
-  setVisibleColumns: (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => void;
+  setVisibleColumns: (
+    updater: (prev: Record<string, boolean>) => Record<string, boolean>
+  ) => void;
   typeLabelForExport: string;
   canPrev: boolean;
   canNext: boolean;
@@ -43,10 +51,18 @@ interface TransactionToolbarProps {
   goNext: () => void;
   refresh: () => void;
   setRefreshKey: (updater: (k: number) => number) => void;
+  walletOptions?: WalletPickerOption[];
+  selectedWallets?: string[];
+  walletButtonLabel?: string;
+  toggleWalletSelection?: (address: string, checked: boolean) => void;
+  selectAllWallets?: () => void;
+  resetWalletSelection?: () => void;
+  walletLimitReached?: boolean;
+  walletLimit?: number;
 }
 
 export function TransactionToolbar({
-  address,
+  exportLabel,
   loading,
   page,
   rows,
@@ -72,6 +88,14 @@ export function TransactionToolbar({
   goNext,
   refresh,
   setRefreshKey,
+  walletOptions,
+  selectedWallets,
+  walletButtonLabel,
+  toggleWalletSelection,
+  selectAllWallets,
+  resetWalletSelection,
+  walletLimitReached,
+  walletLimit,
 }: TransactionToolbarProps) {
   return (
     <div className="flex items-center gap-2">
@@ -82,7 +106,8 @@ export function TransactionToolbar({
           <span className="font-medium">Page {page}</span>
         ) : (
           <span className="font-medium">
-            {rows.length} transaction{rows.length !== 1 ? "s" : ""} (page {page})
+            {rows.length} transaction{rows.length !== 1 ? "s" : ""} (page {page}
+            )
           </span>
         )}
       </div>
@@ -117,10 +142,69 @@ export function TransactionToolbar({
             <DropdownMenuRadioItem value="previous">
               Tax year {currentYear - 1}
             </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="custom">Custom range</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="custom">
+              Custom range
+            </DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {walletOptions && walletOptions.length > 1 && toggleWalletSelection && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={loading}>
+              Wallets: {walletButtonLabel || "All"}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel>Select wallets</DropdownMenuLabel>
+            {walletOptions.map((wallet) => (
+              <DropdownMenuCheckboxItem
+                key={wallet.address}
+                checked={selectedWallets?.includes(wallet.address)}
+                onCheckedChange={(checked) =>
+                  toggleWalletSelection(wallet.address, !!checked)
+                }
+                disabled={
+                  !selectedWallets?.includes(wallet.address) &&
+                  walletLimitReached &&
+                  !loading
+                }
+              >
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    className="inline-block w-2 h-2 rounded-full"
+                    style={{ backgroundColor: wallet.color || "#94a3b8" }}
+                  />
+                  {wallet.label}
+                </span>
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                selectAllWallets?.();
+              }}
+            >
+              Select all
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                resetWalletSelection?.();
+              }}
+            >
+              Reset
+            </DropdownMenuItem>
+            {walletLimitReached && walletLimit && (
+              <div className="px-3 py-2 text-xs text-amber-600">
+                Limit of {walletLimit} wallets reached
+              </div>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -168,22 +252,24 @@ export function TransactionToolbar({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          {(Object.keys(visibleColumns) as Array<keyof typeof visibleColumnsInit>).map(
-            (key) => (
-              <DropdownMenuCheckboxItem
-                key={key}
-                checked={visibleColumns[key]}
-                onCheckedChange={(checked) =>
-                  setVisibleColumns((prev) => ({
-                    ...prev,
-                    [key]: !!checked,
-                  }))
-                }
-              >
-                {String(key).charAt(0).toUpperCase() + String(key).slice(1)}
-              </DropdownMenuCheckboxItem>
-            )
-          )}
+          {(
+            Object.keys(visibleColumns) as Array<
+              keyof typeof visibleColumnsInit
+            >
+          ).map((key) => (
+            <DropdownMenuCheckboxItem
+              key={key}
+              checked={visibleColumns[key]}
+              onCheckedChange={(checked) =>
+                setVisibleColumns((prev) => ({
+                  ...prev,
+                  [key]: !!checked,
+                }))
+              }
+            >
+              {String(key).charAt(0).toUpperCase() + String(key).slice(1)}
+            </DropdownMenuCheckboxItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -197,7 +283,7 @@ export function TransactionToolbar({
           <button
             className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
             onClick={() =>
-              exportCsv(address, rows, "visible", typeLabelForExport)
+              exportCsv(exportLabel, rows, "visible", typeLabelForExport)
             }
           >
             CSV (visible)
@@ -206,7 +292,7 @@ export function TransactionToolbar({
           <button
             className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
             onClick={() =>
-              exportJson(address, rows, "visible", typeLabelForExport)
+              exportJson(exportLabel, rows, "visible", typeLabelForExport)
             }
           >
             JSON (visible)
@@ -242,10 +328,11 @@ export function TransactionToolbar({
         }}
         disabled={loading}
       >
-        <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+        <RefreshCw
+          className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
+        />
         Refresh
       </Button>
     </div>
   );
 }
-

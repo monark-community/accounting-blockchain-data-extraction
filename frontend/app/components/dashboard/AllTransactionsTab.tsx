@@ -9,16 +9,39 @@ import { useTransactionStats } from "@/hooks/useTransactionStats";
 import { CapitalGainsSnapshot } from "./CapitalGainsSnapshot";
 import { TransactionToolbar } from "./TransactionToolbar";
 import { TransactionTable } from "./TransactionTable";
-import { typeIcon } from "@/utils/transactionHelpers";
+import { typeIcon, shortAddr } from "@/utils/transactionHelpers";
+
+const DEFAULT_MULTI_WALLET_LIMIT = Number(
+  process.env.NEXT_PUBLIC_DASHBOARD_MULTI_LIMIT ?? 3
+);
+
+const WALLET_COLOR_PALETTE = [
+  "#6366f1",
+  "#f97316",
+  "#0ea5e9",
+  "#14b8a6",
+  "#ec4899",
+  "#84cc16",
+];
+
+interface WalletOption {
+  address: string;
+  label: string;
+  color?: string;
+}
 
 interface AllTransactionsTabProps {
   address?: string;
   networks?: string; // comma-separated override; omit to use UI-managed selection
+  walletOptions?: WalletOption[];
+  walletLimit?: number;
 }
 
 export default function AllTransactionsTab({
   address: propAddress,
   networks: propNetworks,
+  walletOptions,
+  walletLimit = DEFAULT_MULTI_WALLET_LIMIT,
 }: AllTransactionsTabProps) {
   // Use prop address if provided, otherwise read from URL
   const [address, setAddress] = useState<string>(propAddress || "");
@@ -33,13 +56,141 @@ export default function AllTransactionsTab({
   }, [propAddress]);
 
   const [refreshKey, setRefreshKey] = useState(0);
+  const walletOptionList = useMemo(() => {
+    if (!walletOptions?.length) return [];
+    return walletOptions.map((wallet, idx) => ({
+      ...wallet,
+      label: wallet.label || shortAddr(wallet.address),
+      color:
+        wallet.color ??
+        WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length],
+    }));
+  }, [walletOptions]);
+  const [selectedWallets, setSelectedWallets] = useState<string[]>(() =>
+    walletOptions && walletOptions.length
+      ? walletOptions.map((wallet) => wallet.address)
+      : propAddress
+      ? [propAddress]
+      : []
+  );
+
+  useEffect(() => {
+    if (walletOptionList.length) {
+      setSelectedWallets((prev) => {
+        const valid = prev.filter((addr) =>
+          walletOptionList.some((wallet) => wallet.address === addr)
+        );
+        if (valid.length) return valid;
+        return walletOptionList
+          .map((wallet) => wallet.address)
+          .slice(0, walletLimit);
+      });
+    } else if (propAddress) {
+      setSelectedWallets([propAddress]);
+    } else {
+      setSelectedWallets([]);
+    }
+  }, [walletOptionList, walletLimit, propAddress]);
+
+  const activeWallets = selectedWallets.length
+    ? selectedWallets
+    : address
+    ? [address]
+    : [];
+
+  const walletDropdownVisible = walletOptionList.length > 1;
+  const walletSelectionCount = selectedWallets.length;
+  const walletLimitReached = walletSelectionCount >= walletLimit;
+
+  const walletMap = useMemo(() => {
+    const map = new Map<string, WalletOption & { color?: string }>();
+    walletOptionList.forEach((wallet) => {
+      map.set(wallet.address, wallet);
+      map.set(wallet.address.toLowerCase(), wallet);
+    });
+    return map;
+  }, [walletOptionList]);
+
+  const walletLabelLookup = useMemo(() => {
+    const lookup: Record<string, { label: string; color?: string }> = {};
+    walletOptionList.forEach((wallet) => {
+      lookup[wallet.address.toLowerCase()] = {
+        label: wallet.label,
+        color: wallet.color,
+      };
+    });
+    return lookup;
+  }, [walletOptionList]);
+
+  const walletButtonLabel = useMemo(() => {
+    if (!walletDropdownVisible) {
+      const single = activeWallets[0];
+      const meta = single ? walletMap.get(single) : null;
+      return meta?.label || (single ? shortAddr(single) : "Wallet");
+    }
+    if (!walletSelectionCount) {
+      return "None selected";
+    }
+    if (walletSelectionCount === walletOptionList.length) {
+      return "All wallets";
+    }
+    if (walletSelectionCount === 1) {
+      const meta = walletMap.get(selectedWallets[0]);
+      return meta?.label || shortAddr(selectedWallets[0]);
+    }
+    const first = walletMap.get(selectedWallets[0]);
+    const baseLabel = first?.label || shortAddr(selectedWallets[0]);
+    return `${baseLabel} +${walletSelectionCount - 1}`;
+  }, [
+    walletDropdownVisible,
+    walletSelectionCount,
+    walletOptionList.length,
+    activeWallets,
+    walletMap,
+    selectedWallets,
+  ]);
+
+  const toggleWalletSelection = (addr: string, checked: boolean) => {
+    setSelectedWallets((prev) => {
+      if (checked) {
+        if (prev.includes(addr)) return prev;
+        if (walletLimitReached) return prev;
+        return [...prev, addr];
+      }
+      return prev.filter((item) => item !== addr);
+    });
+  };
+
+  const selectAllWallets = () => {
+    if (!walletOptionList.length) return;
+    setSelectedWallets(
+      walletOptionList.map((wallet) => wallet.address).slice(0, walletLimit)
+    );
+  };
+
+  const resetWalletSelection = () => {
+    if (!walletOptionList.length) return;
+    setSelectedWallets(
+      walletOptionList.map((wallet) => wallet.address).slice(0, walletLimit)
+    );
+  };
+
+  const exportLabel = useMemo(() => {
+    if (activeWallets.length === 1) {
+      return shortAddr(activeWallets[0]);
+    }
+    if (activeWallets.length > 1) {
+      return `${activeWallets.length}-wallets`;
+    }
+    return "wallets";
+  }, [activeWallets]);
 
   // Filters hook
   const filters = useTransactionFilters(propNetworks);
 
   // Cache hook
   const cache = useTransactionCache({
-    address,
+    addresses: activeWallets,
     selectedTypes: filters.selectedTypes,
     networksParam: filters.networksParam,
     dateRange: filters.dateRange,
@@ -82,7 +233,9 @@ export default function AllTransactionsTab({
   useEffect(() => {
     if (cache.error) {
       console.error("[AllTransactionsTab] Error:", {
-        address: address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "none",
+        address: address
+          ? `${address.slice(0, 6)}...${address.slice(-4)}`
+          : "none",
         error: cache.error.slice(0, 100),
       });
     }
@@ -90,9 +243,9 @@ export default function AllTransactionsTab({
 
   return (
     <div className="space-y-6">
-      {address && (
+      {activeWallets.length > 0 && (
         <CapitalGainsSnapshot
-          address={address}
+          address={exportLabel}
           loadedTransactionsCount={stats.capitalGainsSummary.transactionsCount}
           totalCount={totalCount}
           dateRangeLabel={filters.dateRange.label}
@@ -111,10 +264,31 @@ export default function AllTransactionsTab({
         <div className="p-6 border-b">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-bold text-slate-800">
-              All Transactions {address ? "" : "(load an address)"}
+              All Transactions {activeWallets.length ? "" : "(select a wallet)"}
             </h3>
+            {walletOptionList.length > 0 && activeWallets.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {activeWallets.map((walletAddress) => {
+                  const meta =
+                    walletMap.get(walletAddress) ||
+                    walletMap.get(walletAddress.toLowerCase());
+                  return (
+                    <span
+                      key={walletAddress}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                    >
+                      <span
+                        className="inline-block w-2 h-2 rounded-full"
+                        style={{ backgroundColor: meta?.color || "#94a3b8" }}
+                      />
+                      {meta?.label || shortAddr(walletAddress)}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             <TransactionToolbar
-              address={address || ""}
+              exportLabel={exportLabel}
               loading={cache.loading}
               page={cache.page}
               rows={cache.rows}
@@ -140,6 +314,24 @@ export default function AllTransactionsTab({
               goNext={goNext}
               refresh={cache.refresh}
               setRefreshKey={setRefreshKey}
+              walletOptions={
+                walletDropdownVisible ? walletOptionList : undefined
+              }
+              selectedWallets={selectedWallets}
+              walletButtonLabel={walletButtonLabel}
+              toggleWalletSelection={
+                walletDropdownVisible ? toggleWalletSelection : undefined
+              }
+              selectAllWallets={
+                walletDropdownVisible ? selectAllWallets : undefined
+              }
+              resetWalletSelection={
+                walletDropdownVisible ? resetWalletSelection : undefined
+              }
+              walletLimitReached={
+                walletDropdownVisible ? walletLimitReached : undefined
+              }
+              walletLimit={walletDropdownVisible ? walletLimit : undefined}
             />
           </div>
 
@@ -150,7 +342,9 @@ export default function AllTransactionsTab({
                 <input
                   type="date"
                   value={filters.customFrom}
-                  onChange={(event) => filters.setCustomFrom(event.currentTarget.value)}
+                  onChange={(event) =>
+                    filters.setCustomFrom(event.currentTarget.value)
+                  }
                   className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
                 />
               </label>
@@ -159,7 +353,9 @@ export default function AllTransactionsTab({
                 <input
                   type="date"
                   value={filters.customTo}
-                  onChange={(event) => filters.setCustomTo(event.currentTarget.value)}
+                  onChange={(event) =>
+                    filters.setCustomTo(event.currentTarget.value)
+                  }
                   className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
                 />
               </label>
@@ -186,7 +382,9 @@ export default function AllTransactionsTab({
                   checked={
                     Array.isArray(filters.selectedTypes) &&
                     (filters.selectedTypes as any)[0] !== "all"
-                      ? (filters.selectedTypes as TxType[]).includes(t as TxType)
+                      ? (filters.selectedTypes as TxType[]).includes(
+                          t as TxType
+                        )
                       : false
                   }
                   onCheckedChange={(c) => filters.toggleType(t as TxType, !!c)}
@@ -204,7 +402,7 @@ export default function AllTransactionsTab({
         </div>
 
         <TransactionTable
-          address={address}
+          address={activeWallets.length ? exportLabel : null}
           rows={cache.rows}
           loading={cache.loading}
           error={cache.error}
@@ -214,6 +412,7 @@ export default function AllTransactionsTab({
           canNext={canNext}
           goPrev={goPrev}
           goNext={goNext}
+          walletLabels={walletLabelLookup}
         />
       </Card>
     </div>

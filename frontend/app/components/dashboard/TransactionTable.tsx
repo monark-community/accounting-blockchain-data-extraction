@@ -31,6 +31,7 @@ interface TransactionTableProps {
   canNext: boolean;
   goPrev: () => void;
   goNext: () => void;
+  walletLabels?: Record<string, { label: string; color?: string }>;
 }
 
 export function TransactionTable({
@@ -44,11 +45,12 @@ export function TransactionTable({
   canNext,
   goPrev,
   goNext,
+  walletLabels,
 }: TransactionTableProps) {
   if (!address) {
     return (
       <div className="p-6 text-sm text-slate-500">
-        Enter an address on the Overview tab to load transactions.
+        Select at least one wallet to load transactions.
       </div>
     );
   }
@@ -67,7 +69,9 @@ export function TransactionTable({
               {visibleColumns.qty && <TableHead>Qty</TableHead>}
               {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
               {visibleColumns.fee && <TableHead>Gas (USD)</TableHead>}
-              {visibleColumns.counterparty && <TableHead>Counterparty</TableHead>}
+              {visibleColumns.counterparty && (
+                <TableHead>Counterparty</TableHead>
+              )}
               {visibleColumns.tx && <TableHead>Tx</TableHead>}
             </TableRow>
           </TableHeader>
@@ -161,18 +165,28 @@ export function TransactionTable({
                     </div>
                   ) : (
                     tx.asset?.symbol ||
-                    (tx.asset?.contract
-                      ? shortAddr(tx.asset.contract)
-                      : "—")
+                    (tx.asset?.contract ? shortAddr(tx.asset.contract) : "—")
+                  )}
+                  {tx.walletAddress && (
+                    <span className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+                      <span
+                        className="inline-block w-1.5 h-1.5 rounded-full"
+                        style={{
+                          backgroundColor:
+                            walletLabels?.[tx.walletAddress.toLowerCase()]
+                              ?.color ?? "#94a3b8",
+                        }}
+                      />
+                      {walletLabels?.[tx.walletAddress.toLowerCase()]?.label ??
+                        shortAddr(tx.walletAddress)}
+                    </span>
                   )}
                 </TableCell>
               )}
               {visibleColumns.qty && (
                 <TableCell
                   className={`font-mono ${
-                    tx.direction === "in"
-                      ? "text-green-600"
-                      : "text-red-600"
+                    tx.direction === "in" ? "text-green-600" : "text-red-600"
                   }`}
                 >
                   {fmtQty(tx.qty, tx.direction)}
@@ -213,14 +227,23 @@ export function TransactionTable({
 
       {/* Pager footer (mobile) */}
       <div className="flex sm:hidden justify-end gap-2 p-3">
-        <Button variant="outline" size="sm" onClick={goPrev} disabled={!canPrev}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={goPrev}
+          disabled={!canPrev}
+        >
           Prev
         </Button>
-        <Button variant="outline" size="sm" onClick={goNext} disabled={!canNext}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={goNext}
+          disabled={!canNext}
+        >
           Next
         </Button>
       </div>
     </div>
   );
 }
-

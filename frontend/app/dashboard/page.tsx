@@ -339,7 +339,7 @@ const Dashboard = () => {
   const [walletLabelMode, setWalletLabelMode] = useState<"name" | "address">(
     "name"
   );
-const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
+  const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
   const [loadedFromStorage, setLoadedFromStorage] = useState(false);
   const handleToggleWallet = (walletAddress: string, checked: boolean) => {
     setSelectedWallets((prev) => {
@@ -380,7 +380,9 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
 
   const handleSelectAllWallets = () => {
     if (urlAddress) return;
-    const next = allWallets.slice(0, MAX_MULTI_WALLETS).map((wallet) => wallet.address);
+    const next = allWallets
+      .slice(0, MAX_MULTI_WALLETS)
+      .map((wallet) => wallet.address);
     setSelectedWallets(next);
     setWalletSelectionDirty(true);
   };
@@ -1443,14 +1445,17 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
                 </div>
                 <div className="flex flex-col items-end text-xs text-slate-500 gap-1">
                   <span>
-                    Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS} wallets
+                    Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS}{" "}
+                    wallets
                   </span>
-                  {walletSelectionDirty && selectedWallets.length > 0 && !urlAddress && (
-                    <span className="inline-flex items-center gap-1 text-amber-600">
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
-                      Apply the new selection to refresh data
-                    </span>
-                  )}
+                  {walletSelectionDirty &&
+                    selectedWallets.length > 0 &&
+                    !urlAddress && (
+                      <span className="inline-flex items-center gap-1 text-amber-600">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Apply the new selection to refresh data
+                      </span>
+                    )}
                 </div>
                 {walletLimitReached && (
                   <p className="text-xs text-amber-600">
@@ -1725,7 +1730,11 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
           </TabsContent> */}
 
           <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab address={address} />
+            <AllTransactionsTab
+              address={address}
+              walletOptions={appliedWalletDisplay}
+              walletLimit={MAX_MULTI_WALLETS}
+            />
           </TabsContent>
         </Tabs>
       </main>
