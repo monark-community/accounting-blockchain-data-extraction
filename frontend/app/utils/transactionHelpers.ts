@@ -35,10 +35,10 @@ export const typeColor = (t: TxType) =>
   }[t] ?? "text-slate-600");
 
 export const typeIcon = (t: TxType): ReactNode => {
-  if (t === "income") return <TrendingUp className="w-4 h-4" />;
-  if (t === "expense") return <TrendingDown className="w-4 h-4" />;
-  if (t === "swap") return <Repeat className="w-4 h-4" />;
-  if (t === "gas") return <Fuel className="w-4 h-4" />;
+  if (t === "income") return React.createElement(TrendingUp, { className: "w-4 h-4" });
+  if (t === "expense") return React.createElement(TrendingDown, { className: "w-4 h-4" });
+  if (t === "swap") return React.createElement(Repeat, { className: "w-4 h-4" });
+  if (t === "gas") return React.createElement(Fuel, { className: "w-4 h-4" });
   return null;
 };
 
