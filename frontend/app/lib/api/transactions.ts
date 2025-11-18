@@ -33,9 +33,11 @@ export async function fetchTransactions(address: string, q: TxQuery, retryCount 
 
   const networkStartTime = performance.now();
   
-  // Add timeout to prevent hanging requests (120 seconds max)
+  // Add timeout to prevent hanging requests (240 seconds = 4 minutes max)
+  // Increased from 120s to allow backend more time for multi-network requests
+  const REQUEST_TIMEOUT_MS = 240000;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000);
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   
   let res: Response;
   try {
@@ -63,7 +65,7 @@ export async function fetchTransactions(address: string, q: TxQuery, retryCount 
     }
     
     if (error.name === 'AbortError') {
-      throw new Error('Request timeout: The server took too long to respond (>120s)');
+      throw new Error(`Request timeout: The server took too long to respond (>${REQUEST_TIMEOUT_MS / 1000}s)`);
     }
     throw error;
   }
