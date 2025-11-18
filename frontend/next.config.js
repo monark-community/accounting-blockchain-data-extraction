@@ -25,7 +25,10 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
-    const base = process.env.API_BASE ?? "http://backend-dev:8080";
+    // Use backend URL from environment, fallback to Render production URL
+    const base = process.env.API_BASE || "https://ledgerlift-backend.onrender.com";
+    
+    console.log("[Next.js] API_BASE configured:", base);
 
     return [
       {
