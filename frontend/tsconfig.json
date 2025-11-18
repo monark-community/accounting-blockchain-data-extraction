@@ -14,11 +14,6 @@
     "jsx": "preserve",
     "incremental": true,
     "downlevelIteration": true,
-    "noImplicitAny": false,
-    "noUnusedParameters": false,
-    "noUnusedLocals": false,
-    "strictNullChecks": false,
-    "suppressImplicitAnyIndexErrors": true,
     "plugins": [
       {
         "name": "next"
