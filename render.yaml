@@ -147,7 +147,7 @@ databases:
     databaseName: ledgerlift
     user: ledgerlift
     plan: free
-    region: frankfurt
+    region: oregon
     postgresMajorVersion: 16
     ipAllowList: []
 
