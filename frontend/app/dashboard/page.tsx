@@ -1425,7 +1425,7 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
                     size="sm"
                     className="border-2 border-slate-200"
                     onClick={handleSelectAllWallets}
-                    disabled={urlAddress || !allWallets.length}
+                    disabled={!!urlAddress || !allWallets.length}
                   >
                     Select {Math.min(MAX_MULTI_WALLETS, allWallets.length)}
                   </Button>
