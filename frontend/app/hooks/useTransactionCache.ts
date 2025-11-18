@@ -506,7 +506,7 @@ export function useTransactionCache({
   const maxLoadedPage = 0;
   const cachedAheadCount = 0;
   const isOverloaded = false;
-  const loadIndicatorLabel = loading ? "Chargement…" : null;
+  const loadIndicatorLabel = loading ? "Loading…" : null;
 
   return {
     rows,
