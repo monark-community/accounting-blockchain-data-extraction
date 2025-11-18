@@ -13,10 +13,10 @@ import networksRouter from "./routes/networks.routes";
 
 const app = express();
 
-// Increase timeout for long-running requests (pricing API calls can take 20-30s)
+// Increase timeout for long-running requests (multi-network requests without cap can take longer)
 app.use((req, res, next) => {
-  req.setTimeout(120000); // 2 minutes
-  res.setTimeout(120000);
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000);
   next();
 });
 

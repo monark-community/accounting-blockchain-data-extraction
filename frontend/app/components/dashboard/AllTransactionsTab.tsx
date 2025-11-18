@@ -63,10 +63,13 @@ export default function AllTransactionsTab({
     }
   }, [cache.total, cache.page, cache.hasNext, cache.rows.length]);
 
+  // Check if there are no transactions at all in the wallet (after loading is complete and no error)
+  // This is different from "no transactions match current filter" (which would have loadedRowsAll.length > 0)
+  const hasNoTransactions = cache.loadedRowsAll.length === 0 && !cache.loading && !cache.error && address !== "";
+
   // Navigation buttons - now work with filters since filtering is done client-side
   const canPrev = cache.page > 1;
-  const canNext =
-    cache.hasNext && !(cache.loading && cache.page >= cache.maxLoadedPage);
+  const canNext = cache.hasNext;
   const goPrev = () => {
     const p = Math.max(1, cache.page - 1);
     cache.setPage(p);
@@ -140,6 +143,7 @@ export default function AllTransactionsTab({
               goNext={goNext}
               refresh={cache.refresh}
               setRefreshKey={setRefreshKey}
+              hasNoTransactions={hasNoTransactions}
             />
           </div>
 
@@ -173,7 +177,7 @@ export default function AllTransactionsTab({
                 id="type-all"
                 checked={(filters.selectedTypes as any)[0] === "all"}
                 onCheckedChange={(c) => filters.toggleType("all", !!c)}
-                disabled={cache.loading || filters.isOnlyAllSelected}
+                disabled={cache.loading || filters.isOnlyAllSelected || hasNoTransactions}
               />
               <Label htmlFor="type-all" className="text-sm font-normal">
                 All Types
@@ -190,7 +194,7 @@ export default function AllTransactionsTab({
                       : false
                   }
                   onCheckedChange={(c) => filters.toggleType(t as TxType, !!c)}
-                  disabled={cache.loading}
+                  disabled={cache.loading || hasNoTransactions}
                 />
                 <Label
                   htmlFor={`type-${t}`}
@@ -214,6 +218,7 @@ export default function AllTransactionsTab({
           canNext={canNext}
           goPrev={goPrev}
           goNext={goNext}
+          loadedRowsAll={cache.loadedRowsAll}
         />
       </Card>
     </div>
