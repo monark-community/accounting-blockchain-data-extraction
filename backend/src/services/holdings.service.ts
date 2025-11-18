@@ -11,6 +11,7 @@ import {
   getNativePriceUsd,
   normalizeContractKey,
   getPricesAtTimestamp,
+  getPricingWarnings,
 } from "./pricing.service";
 
 const TOKEN_API_BASE =
@@ -40,6 +41,11 @@ type PricedHolding = {
   priceSource: "native" | "map" | "tokenapi" | "unknown";
 };
 
+type PricingWarnings = {
+  defiLlamaRateLimited?: boolean;
+  defiLlamaRetryAfterMs?: number;
+};
+
 type OverviewResponse = {
   address: string;
   asOf: string;
@@ -58,6 +64,7 @@ type OverviewResponse = {
     weightPct: number;
     chain: EvmNetwork;
   }[];
+  warnings?: PricingWarnings;
 };
 
 async function tokenApiGET<T>(
@@ -375,5 +382,6 @@ export async function getHoldingsOverview(
     holdings,
     allocation,
     topHoldings,
+    warnings: getPricingWarnings(),
   };
 }

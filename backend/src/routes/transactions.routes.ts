@@ -10,6 +10,7 @@ import {
   encodeCursorFromLeg,
   isLegOlderThanCursor,
 } from "../utils/tx.cursor";
+import { getPricingWarnings } from "../services/pricing.service";
 
 const router = Router();
 
@@ -157,6 +158,7 @@ router.get("/:address", async (req, res) => {
       limit,
       hasNext,
       nextCursor,
+      warnings: getPricingWarnings(),
     });
     
     // Single summary log with key metrics

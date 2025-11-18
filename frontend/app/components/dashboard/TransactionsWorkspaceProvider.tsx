@@ -39,6 +39,7 @@ interface TransactionsWorkspaceProviderProps {
   networks?: string;
   walletOptions?: WalletOption[];
   walletLimit?: number;
+  onPricingWarningChange?: (flag: boolean) => void;
 }
 
 interface TransactionsWorkspaceValue {
@@ -65,6 +66,7 @@ interface TransactionsWorkspaceValue {
   goNext: () => void;
   refreshKey: number;
   setRefreshKey: React.Dispatch<React.SetStateAction<number>>;
+  pricingWarnings: ReturnType<typeof useTransactionCache>["warnings"] | null;
 }
 
 const TransactionsWorkspaceContext =
@@ -76,6 +78,7 @@ export function TransactionsWorkspaceProvider({
   networks: propNetworks,
   walletOptions,
   walletLimit: walletLimitProp,
+  onPricingWarningChange,
 }: TransactionsWorkspaceProviderProps) {
   const walletLimit =
     typeof walletLimitProp === "number"
@@ -231,6 +234,18 @@ export function TransactionsWorkspaceProvider({
   });
   const stats = useTransactionStats(cache.loadedRowsAll);
 
+  useEffect(() => {
+    if (!onPricingWarningChange) return;
+    onPricingWarningChange(!!cache.warnings?.defiLlamaRateLimited);
+  }, [cache.warnings, onPricingWarningChange]);
+
+  useEffect(() => {
+    if (!onPricingWarningChange) return;
+    return () => {
+      onPricingWarningChange(false);
+    };
+  }, [onPricingWarningChange]);
+
   const totalCount = useMemo(() => {
     if (cache.total !== null) return cache.total;
     if (cache.rows.length === 0) return null;
@@ -281,6 +296,7 @@ export function TransactionsWorkspaceProvider({
       goNext,
       refreshKey,
       setRefreshKey,
+      pricingWarnings: cache.warnings,
     }),
     [
       address,

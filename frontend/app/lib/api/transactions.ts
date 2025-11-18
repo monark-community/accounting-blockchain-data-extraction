@@ -88,5 +88,6 @@ export async function fetchTransactions(address: string, q: TxQuery) {
     hasNext,
     gasMeta: json.meta?.gasUsdByTx ?? {},
     nextCursor: json.nextCursor ?? null,
+    warnings: json.warnings,
   };
 }

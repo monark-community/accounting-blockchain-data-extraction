@@ -54,4 +54,8 @@ export interface TxListResponse {
   limit: number;
   hasNext?: boolean;
   nextCursor?: string | null;
+  warnings?: {
+    defiLlamaRateLimited?: boolean;
+    defiLlamaRetryAfterMs?: number;
+  };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWallet } from "@/contexts/WalletContext";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
@@ -56,6 +56,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { Plus, X, Sparkles } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const DASHBOARD_NETWORK_STORAGE_KEY = "dashboard.networks";
 const DASHBOARD_NETWORK_HINTS_KEY = "dashboard.networkSuggestions";
@@ -330,6 +331,21 @@ const Dashboard = () => {
   const [showChange, setShowChange] = useState(false);
   const [selectedWallets, setSelectedWallets] = useState<string[]>([]);
   const [appliedWallets, setAppliedWallets] = useState<string[]>([]);
+  const pricingWarningSourcesRef = useRef<Set<string>>(new Set());
+  const [pricingWarningActive, setPricingWarningActive] = useState(false);
+  const setPricingWarningFor = useCallback((source: string, flag: boolean) => {
+    setPricingWarningActive((prev) => {
+      const nextSet = new Set(pricingWarningSourcesRef.current);
+      if (flag) {
+        nextSet.add(source);
+      } else {
+        nextSet.delete(source);
+      }
+      pricingWarningSourcesRef.current = nextSet;
+      const next = nextSet.size > 0;
+      return next === prev ? prev : next;
+    });
+  }, []);
   const [walletSelectionDirty, setWalletSelectionDirty] = useState(false);
   const [minUsdFilter, setMinUsdFilter] = useState(5);
   const [hideStables, setHideStables] = useState(false);
@@ -715,6 +731,10 @@ const Dashboard = () => {
         const merged = mergeOverviewResponses(entries);
         setOv(merged.overview);
         setWalletStats(merged.walletStats);
+        const warn = entries.some(
+          (entry) => entry.overview.warnings?.defiLlamaRateLimited
+        );
+        setPricingWarningFor("overview", warn);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -726,6 +746,7 @@ const Dashboard = () => {
             ? e.message
             : e?.error ?? "Failed to load overview"
         );
+        setPricingWarningFor("overview", false);
       })
       .finally(() => {
         if (!cancelled) {
@@ -736,7 +757,7 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeWallets, fetchOverviewSnapshot]);
+  }, [activeWallets, fetchOverviewSnapshot, setPricingWarningFor]);
 
   const addNetwork = (networkId: string) =>
     setNetworks((prev) => {
@@ -788,10 +809,15 @@ const Dashboard = () => {
         const merged = mergeHistoricalResponses(responses);
         setHistoricalData(merged);
         setIsHistoricalEstimated(responses.some((resp) => resp.isEstimated));
+        const warn = responses.some(
+          (resp) => resp.warnings?.defiLlamaRateLimited
+        );
+        setPricingWarningFor("historical", warn);
       })
       .catch((e) => {
         if (cancelled) return;
         console.error("[Dashboard] Failed to load historical data:", e);
+        setPricingWarningFor("historical", false);
       })
       .finally(() => {
         if (!cancelled) {
@@ -802,7 +828,13 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeWallets, networksParam, overviewReady, useFallbackEstimation]);
+  }, [
+    activeWallets,
+    networksParam,
+    overviewReady,
+    useFallbackEstimation,
+    setPricingWarningFor,
+  ]);
 
   useEffect(() => {
     if (!activeWallets.length || !overviewReady) {
@@ -1656,6 +1688,17 @@ const Dashboard = () => {
           </div>
         </Card>
 
+        {pricingWarningActive && (
+          <Alert variant="warning" className="border-amber-200 bg-amber-50">
+            <AlertTitle>Price data temporarily limited</AlertTitle>
+            <AlertDescription>
+              DeFiLlama rate limits prevented fresh USD prices. 24h changes,
+              charts, and transaction values may appear as zero until pricing
+              resumes.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="flex w-full gap-2">
             <TabsTrigger className="flex-1" value="overview">
@@ -1736,6 +1779,9 @@ const Dashboard = () => {
               address={address}
               walletOptions={appliedWalletDisplay}
               walletLimit={MAX_MULTI_WALLETS}
+              onPricingWarningChange={(flag) =>
+                setPricingWarningFor("transactions", flag)
+              }
             >
               <AllTransactionsTab
                 totalAssetsUsd={ov?.kpis.totalValueUsd ?? null}

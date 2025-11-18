@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import type { TxRow, TxType } from "@/lib/types/transactions";
+import type { TxRow, TxType, TxListResponse } from "@/lib/types/transactions";
 import { fetchTransactions } from "@/lib/api/transactions";
 import { PAGE_SIZE, uiTypesToClassParam } from "@/utils/transactionHelpers";
 
@@ -72,6 +72,9 @@ export function useTransactionCache({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
+  const [warnings, setWarnings] = useState<TxListResponse["warnings"] | null>(
+    null
+  );
 
   // Generate base cache key (without selectedTypes): "address:networks:dateRange"
   const getBaseCacheKey = useCallback(() => {
@@ -418,7 +421,11 @@ export function useTransactionCache({
             ...(dateRange.to ? { to: dateRange.to } : {}),
           });
 
-          const { rows: newRows, nextCursor } = resp as any;
+        const { rows: newRows, nextCursor, warnings: respWarnings } =
+          resp as any;
+        if (respWarnings) {
+          setWarnings(respWarnings);
+        }
           totalCandidates.push((resp as any)?.total ?? null);
 
           if (Array.isArray(newRows) && newRows.length) {
@@ -651,5 +658,6 @@ export function useTransactionCache({
     cachedAheadCount,
     isOverloaded,
     loadIndicatorLabel,
+    warnings,
   };
 }
