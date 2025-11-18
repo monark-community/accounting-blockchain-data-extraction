@@ -51,6 +51,7 @@ export function mapLegToTxRow(
 
   // We don't know the native qty spent for gas here—only USD is given by meta.
   const gasUsd = gasUsdByTx?.[leg.txHash] ?? null;
+  const legAny = leg as any;
 
   return {
     ts: tsIso,
@@ -64,7 +65,7 @@ export function mapLegToTxRow(
       contract: (leg.asset?.contract as string) ?? null,
       decimals: leg.asset?.decimals ?? null,
     },
-    swapLabel: leg.swapLabel ?? null,
+    swapLabel: legAny.swapLabel ?? null,
     qty: String(leg.amount ?? 0),
     priceUsdAtTs:
       leg.amountUsdAtTx && leg.amount ? leg.amountUsdAtTx / leg.amount : null,
