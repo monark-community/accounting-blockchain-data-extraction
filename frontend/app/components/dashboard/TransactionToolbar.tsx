@@ -43,6 +43,7 @@ interface TransactionToolbarProps {
   goNext: () => void;
   refresh: () => void;
   setRefreshKey: (updater: (k: number) => number) => void;
+  hasNoTransactions: boolean;
 }
 
 export function TransactionToolbar({
@@ -72,6 +73,7 @@ export function TransactionToolbar({
   goNext,
   refresh,
   setRefreshKey,
+  hasNoTransactions,
 }: TransactionToolbarProps) {
   return (
     <div className="flex items-center gap-2">
@@ -100,7 +102,7 @@ export function TransactionToolbar({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={loading}>
+          <Button variant="outline" size="sm" disabled={loading || hasNoTransactions}>
             Date: {dateRangeLabel}
           </Button>
         </DropdownMenuTrigger>
@@ -124,7 +126,7 @@ export function TransactionToolbar({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" disabled={loading}>
+          <Button variant="outline" size="sm" disabled={loading || hasNoTransactions}>
             Networks: {networksButtonLabel}
           </Button>
         </DropdownMenuTrigger>
@@ -137,6 +139,7 @@ export function TransactionToolbar({
               onCheckedChange={(checked) =>
                 toggleNetworkSelection(net.id, !!checked)
               }
+              disabled={hasNoTransactions}
             >
               {net.label}
             </DropdownMenuCheckboxItem>
@@ -147,6 +150,7 @@ export function TransactionToolbar({
               event.preventDefault();
               selectAllNetworks();
             }}
+            disabled={hasNoTransactions}
           >
             Select all
           </DropdownMenuItem>
@@ -155,6 +159,7 @@ export function TransactionToolbar({
               event.preventDefault();
               resetToDefaultNetworks();
             }}
+            disabled={hasNoTransactions}
           >
             Reset to default
           </DropdownMenuItem>
@@ -163,7 +168,7 @@ export function TransactionToolbar({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" disabled={hasNoTransactions}>
             <Eye className="w-4 h-4 mr-2" /> Columns
           </Button>
         </DropdownMenuTrigger>
@@ -179,6 +184,7 @@ export function TransactionToolbar({
                     [key]: !!checked,
                   }))
                 }
+                disabled={hasNoTransactions}
               >
                 {String(key).charAt(0).toUpperCase() + String(key).slice(1)}
               </DropdownMenuCheckboxItem>
@@ -189,25 +195,27 @@ export function TransactionToolbar({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" disabled={hasNoTransactions}>
             Export
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
           <button
-            className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+            className="w-full text-left px-2 py-1.5 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() =>
               exportCsv(address, rows, "visible", typeLabelForExport)
             }
+            disabled={hasNoTransactions}
           >
             CSV (visible)
           </button>
           <div className="h-px bg-slate-200 my-1" />
           <button
-            className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+            className="w-full text-left px-2 py-1.5 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={() =>
               exportJson(address, rows, "visible", typeLabelForExport)
             }
+            disabled={hasNoTransactions}
           >
             JSON (visible)
           </button>

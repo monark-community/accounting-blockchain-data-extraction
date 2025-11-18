@@ -63,6 +63,9 @@ export default function AllTransactionsTab({
     }
   }, [cache.total, cache.page, cache.hasNext, cache.rows.length]);
 
+  // Check if there are no transactions (after loading is complete and no error)
+  const hasNoTransactions = cache.rows.length === 0 && !cache.loading && !cache.error && address !== "";
+
   // Navigation buttons - now work with filters since filtering is done client-side
   const canPrev = cache.page > 1;
   const canNext = cache.hasNext;
@@ -139,6 +142,7 @@ export default function AllTransactionsTab({
               goNext={goNext}
               refresh={cache.refresh}
               setRefreshKey={setRefreshKey}
+              hasNoTransactions={hasNoTransactions}
             />
           </div>
 
@@ -150,7 +154,8 @@ export default function AllTransactionsTab({
                   type="date"
                   value={filters.customFrom}
                   onChange={(event) => filters.setCustomFrom(event.currentTarget.value)}
-                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
+                  disabled={hasNoTransactions}
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </label>
               <label className="text-xs text-slate-600 font-medium flex flex-col gap-1">
@@ -159,7 +164,8 @@ export default function AllTransactionsTab({
                   type="date"
                   value={filters.customTo}
                   onChange={(event) => filters.setCustomTo(event.currentTarget.value)}
-                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
+                  disabled={hasNoTransactions}
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </label>
             </div>
@@ -172,7 +178,7 @@ export default function AllTransactionsTab({
                 id="type-all"
                 checked={(filters.selectedTypes as any)[0] === "all"}
                 onCheckedChange={(c) => filters.toggleType("all", !!c)}
-                disabled={cache.loading || filters.isOnlyAllSelected}
+                disabled={cache.loading || filters.isOnlyAllSelected || hasNoTransactions}
               />
               <Label htmlFor="type-all" className="text-sm font-normal">
                 All Types
@@ -189,7 +195,7 @@ export default function AllTransactionsTab({
                       : false
                   }
                   onCheckedChange={(c) => filters.toggleType(t as TxType, !!c)}
-                  disabled={cache.loading}
+                  disabled={cache.loading || hasNoTransactions}
                 />
                 <Label
                   htmlFor={`type-${t}`}
