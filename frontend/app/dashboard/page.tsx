@@ -1415,7 +1415,7 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
                     size="icon"
                     className="border-2 border-slate-200"
                     onClick={handleSelectMainWallet}
-                    disabled={urlAddress || !allWallets.length}
+                    disabled={!!urlAddress || !allWallets.length}
                     title="Select main wallet"
                   >
                     <Crown className="h-4 w-4 text-amber-500" />
