@@ -65,8 +65,7 @@ export default function AllTransactionsTab({
 
   // Navigation buttons - now work with filters since filtering is done client-side
   const canPrev = cache.page > 1;
-  const canNext =
-    cache.hasNext && !(cache.loading && cache.page >= cache.maxLoadedPage);
+  const canNext = cache.hasNext;
   const goPrev = () => {
     const p = Math.max(1, cache.page - 1);
     cache.setPage(p);
