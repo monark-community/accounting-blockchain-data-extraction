@@ -1095,8 +1095,8 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
     for (const h of ov.holdings) {
       byChain.set(h.chain, (byChain.get(h.chain) ?? 0) + (h.valueUsd || 0));
     }
-    const total = [...byChain.values()].reduce((s, v) => s + v, 0) || 1;
-    return [...byChain.entries()]
+    const total = Array.from(byChain.values()).reduce((s, v) => s + v, 0) || 1;
+    return Array.from(byChain.entries())
       .map(([chain, usd]) => ({
         chain,
         label: CHAIN_LABEL[chain] ?? chain,
