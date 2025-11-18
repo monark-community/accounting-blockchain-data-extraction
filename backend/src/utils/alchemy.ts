@@ -12,10 +12,11 @@ const CHAIN_ID_TO_NETWORK: Record<number, Network> = {
   421614: Network.ARB_SEPOLIA, // Arbitrum Sepolia Testnet
   10: Network.OPT_MAINNET, // Optimism Mainnet
   11155420: Network.OPT_SEPOLIA, // Optimism Sepolia Testnet
-  56: Network.BSC_MAINNET, // BSC Mainnet
-  97: Network.BSC_TESTNET, // BSC Testnet
-  43114: Network.AVALANCHE_MAINNET, // Avalanche Mainnet
-  43113: Network.AVALANCHE_TESTNET, // Avalanche Testnet
+  // BSC and Avalanche not supported by Alchemy SDK
+  // 56: BNB Mainnet - not available in Alchemy
+  // 97: BNB Testnet - not available in Alchemy
+  // 43114: Avalanche Mainnet - not available in Alchemy
+  // 43113: Avalanche Testnet - not available in Alchemy
 };
 
 const apiKey = process.env.ALCHEMY_API_KEY;
