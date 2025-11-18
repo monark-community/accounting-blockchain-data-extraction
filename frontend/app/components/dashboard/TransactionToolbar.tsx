@@ -78,9 +78,7 @@ export function TransactionToolbar({
   return (
     <div className="flex items-center gap-2">
       <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-        {loading ? (
-          <span className="font-medium">Loading...</span>
-        ) : filterIsAll ? (
+        {filterIsAll ? (
           <span className="font-medium">Page {page}</span>
         ) : (
           <span className="font-medium">
