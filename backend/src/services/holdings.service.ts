@@ -199,7 +199,7 @@ export async function getHoldingsOverview(
     isSpam?: boolean;
     spamReasons?: string[];
   })[] = rows
-    .map((r) => {
+    .map((r: any) => {
       const qty = toFloat(r.amount, r.decimals);
 
       // ETH debug log (optional)
