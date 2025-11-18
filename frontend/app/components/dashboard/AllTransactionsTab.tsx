@@ -154,8 +154,7 @@ export default function AllTransactionsTab({
                   type="date"
                   value={filters.customFrom}
                   onChange={(event) => filters.setCustomFrom(event.currentTarget.value)}
-                  disabled={hasNoTransactions}
-                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
                 />
               </label>
               <label className="text-xs text-slate-600 font-medium flex flex-col gap-1">
@@ -164,8 +163,7 @@ export default function AllTransactionsTab({
                   type="date"
                   value={filters.customTo}
                   onChange={(event) => filters.setCustomTo(event.currentTarget.value)}
-                  disabled={hasNoTransactions}
-                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
                 />
               </label>
             </div>
