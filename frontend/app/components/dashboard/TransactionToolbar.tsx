@@ -77,15 +77,6 @@ export function TransactionToolbar({
 }: TransactionToolbarProps) {
   return (
     <div className="flex items-center gap-2">
-      <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-        {filterIsAll ? (
-          <span className="font-medium">Page {page}</span>
-        ) : (
-          <span className="font-medium">
-            {rows.length} transaction{rows.length !== 1 ? "s" : ""} (page {page})
-          </span>
-        )}
-      </div>
       {loadIndicatorLabel && (
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${
@@ -97,7 +88,16 @@ export function TransactionToolbar({
           {loadIndicatorLabel}
         </span>
       )}
-
+      <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
+        {filterIsAll ? (
+          <span className="font-medium">Page {page}</span>
+        ) : (
+          <span className="font-medium">
+            {rows.length} transaction{rows.length !== 1 ? "s" : ""} (page {page})
+          </span>
+        )}
+      </div>
+      
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" disabled={loading}>
