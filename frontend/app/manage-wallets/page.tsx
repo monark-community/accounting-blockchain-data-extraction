@@ -723,10 +723,11 @@ const ManageWallets = () => {
                           </h3>
                           {wallet.address.toLowerCase() ===
                             userWallet?.toLowerCase() && (
-                            <Crown
-                              className="w-4 h-4 text-amber-500"
-                              title="Main Wallet"
-                            />
+                            <span title="Main Wallet">
+                              <Crown
+                                className="w-4 h-4 text-amber-500"
+                              />
+                            </span>
                           )}
                         </div>
                         <p className="text-slate-600 font-mono text-sm">
