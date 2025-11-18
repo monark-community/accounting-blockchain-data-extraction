@@ -455,7 +455,7 @@ export function useTransactionCache({
       updateDisplayedRows();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [networksParam, address, getBaseCacheKey, getSelectedNetworks, loadTransactions, updateDisplayedRows]);
+  }, [networksParam, address, getBaseCacheKey, getSelectedNetworks, loadTransactions]);
 
   // When filter types change, reset to page 1
   useEffect(() => {
