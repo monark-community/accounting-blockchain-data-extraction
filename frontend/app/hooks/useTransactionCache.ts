@@ -295,6 +295,11 @@ export function useTransactionCache({
                   networkFullyLoaded.current.set(networkKey, true);
                 }
 
+                // If empty result and no cursor, mark as fully loaded
+                if (result.rows.length === 0 && !result.nextCursor) {
+                  networkFullyLoaded.current.set(networkKey, true);
+                }
+
                 // Update total count (use first non-null value)
                 const baseKey = getBaseCacheKey(addr);
                 if (result.total !== null) {
@@ -375,6 +380,11 @@ export function useTransactionCache({
                 networkFullyLoaded.current.set(networkKey, true);
               }
 
+              // If empty result and no cursor, mark as fully loaded
+              if (result.rows.length === 0 && !result.nextCursor) {
+                networkFullyLoaded.current.set(networkKey, true);
+              }
+
               // Update total count (use first non-null value)
               const baseKey = getBaseCacheKey(addr);
               if (result.total !== null) {
@@ -448,17 +458,6 @@ export function useTransactionCache({
     
     // Apply type filter
     const filtered = filterTransactions(combined, selectedNetworks);
-
-    // Log for debugging: show how transactions are sorted before pagination
-    console.log("[DEBUG CACHE] useTransactionCache - updateDisplayedRows:", {
-      page,
-      cutoffDate,
-      selectedNetworks,
-      combinedCount: combined.length,
-      filteredCount: filtered.length,
-      first5Dates: filtered.slice(0, 5).map(tx => ({ date: tx.ts, hash: tx.hash?.slice(0, 10) })),
-      last5Dates: filtered.slice(-5).map(tx => ({ date: tx.ts, hash: tx.hash?.slice(0, 10) })),
-    });
 
     // Paginate
     const startIndex = (page - 1) * PAGE_SIZE;
@@ -647,8 +646,14 @@ export function useTransactionCache({
     const filtered = filterTransactions(combined, selectedNetworks);
     const neededForPage = page * PAGE_SIZE;
 
-    // If we don't have enough filtered transactions, load more
-    if (filtered.length < neededForPage) {
+    // Check if there are any networks that aren't fully loaded
+    const hasNetworksToLoad = selectedNetworks.some((network) => {
+      const networkKey = getNetworkCacheKey(address, network);
+      return !(networkFullyLoaded.current.get(networkKey) ?? false);
+    });
+
+    // If we don't have enough filtered transactions AND there are networks that can load more
+    if (filtered.length < neededForPage && hasNetworksToLoad) {
       loadTransactions(address, selectedNetworks, neededForPage).then(() => {
         updateDisplayedRows();
       });
