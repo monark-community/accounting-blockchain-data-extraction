@@ -54,6 +54,9 @@ export function useTransactionCache({
   // Key: "address:dateRange" -> number | null
   const totalCountCache = useRef(new Map<string, number | null>());
 
+  // Track previous selectedTypesKey to detect filter changes
+  const prevSelectedTypesKeyRef = useRef<string | null>(null);
+
   // ============================================================================
   // Cache Key Helpers
   // ============================================================================
@@ -457,16 +460,21 @@ export function useTransactionCache({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [networksParam, address, getBaseCacheKey, getSelectedNetworks, loadTransactions]);
 
-  // When filter types change, reset to page 1
-  useEffect(() => {
-    if (!address) return;
-    setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTypesKey]);
-
+  // When filter types change, reset to page 1 and update displayed rows
   // When filters or page change, update displayed rows and load if needed
   useEffect(() => {
     if (!address) return;
+    
+    // Track previous selectedTypesKey to detect filter changes
+    const prevSelectedTypesKey = prevSelectedTypesKeyRef.current;
+    const filterChanged = prevSelectedTypesKey !== null && prevSelectedTypesKey !== selectedTypesKey;
+    prevSelectedTypesKeyRef.current = selectedTypesKey;
+    
+    // If filter changed, reset to page 1 first
+    if (filterChanged && page !== 1) {
+      setPage(1);
+      return; // Exit early, will re-run when page becomes 1
+    }
     
     const selectedNetworks = getSelectedNetworks();
     const baseKey = getBaseCacheKey(address);
@@ -483,7 +491,9 @@ export function useTransactionCache({
       updateDisplayedRows();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTypesKey, page, address, getSelectedNetworks, getBaseCacheKey, filterTransactions, loadTransactions, updateDisplayedRows]);
+    // Note: updateDisplayedRows is intentionally excluded from dependencies to prevent double-triggering
+    // when it's recreated due to filterTransactions changes. It's safe because it reads current values via closure.
+  }, [selectedTypesKey, page, address, getSelectedNetworks, getBaseCacheKey, filterTransactions, loadTransactions]);
 
   // Get all loaded rows for stats (deduplicated)
   const loadedRowsAll = useMemo(() => {
