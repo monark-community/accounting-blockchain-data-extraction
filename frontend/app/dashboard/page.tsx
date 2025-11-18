@@ -10,6 +10,7 @@ import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
 import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
 import OverviewTab from "@/components/dashboard/OverviewTab";
 import GraphsTab from "@/components/dashboard/GraphsTab";
+import { TransactionsWorkspaceProvider } from "@/components/dashboard/TransactionsWorkspaceProvider";
 import {
   CapitalGainsCalculator,
   type CapitalGainEntry,
@@ -1187,6 +1188,8 @@ const Dashboard = () => {
       assetCount: counts[id],
     }));
   }, [ov]);
+  const stableBucketUsd =
+    riskBuckets.find((bucket) => bucket.id === "stable")?.usd ?? 0;
 
   const appliedWalletDisplay = useMemo(() => {
     const list = urlAddress
@@ -1728,13 +1731,17 @@ const Dashboard = () => {
               currency={userPreferences.currency}
             />
           </TabsContent> */}
-
           <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab
+            <TransactionsWorkspaceProvider
               address={address}
               walletOptions={appliedWalletDisplay}
               walletLimit={MAX_MULTI_WALLETS}
-            />
+            >
+              <AllTransactionsTab
+                totalAssetsUsd={ov?.kpis.totalValueUsd ?? null}
+                stableHoldingsUsd={stableBucketUsd}
+              />
+            </TransactionsWorkspaceProvider>
           </TabsContent>
         </Tabs>
       </main>

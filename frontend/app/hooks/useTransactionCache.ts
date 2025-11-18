@@ -150,11 +150,11 @@ export function useTransactionCache({
   const isOverloaded =
     cachedAheadCount >= 3 || (loading && cachedAheadCount >= 1);
   const loadIndicatorLabel = isOverloaded
-    ? `Préchargement élevé: ${cachedAheadCount} page(s)`
+    ? `High prefetch load: ${cachedAheadCount} page(s)`
     : cachedAheadCount > 0
-    ? `Pages en cache: ${cachedAheadCount}`
+    ? `Pages cached: ${cachedAheadCount}`
     : loading
-    ? `Chargement…`
+    ? `Loading…`
     : null;
 
   // Generate all possible filter combinations
