@@ -38,9 +38,9 @@ export function useTransactionCache({
   const [total, setTotal] = useState<number | null>(null);
   const [cacheVersion, setCacheVersion] = useState(0);
 
-  // Cache: all transactions per address:dateRange (no network/type filtering)
-  // Key: "address:dateRange"
-  const rawTransactionsCache = useRef(new Map<string, TxRow[]>());
+  // Cache: transactions per network (separate cache for each network)
+  // Key: "address:dateRange:network" -> TxRow[] (sorted by date desc)
+  const networkCache = useRef(new Map<string, TxRow[]>());
 
   // Cursors per network: track pagination for each network separately
   // Key: "address:dateRange:network" -> cursor string | null
@@ -135,11 +135,11 @@ export function useTransactionCache({
   }, []);
 
   /**
-   * Add new transactions to cache and sort
+   * Add new transactions to a specific network cache and sort
    */
-  const addToCache = useCallback(
-    (baseKey: string, newTransactions: TxRow[]) => {
-      const existing = rawTransactionsCache.current.get(baseKey) || [];
+  const addToNetworkCache = useCallback(
+    (networkKey: string, newTransactions: TxRow[]) => {
+      const existing = networkCache.current.get(networkKey) || [];
       
       // Deduplicate: use hash + direction + asset + qty + timestamp as key
       const dedup = new Map<string, TxRow>();
@@ -154,10 +154,57 @@ export function useTransactionCache({
 
       const allTransactions = Array.from(dedup.values());
       const sorted = sortTransactionsByDate(allTransactions);
-      rawTransactionsCache.current.set(baseKey, sorted);
+      networkCache.current.set(networkKey, sorted);
       setCacheVersion((v) => v + 1);
     },
     [sortTransactionsByDate]
+  );
+
+  /**
+   * Get the oldest date (most recent timestamp) from all selected network caches
+   * Returns null if no transactions in cache
+   */
+  const getOldestDateInCache = useCallback((selectedNetworks: string[]): string | null => {
+    let oldestDate: string | null = null;
+
+    for (const network of selectedNetworks) {
+      const networkKey = getNetworkCacheKey(address || "", network);
+      const cache = networkCache.current.get(networkKey) || [];
+      
+      if (cache.length > 0) {
+        // Cache is sorted desc, so last item is oldest
+        const networkOldest = cache[cache.length - 1].ts;
+        if (!oldestDate || new Date(networkOldest) < new Date(oldestDate)) {
+          oldestDate = networkOldest;
+        }
+      }
+    }
+
+    return oldestDate;
+  }, [address, getNetworkCacheKey]);
+
+  /**
+   * Combine and filter transactions from selected networks up to cutoffDate
+   */
+  const combineAndFilterByDate = useCallback(
+    (selectedNetworks: string[], cutoffDate: string | null): TxRow[] => {
+      if (!cutoffDate) return [];
+
+      const combined: TxRow[] = [];
+
+      for (const network of selectedNetworks) {
+        const networkKey = getNetworkCacheKey(address || "", network);
+        const cache = networkCache.current.get(networkKey) || [];
+        
+        // Filter transactions >= cutoffDate (cache is sorted desc, so we take from start)
+        const filtered = cache.filter(tx => new Date(tx.ts) >= new Date(cutoffDate));
+        combined.push(...filtered);
+      }
+
+      // Sort by date descending (newest first)
+      return sortTransactionsByDate(combined);
+    },
+    [address, getNetworkCacheKey, sortTransactionsByDate]
   );
 
   /**
@@ -211,31 +258,50 @@ export function useTransactionCache({
       if (selectedNetworks.length === 0) return;
       if (retryCount > 20) return; // Prevent infinite loops
 
-      const baseKey = getBaseCacheKey(addr);
-      const allTransactions = rawTransactionsCache.current.get(baseKey) || [];
-
-      // Filter current cache to see how many match
-      const filtered = filterTransactions(allTransactions, selectedNetworks);
-
-      // If we have enough, no need to fetch
-      if (filtered.length >= neededCount) {
-        return;
-      }
-
       setLoading(true);
       setError(null);
 
       try {
-        // Fetch from each network that hasn't been fully loaded
-        const fetchPromises: Promise<void>[] = [];
-        let hasNewData = false;
+        // Get cutoff date (oldest date in all caches)
+        const cutoffDate = getOldestDateInCache(selectedNetworks);
+        
+        // Combine and filter transactions up to cutoff date
+        const combined = cutoffDate 
+          ? combineAndFilterByDate(selectedNetworks, cutoffDate)
+          : [];
+        
+        // Apply type filter
+        const filtered = filterTransactions(combined, selectedNetworks);
 
+        // If we have enough, no need to fetch
+        if (filtered.length >= neededCount) {
+          setLoading(false);
+          return;
+        }
+
+        // Identify networks that need more data
+        // Networks that are not fully loaded and can potentially have older transactions
+        const networksToLoad: string[] = [];
         for (const network of selectedNetworks) {
           const networkKey = getNetworkCacheKey(addr, network);
           const isFullyLoaded = networkFullyLoaded.current.get(networkKey) ?? false;
           
-          if (isFullyLoaded) continue;
+          if (!isFullyLoaded) {
+            networksToLoad.push(network);
+          }
+        }
 
+        if (networksToLoad.length === 0) {
+          setLoading(false);
+          return;
+        }
+
+        // Fetch from each network that needs more data
+        const fetchPromises: Promise<void>[] = [];
+        let hasNewData = false;
+
+        for (const network of networksToLoad) {
+          const networkKey = getNetworkCacheKey(addr, network);
           const cursor = networkCursors.current.get(networkKey) ?? null;
 
           fetchPromises.push(
@@ -249,6 +315,7 @@ export function useTransactionCache({
               }
 
               // Update total count (use first non-null value)
+              const baseKey = getBaseCacheKey(addr);
               if (result.total !== null) {
                 const currentTotal = totalCountCache.current.get(baseKey);
                 if (currentTotal === null || currentTotal === undefined) {
@@ -256,9 +323,9 @@ export function useTransactionCache({
                 }
               }
 
-              // Add to cache
+              // Add to network cache
               if (result.rows.length > 0) {
-                addToCache(baseKey, result.rows);
+                addToNetworkCache(networkKey, result.rows);
                 hasNewData = true;
               }
             })
@@ -267,21 +334,9 @@ export function useTransactionCache({
 
         await Promise.all(fetchPromises);
 
-        // Check if we need more (recursive loading)
-        const updatedAll = rawTransactionsCache.current.get(baseKey) || [];
-        const updatedFiltered = filterTransactions(updatedAll, selectedNetworks);
-
-        if (updatedFiltered.length < neededCount && hasNewData) {
-          // Check if any network still has more data
-          const hasMoreData = selectedNetworks.some((network) => {
-            const networkKey = getNetworkCacheKey(addr, network);
-            return !(networkFullyLoaded.current.get(networkKey) ?? false);
-          });
-
-          if (hasMoreData) {
-            // Recursively load more
-            await loadTransactions(addr, selectedNetworks, neededCount, retryCount + 1);
-          }
+        // Recursively load more if needed
+        if (hasNewData) {
+          await loadTransactions(addr, selectedNetworks, neededCount, retryCount + 1);
         }
       } catch (e: any) {
         setError(e?.message || "Failed to load transactions");
@@ -294,7 +349,9 @@ export function useTransactionCache({
       getNetworkCacheKey,
       filterTransactions,
       fetchNetworkTransactions,
-      addToCache,
+      addToNetworkCache,
+      getOldestDateInCache,
+      combineAndFilterByDate,
     ]
   );
 
@@ -312,12 +369,24 @@ export function useTransactionCache({
       return;
     }
 
-    const baseKey = getBaseCacheKey(address);
-    const allTransactions = rawTransactionsCache.current.get(baseKey) || [];
     const selectedNetworks = getSelectedNetworks();
+    
+    if (selectedNetworks.length === 0) {
+      setRows([]);
+      setHasNext(false);
+      return;
+    }
 
-    // Filter transactions
-    const filtered = filterTransactions(allTransactions, selectedNetworks);
+    // Get cutoff date (oldest date in all caches)
+    const cutoffDate = getOldestDateInCache(selectedNetworks);
+    
+    // Combine and filter transactions up to cutoff date
+    const combined = cutoffDate 
+      ? combineAndFilterByDate(selectedNetworks, cutoffDate)
+      : [];
+    
+    // Apply type filter
+    const filtered = filterTransactions(combined, selectedNetworks);
 
     // Paginate
     const startIndex = (page - 1) * PAGE_SIZE;
@@ -337,6 +406,7 @@ export function useTransactionCache({
     setHasNext(hasMore || canLoadMore);
 
     // Update total
+    const baseKey = getBaseCacheKey(address);
     const cachedTotal = totalCountCache.current.get(baseKey);
     if (cachedTotal !== null && cachedTotal !== undefined) {
       setTotal(cachedTotal);
@@ -353,6 +423,8 @@ export function useTransactionCache({
     getNetworkCacheKey,
     getSelectedNetworks,
     filterTransactions,
+    getOldestDateInCache,
+    combineAndFilterByDate,
   ]);
 
   // ============================================================================
@@ -375,8 +447,12 @@ export function useTransactionCache({
     if (!address) return;
     const baseKey = getBaseCacheKey(address);
     
-    // Clear cache
-    rawTransactionsCache.current.delete(baseKey);
+    // Clear network caches for this context
+    for (const key of Array.from(networkCache.current.keys())) {
+      if (key.startsWith(baseKey)) {
+        networkCache.current.delete(key);
+      }
+    }
     
     // Clear cursors and loaded flags for this base context
     for (const key of Array.from(networkCursors.current.keys())) {
@@ -405,20 +481,24 @@ export function useTransactionCache({
     if (!address) return;
     const baseKey = getBaseCacheKey(address);
     
-    // Clear cache for this context
-    rawTransactionsCache.current.delete(baseKey);
-    
-    // Clear cursors and loaded flags
-    for (const key of Array.from(networkCursors.current.keys())) {
-      if (key.startsWith(baseKey)) {
-        networkCursors.current.delete(key);
-      }
-    }
-    for (const key of Array.from(networkFullyLoaded.current.keys())) {
-      if (key.startsWith(baseKey)) {
-        networkFullyLoaded.current.delete(key);
-      }
-    }
+          // Clear network caches for this context
+          for (const key of Array.from(networkCache.current.keys())) {
+            if (key.startsWith(baseKey)) {
+              networkCache.current.delete(key);
+            }
+          }
+          
+          // Clear cursors and loaded flags
+          for (const key of Array.from(networkCursors.current.keys())) {
+            if (key.startsWith(baseKey)) {
+              networkCursors.current.delete(key);
+            }
+          }
+          for (const key of Array.from(networkFullyLoaded.current.keys())) {
+            if (key.startsWith(baseKey)) {
+              networkFullyLoaded.current.delete(key);
+            }
+          }
     
     totalCountCache.current.delete(baseKey);
     setCacheVersion((v) => v + 1);
@@ -438,18 +518,15 @@ export function useTransactionCache({
     }
     
     // Check which networks are missing from cache
-    const baseKey = getBaseCacheKey(address);
-    const allTransactions = rawTransactionsCache.current.get(baseKey) || [];
-    const cachedNetworks = new Set(allTransactions.map((tx) => tx.network));
-    
-    const missingNetworks = selectedNetworks.filter(
-      (net) => !cachedNetworks.has(net)
-    );
+    const missingNetworks = selectedNetworks.filter((net) => {
+      const networkKey = getNetworkCacheKey(address, net);
+      const cache = networkCache.current.get(networkKey);
+      return !cache || cache.length === 0;
+    });
 
     if (missingNetworks.length > 0) {
-      // Load missing networks (load enough for page 1)
-      const neededCount = PAGE_SIZE;
-      loadTransactions(address, missingNetworks, neededCount).then(() => {
+      // Load missing networks - start with PAGE_SIZE
+      loadTransactions(address, selectedNetworks, PAGE_SIZE).then(() => {
         // After loading, update displayed rows
         updateDisplayedRows();
       });
@@ -477,9 +554,13 @@ export function useTransactionCache({
     }
     
     const selectedNetworks = getSelectedNetworks();
-    const baseKey = getBaseCacheKey(address);
-    const allTransactions = rawTransactionsCache.current.get(baseKey) || [];
-    const filtered = filterTransactions(allTransactions, selectedNetworks);
+    
+    // Get cutoff date and combine transactions
+    const cutoffDate = getOldestDateInCache(selectedNetworks);
+    const combined = cutoffDate 
+      ? combineAndFilterByDate(selectedNetworks, cutoffDate)
+      : [];
+    const filtered = filterTransactions(combined, selectedNetworks);
     const neededForPage = page * PAGE_SIZE;
 
     // If we don't have enough filtered transactions, load more
@@ -493,14 +574,20 @@ export function useTransactionCache({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     // Note: updateDisplayedRows is intentionally excluded from dependencies to prevent double-triggering
     // when it's recreated due to filterTransactions changes. It's safe because it reads current values via closure.
-  }, [selectedTypesKey, page, address, getSelectedNetworks, getBaseCacheKey, filterTransactions, loadTransactions]);
+  }, [selectedTypesKey, page, address, getSelectedNetworks, getBaseCacheKey, filterTransactions, loadTransactions, getOldestDateInCache, combineAndFilterByDate]);
 
-  // Get all loaded rows for stats (deduplicated)
+  // Get all loaded rows for stats (combine all networks)
   const loadedRowsAll = useMemo(() => {
     if (!address) return [];
-    const baseKey = getBaseCacheKey(address);
-    return rawTransactionsCache.current.get(baseKey) || [];
-  }, [address, getBaseCacheKey, cacheVersion]);
+    const selectedNetworks = getSelectedNetworks();
+    if (selectedNetworks.length === 0) return [];
+    
+    // Get cutoff date and combine all transactions
+    const cutoffDate = getOldestDateInCache(selectedNetworks);
+    if (!cutoffDate) return [];
+    
+    return combineAndFilterByDate(selectedNetworks, cutoffDate);
+  }, [address, getBaseCacheKey, getSelectedNetworks, getOldestDateInCache, combineAndFilterByDate, cacheVersion]);
 
   // Legacy compatibility (remove these if not needed)
   const maxLoadedPage = 0;
