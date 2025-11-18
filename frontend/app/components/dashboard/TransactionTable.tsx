@@ -31,6 +31,7 @@ interface TransactionTableProps {
   canNext: boolean;
   goPrev: () => void;
   goNext: () => void;
+  loadedRowsAll: TxRow[];
 }
 
 export function TransactionTable({
@@ -44,6 +45,7 @@ export function TransactionTable({
   canNext,
   goPrev,
   goNext,
+  loadedRowsAll,
 }: TransactionTableProps) {
   if (!address) {
     return (
@@ -97,17 +99,36 @@ export function TransactionTable({
   }
 
   if (rows.length === 0 && !loading) {
-    return (
-      <div className="p-12 text-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="text-slate-400 text-4xl">📭</div>
-          <div className="text-slate-600 font-medium">No transactions found</div>
-          <div className="text-sm text-slate-500">
-            No transactions match the current filters. Try adjusting your filters or date range.
+    // Check if there are transactions in cache but none match the current filter
+    const hasTransactionsInCache = loadedRowsAll.length > 0;
+    
+    if (hasTransactionsInCache) {
+      // Transactions exist in cache but none match the current filter
+      return (
+        <div className="p-12 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="text-slate-400 text-4xl">🔍</div>
+            <div className="text-slate-600 font-medium">No transactions match the current filters</div>
+            <div className="text-sm text-slate-500">
+              Try adjusting your filters to see more transactions. There are {loadedRowsAll.length} transaction{loadedRowsAll.length !== 1 ? "s" : ""} available with different filters.
+            </div>
           </div>
         </div>
-      </div>
-    );
+      );
+    } else {
+      // No transactions in the wallet at all
+      return (
+        <div className="p-12 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="text-slate-400 text-4xl">📭</div>
+            <div className="text-slate-600 font-medium">No transactions found</div>
+            <div className="text-sm text-slate-500">
+              No transactions match the current filters. Try adjusting your filters or date range.
+            </div>
+          </div>
+        </div>
+      );
+    }
   }
 
   return (

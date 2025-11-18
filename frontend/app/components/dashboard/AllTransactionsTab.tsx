@@ -63,8 +63,9 @@ export default function AllTransactionsTab({
     }
   }, [cache.total, cache.page, cache.hasNext, cache.rows.length]);
 
-  // Check if there are no transactions (after loading is complete and no error)
-  const hasNoTransactions = cache.rows.length === 0 && !cache.loading && !cache.error && address !== "";
+  // Check if there are no transactions at all in the wallet (after loading is complete and no error)
+  // This is different from "no transactions match current filter" (which would have loadedRowsAll.length > 0)
+  const hasNoTransactions = cache.loadedRowsAll.length === 0 && !cache.loading && !cache.error && address !== "";
 
   // Navigation buttons - now work with filters since filtering is done client-side
   const canPrev = cache.page > 1;
@@ -217,6 +218,7 @@ export default function AllTransactionsTab({
           canNext={canNext}
           goPrev={goPrev}
           goNext={goNext}
+          loadedRowsAll={cache.loadedRowsAll}
         />
       </Card>
     </div>
