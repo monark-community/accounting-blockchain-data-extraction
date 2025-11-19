@@ -51,6 +51,13 @@ export default function AllTransactionsTab({
     );
   }, [totalCount, stats.capitalGainsSummary.transactionsCount]);
 
+  const hasActiveWallets = activeWallets.length > 0;
+  const hasNoTransactions =
+    hasActiveWallets &&
+    cache.loadedRowsAll.length === 0 &&
+    !cache.loading &&
+    !cache.error;
+
   useEffect(() => {
     if (cache.error) {
       console.error("[AllTransactionsTab] Error:", {
@@ -176,6 +183,7 @@ export default function AllTransactionsTab({
                 walletDropdownVisible ? walletLimitReached : undefined
               }
               walletLimit={walletDropdownVisible ? walletLimit : undefined}
+              hasNoTransactions={hasNoTransactions}
             />
           </div>
 
@@ -268,7 +276,9 @@ export default function AllTransactionsTab({
                   id="type-all"
                   checked={(filters.selectedTypes as any)[0] === "all"}
                   onCheckedChange={(c) => filters.toggleType("all", !!c)}
-                  disabled={cache.loading || filters.isOnlyAllSelected}
+                  disabled={
+                    cache.loading || filters.isOnlyAllSelected || hasNoTransactions
+                  }
                 />
                 <Label htmlFor="type-all" className="text-sm font-medium">
                   All types
@@ -292,7 +302,7 @@ export default function AllTransactionsTab({
                     onCheckedChange={(c) =>
                       filters.toggleType(t as TxType, !!c)
                     }
-                    disabled={cache.loading}
+                    disabled={cache.loading || hasNoTransactions}
                   />
                   <Label
                     htmlFor={`type-${t}`}
