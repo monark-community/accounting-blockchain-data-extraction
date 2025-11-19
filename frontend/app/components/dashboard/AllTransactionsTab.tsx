@@ -322,6 +322,7 @@ export default function AllTransactionsTab({
           <TransactionTable
             address={activeWallets.length ? exportLabel : null}
             rows={cache.rows}
+            page={cache.page}
             loading={cache.loading}
             error={cache.error}
             visibleColumns={filters.visibleColumns}

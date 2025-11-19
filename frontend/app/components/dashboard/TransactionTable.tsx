@@ -18,11 +18,13 @@ import {
   typeColor,
   typeIcon,
   etherscanTxUrl,
+  PAGE_SIZE,
 } from "@/utils/transactionHelpers";
 
 interface TransactionTableProps {
   address: string | null;
   rows: TxRow[];
+  page: number;
   loading: boolean;
   error: string | null;
   visibleColumns: Record<string, boolean>;
@@ -38,6 +40,7 @@ interface TransactionTableProps {
 export function TransactionTable({
   address,
   rows,
+  page,
   loading,
   error,
   visibleColumns,
@@ -161,106 +164,109 @@ export function TransactionTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((tx, idx) => (
-            <TableRow key={`${tx.hash}-${idx}`}>
-              <TableCell className="text-slate-500 font-medium">
-                {idx + 1}
-              </TableCell>
-              {visibleColumns.type && (
-                <TableCell>
-                  <div
-                    className={`flex items-center gap-2 ${typeColor(tx.type)}`}
-                  >
-                    {typeIcon(tx.type)}
-                    <span className="capitalize text-xs font-medium">
-                      {tx.type}
-                    </span>
-                  </div>
+          {rows.map((tx, idx) => {
+            const rowNumber = (page - 1) * PAGE_SIZE + idx + 1;
+            return (
+              <TableRow key={`${tx.hash}-${idx}`}>
+                <TableCell className="text-slate-500 font-medium">
+                  {rowNumber}
                 </TableCell>
-              )}
-              {visibleColumns.date && (
-                <TableCell className="font-medium">
-                  {new Date(tx.ts).toLocaleString()}
-                </TableCell>
-              )}
-              {visibleColumns.network && (
-                <TableCell className="font-mono">
-                  {networkLabel(tx.network)}
-                </TableCell>
-              )}
-              {visibleColumns.asset && (
-                <TableCell className="font-mono">
-                  {tx.type === "swap" && tx.swapLabel ? (
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-indigo-600">
-                        {tx.swapLabel}
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        {tx.asset?.symbol ||
-                          (tx.asset?.contract
-                            ? shortAddr(tx.asset.contract)
-                            : "—")}
+                {visibleColumns.type && (
+                  <TableCell>
+                    <div
+                      className={`flex items-center gap-2 ${typeColor(tx.type)}`}
+                    >
+                      {typeIcon(tx.type)}
+                      <span className="capitalize text-xs font-medium">
+                        {tx.type}
                       </span>
                     </div>
-                  ) : (
-                    tx.asset?.symbol ||
-                    (tx.asset?.contract ? shortAddr(tx.asset.contract) : "—")
-                  )}
-                  {tx.walletAddress && (
-                    <span className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
-                      <span
-                        className="inline-block w-1.5 h-1.5 rounded-full"
-                        style={{
-                          backgroundColor:
-                            walletLabels?.[tx.walletAddress.toLowerCase()]
-                              ?.color ?? "#94a3b8",
-                        }}
-                      />
-                      {walletLabels?.[tx.walletAddress.toLowerCase()]?.label ??
-                        shortAddr(tx.walletAddress)}
-                    </span>
-                  )}
-                </TableCell>
-              )}
-              {visibleColumns.qty && (
-                <TableCell
-                  className={`font-mono ${
-                    tx.direction === "in" ? "text-green-600" : "text-red-600"
-                  }`}
-                >
-                  {fmtQty(tx.qty, tx.direction)}
-                </TableCell>
-              )}
-              {visibleColumns.usd && (
-                <TableCell className="font-mono">
-                  {fmtUSD(tx.usdAtTs)}
-                </TableCell>
-              )}
-              {visibleColumns.fee && (
-                <TableCell className="font-mono">
-                  {fmtUSD(tx.fee?.usdAtTs ?? null)}
-                </TableCell>
-              )}
-              {visibleColumns.counterparty && (
-                <TableCell className="font-mono">
-                  {tx.counterparty?.label ||
-                    shortAddr(tx.counterparty?.address || undefined)}
-                </TableCell>
-              )}
-              {visibleColumns.tx && (
-                <TableCell>
-                  <a
-                    className="inline-flex items-center gap-1 text-xs font-mono underline text-slate-700 hover:text-slate-900"
-                    href={etherscanTxUrl(tx.hash, tx.network)}
-                    target="_blank"
-                    rel="noreferrer"
+                  </TableCell>
+                )}
+                {visibleColumns.date && (
+                  <TableCell className="font-medium">
+                    {new Date(tx.ts).toLocaleString()}
+                  </TableCell>
+                )}
+                {visibleColumns.network && (
+                  <TableCell className="font-mono">
+                    {networkLabel(tx.network)}
+                  </TableCell>
+                )}
+                {visibleColumns.asset && (
+                  <TableCell className="font-mono">
+                    {tx.type === "swap" && tx.swapLabel ? (
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold text-indigo-600">
+                          {tx.swapLabel}
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          {tx.asset?.symbol ||
+                            (tx.asset?.contract
+                              ? shortAddr(tx.asset.contract)
+                              : "—")}
+                        </span>
+                      </div>
+                    ) : (
+                      tx.asset?.symbol ||
+                      (tx.asset?.contract ? shortAddr(tx.asset.contract) : "—")
+                    )}
+                    {tx.walletAddress && (
+                      <span className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+                        <span
+                          className="inline-block w-1.5 h-1.5 rounded-full"
+                          style={{
+                            backgroundColor:
+                              walletLabels?.[tx.walletAddress.toLowerCase()]
+                                ?.color ?? "#94a3b8",
+                          }}
+                        />
+                        {walletLabels?.[tx.walletAddress.toLowerCase()]?.label ??
+                          shortAddr(tx.walletAddress)}
+                      </span>
+                    )}
+                  </TableCell>
+                )}
+                {visibleColumns.qty && (
+                  <TableCell
+                    className={`font-mono ${
+                      tx.direction === "in" ? "text-green-600" : "text-red-600"
+                    }`}
                   >
-                    {shortAddr(tx.hash)} <ExternalLink className="w-3 h-3" />
-                  </a>
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
+                    {fmtQty(tx.qty, tx.direction)}
+                  </TableCell>
+                )}
+                {visibleColumns.usd && (
+                  <TableCell className="font-mono">
+                    {fmtUSD(tx.usdAtTs)}
+                  </TableCell>
+                )}
+                {visibleColumns.fee && (
+                  <TableCell className="font-mono">
+                    {fmtUSD(tx.fee?.usdAtTs ?? null)}
+                  </TableCell>
+                )}
+                {visibleColumns.counterparty && (
+                  <TableCell className="font-mono">
+                    {tx.counterparty?.label ||
+                      shortAddr(tx.counterparty?.address || undefined)}
+                  </TableCell>
+                )}
+                {visibleColumns.tx && (
+                  <TableCell>
+                    <a
+                      className="inline-flex items-center gap-1 text-xs font-mono underline text-slate-700 hover:text-slate-900"
+                      href={etherscanTxUrl(tx.hash, tx.network)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {shortAddr(tx.hash)} <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </TableCell>
+                )}
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
 
