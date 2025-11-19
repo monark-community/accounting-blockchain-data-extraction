@@ -329,6 +329,7 @@ export default function AllTransactionsTab({
             goPrev={goPrev}
             goNext={goNext}
             walletLabels={walletLabelLookup}
+            loadedRowsAll={cache.loadedRowsAll}
           />
         </div>
       </Card>
