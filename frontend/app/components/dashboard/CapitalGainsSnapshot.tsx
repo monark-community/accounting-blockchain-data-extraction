@@ -285,9 +285,9 @@ export function CapitalGainsSnapshot({
                 </p>
                 {unmatchedSales.length ? (
                   <ul className="mt-2 space-y-2 text-sm text-slate-700">
-                    {unmatchedSales.slice(0, 3).map((sale, idx) => (
+                    {unmatchedSales.slice(0, 3).map((sale) => (
                       <li
-                        key={`${sale.transactionId}-${sale.saleDate}-${sale.asset}-${sale.quantity}-${idx}`}
+                        key={`${sale.transactionId}-${sale.saleDate}`}
                         className="flex items-center justify-between"
                       >
                         <span>

@@ -14,7 +14,7 @@ export type TxQuery = {
   cursor?: string | null;
 };
 
-export async function fetchTransactions(address: string, q: TxQuery, retryCount = 0) {
+export async function fetchTransactions(address: string, q: TxQuery) {
   const fetchStartTime = performance.now();
   const qs = new URLSearchParams();
   if (q.networks) qs.set("networks", q.networks);
@@ -33,11 +33,9 @@ export async function fetchTransactions(address: string, q: TxQuery, retryCount 
 
   const networkStartTime = performance.now();
   
-  // Add timeout to prevent hanging requests (240 seconds = 4 minutes max)
-  // Increased from 120s to allow backend more time for multi-network requests
-  const REQUEST_TIMEOUT_MS = 240000;
+  // Add timeout to prevent hanging requests (120 seconds max)
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), 120000);
   
   let res: Response;
   try {
@@ -45,27 +43,8 @@ export async function fetchTransactions(address: string, q: TxQuery, retryCount 
     clearTimeout(timeoutId);
   } catch (error: any) {
     clearTimeout(timeoutId);
-    
-    // Retry on network errors (ECONNRESET, socket hang up, timeout)
-    const isNetworkError = 
-      error.name === 'AbortError' ||
-      error.message?.includes('socket hang up') ||
-      error.message?.includes('ECONNRESET') ||
-      error.message?.includes('Failed to fetch') ||
-      error.code === 'ECONNRESET';
-    
-    const maxRetries = 2;
-    const baseDelay = 3000; // 3 seconds
-    
-    if (isNetworkError && retryCount < maxRetries) {
-      const delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff: 3s, 6s
-      console.log(`[Transactions] Retrying (${retryCount + 1}/${maxRetries}) after ${delay}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      return fetchTransactions(address, q, retryCount + 1);
-    }
-    
     if (error.name === 'AbortError') {
-      throw new Error(`Request timeout: The server took too long to respond (>${REQUEST_TIMEOUT_MS / 1000}s)`);
+      throw new Error('Request timeout: The server took too long to respond (>120s)');
     }
     throw error;
   }

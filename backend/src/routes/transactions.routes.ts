@@ -133,17 +133,20 @@ router.get("/:address", async (req, res) => {
     const legsAfterCursor = cursor
       ? legsFilteredByClass.filter((leg) => isLegOlderThanCursor(leg, cursor))
       : legsFilteredByClass;
-    // Return all legs (no cap), frontend paginates locally and continues via cursor
-    const pagedLegs = legsAfterCursor;
+    // Return-all with safety cap: send up to CAP legs, frontend paginates locally and continues via cursor
+    const CAP = Number(process.env.TX_RETURN_CAP ?? 150);
+    const pagedLegs = legsAfterCursor.slice(0, CAP);
 
     // Cursor rule: Always create cursor from last sent transaction to ensure progression.
-    // hasNext: true if we got at least the requested limit, suggesting more may be available
-    const hasNext = pagedLegs.length >= limit;
-    // Always create cursor from last sent transaction to allow progression
+    // hasNext is true only if there are more legs available beyond what we're sending.
+    const hasMoreBeyondCap = legsAfterCursor.length > pagedLegs.length;
+    // Always create cursor from last sent transaction to allow progression, even if we haven't reached CAP
     const nextCursor =
       pagedLegs.length === 0
         ? null
         : encodeCursorFromLeg(pagedLegs[pagedLegs.length - 1]);
+    // hasNext is true only if there are more legs available (beyond what we sent)
+    const hasNext = hasMoreBeyondCap;
 
     const filterTime = Number(process.hrtime.bigint() - filterStartTime) / 1_000_000;
     const totalTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
@@ -160,7 +163,7 @@ router.get("/:address", async (req, res) => {
     
     // Single summary log with key metrics
     console.log(
-      `[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | return-all ${pagedLegs.length}/${legsRaw.length} legs | hasNext=${hasNext ? "yes" : "no"} | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
+      `[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | return-all (cap ${CAP}) ${pagedLegs.length}/${legsRaw.length} legs | hasNext=${hasNext ? "yes" : "no"} | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
     );
   } catch (err: any) {
     const errorTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
