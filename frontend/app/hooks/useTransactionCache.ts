@@ -7,7 +7,7 @@ import { PAGE_SIZE } from "@/utils/transactionHelpers";
 const FETCH_LIMIT = 40;
 
 interface UseTransactionCacheParams {
-  address: string | null;
+  address?: string | null;
   addresses?: string[];
   selectedTypes: TxType[] | ["all"];
   networksParam?: string;
