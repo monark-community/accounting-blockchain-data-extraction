@@ -13,7 +13,7 @@ services:
     plan: free
     healthCheckPath: /api/health
     autoDeploy: true
-    
+
     envVars:
       # === Node.js configuration ===
       - key: NODE_ENV
@@ -90,16 +90,16 @@ services:
         value: "false"
       - key: DEBUG_TOKEN_API
         value: "false"
-      
+
       # === Filters & limits ===
       - key: SPAM_FILTER_MODE
-        value: soft
+        value: hard
       - key: ENABLE_SPAM_FILTER
         value: "true"
       - key: TX_DEFAULT_LIMIT
-        value: "100"
+        value: "10"
       - key: TX_MAX_LIMIT
-        value: "200"
+        value: "40"
       - key: TX_DEFAULT_MIN_USD
         value: "0"
       - key: TX_RETURN_CAP
@@ -111,17 +111,17 @@ services:
       - key: PRICING_BATCH_SIZE
         value: "50"
       - key: NETWORK_FETCH_CONCURRENCY
-        value: "2"
+        value: "4"
       - key: NETWORK_ACTIVITY_CONCURRENCY
         value: "2"
       - key: NETWORK_ACTIVITY_PAGE_LIMIT
         value: "5"
       - key: LLAMA_RPM
-        value: "60"
+        value: "30"
       - key: HTTP_TIMEOUT_MS
         value: "15000"
       - key: TOKEN_API_LIMIT_MAX
-        value: "40"
+        value: "10"
       - key: TOKEN_API_RATE_LIMIT_COOLDOWN_MS
         value: "300000"
 
@@ -145,7 +145,7 @@ services:
     dockerContext: ./frontend
     plan: free
     autoDeploy: true
-    
+
     envVars:
       # === Node.js configuration ===
       - key: NODE_ENV
@@ -156,7 +156,7 @@ services:
       # === Backend API URL ===
       - key: API_BASE
         value: https://ledgerlift-backend.onrender.com
-      
+
       # === Public API keys (set manually) ===
       - key: NEXT_PUBLIC_WEB3AUTH_CLIENT_ID
         value: ""
@@ -184,4 +184,3 @@ databases:
     region: oregon
     postgresMajorVersion: 16
     ipAllowList: []
-
