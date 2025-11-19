@@ -1,17 +1,17 @@
-# 🚀 Déploiement Rapide sur Render.com
+# 🚀 Render.com Quick Deployment
 
-## ⚡ Guide Express (5 étapes)
+## ⚡ Express Guide (5 steps)
 
-### 1️⃣ Préparer les clés API
+### 1️⃣ Prepare your API keys
 
-Obtenez vos clés sur ces sites :
+Grab your keys here:
 - [Ankr](https://www.ankr.com/) → ANKR_API_KEY
 - [Alchemy](https://www.alchemy.com/) → ALCHEMY_API_KEY  
 - [The Graph](https://thegraph.com/) → GRAPH_TOKEN_API_JWT + GRAPH_TOKEN_API_KEY
 - [Web3Auth](https://web3auth.io/) → WEB3AUTH_CLIENT_ID
 - [WalletConnect](https://walletconnect.com/) → WALLETCONNECT_PROJECT_ID
 
-### 2️⃣ Push sur Git
+### 2️⃣ Push to Git
 
 ```bash
 git add .
@@ -19,60 +19,60 @@ git commit -m "Deploy to Render"
 git push origin main
 ```
 
-### 3️⃣ Créer le Blueprint sur Render
+### 3️⃣ Create the Blueprint on Render
 
-1. Allez sur [render.com](https://render.com)
-2. Créez un compte (gratuit)
-3. Cliquez **"New +"** → **"Blueprint"**
-4. Sélectionnez votre repository
-5. Cliquez **"Apply"**
+1. Go to [render.com](https://render.com)
+2. Create an account (free)
+3. Click **"New +"** → **"Blueprint"**
+4. Select your repository
+5. Click **"Apply"**
 
-⏱️ Attendez 10-15 minutes pour le premier déploiement
+⏱️ Wait 10-15 minutes for the first deployment
 
-### 4️⃣ Configurer les variables d'environnement
+### 4️⃣ Configure environment variables
 
 #### Backend (ledgerlift-backend)
 
-Dashboard → ledgerlift-backend → Environment → Ajouter :
+Dashboard → ledgerlift-backend → Environment → Add:
 ```
-ANKR_API_KEY=votre_clé
-ALCHEMY_API_KEY=votre_clé
-GRAPH_TOKEN_API_JWT=votre_jwt
-GRAPH_TOKEN_API_KEY=votre_clé
+ANKR_API_KEY=your_key
+ALCHEMY_API_KEY=your_key
+GRAPH_TOKEN_API_JWT=your_jwt
+GRAPH_TOKEN_API_KEY=your_key
 ```
 
 #### Frontend (ledgerlift-frontend)
 
-Dashboard → ledgerlift-frontend → Environment → Ajouter :
+Dashboard → ledgerlift-frontend → Environment → Add:
 ```
-NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=votre_id
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=votre_id
-NEXT_PUBLIC_ANKR_API_KEY=votre_clé
+NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=your_id
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_id
+NEXT_PUBLIC_ANKR_API_KEY=your_key
 ```
 
-#### Mettre à jour les URLs
+#### Update the URLs
 
-Frontend → Environment → Modifier `API_BASE` :
+Frontend → Environment → Set `API_BASE`:
 ```
 API_BASE=https://ledgerlift-backend-xxx.onrender.com
 ```
 
-Backend → Environment → Modifier `FRONTEND_URL` :
+Backend → Environment → Set `FRONTEND_URL`:
 ```
 FRONTEND_URL=https://ledgerlift-frontend-xxx.onrender.com
 ```
 
-### 5️⃣ Tester
+### 5️⃣ Test everything
 
-- Backend : `https://ledgerlift-backend-xxx.onrender.com/api/health`
-- Frontend : `https://ledgerlift-frontend-xxx.onrender.com`
+- Backend: `https://ledgerlift-backend-xxx.onrender.com/api/health`
+- Frontend: `https://ledgerlift-frontend-xxx.onrender.com`
 
-## 🎉 C'est tout !
+## 🎉 That's it!
 
-Votre app est en ligne !
+Your app is live!
 
 ---
 
-**Documentation complète** : [README-RENDER.md](./README-RENDER.md)
-**Checklist détaillée** : [DEPLOY-CHECKLIST.md](./DEPLOY-CHECKLIST.md)
+**Full docs**: [README-RENDER.md](./README-RENDER.md)  
+**Detailed checklist**: [DEPLOY-CHECKLIST.md](./DEPLOY-CHECKLIST.md)
 
