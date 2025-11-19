@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getMultiNetworkHistoricalPortfolio } from "../services/historical.service";
 import { parseNetworks } from "../config/networks";
 import { getPricingWarnings } from "../services/pricing.service";
+import { getTokenApiWarnings } from "../services/tokenApiStatus";
 
 // Toggle verbose analytics/debug logs. When false only concise errors are printed.
 const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
@@ -45,7 +46,10 @@ router.get("/historical/:address", async (req, res) => {
       days,
       data,
       isEstimated,
-      warnings: getPricingWarnings(),
+      warnings: {
+        ...getPricingWarnings(),
+        ...getTokenApiWarnings(),
+      },
     });
   } catch (err: any) {
     dbg("[GET /api/analytics/historical/:address] error:", err);

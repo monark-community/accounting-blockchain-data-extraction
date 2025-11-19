@@ -40,6 +40,7 @@ interface TransactionsWorkspaceProviderProps {
   walletOptions?: WalletOption[];
   walletLimit?: number;
   onPricingWarningChange?: (flag: boolean) => void;
+  onTokenApiWarningChange?: (flag: boolean) => void;
 }
 
 interface TransactionsWorkspaceValue {
@@ -79,6 +80,7 @@ export function TransactionsWorkspaceProvider({
   walletOptions,
   walletLimit: walletLimitProp,
   onPricingWarningChange,
+  onTokenApiWarningChange,
 }: TransactionsWorkspaceProviderProps) {
   const walletLimit =
     typeof walletLimitProp === "number"
@@ -101,8 +103,7 @@ export function TransactionsWorkspaceProvider({
       ...wallet,
       label: wallet.label || shortAddr(wallet.address),
       color:
-        wallet.color ??
-        WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length],
+        wallet.color ?? WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length],
     }));
   }, [walletOptions]);
 
@@ -245,6 +246,24 @@ export function TransactionsWorkspaceProvider({
       onPricingWarningChange(false);
     };
   }, [onPricingWarningChange]);
+
+  useEffect(() => {
+    if (!onTokenApiWarningChange) return;
+    const flag =
+      !!cache.warnings?.tokenApiRateLimited ||
+      (typeof cache.error === "string" &&
+        cache.error.toLowerCase().includes("tokenapi") &&
+        (cache.error.toLowerCase().includes("rate limited") ||
+          cache.error.includes("429")));
+    onTokenApiWarningChange(flag);
+  }, [cache.warnings, cache.error, onTokenApiWarningChange]);
+
+  useEffect(() => {
+    if (!onTokenApiWarningChange) return;
+    return () => {
+      onTokenApiWarningChange(false);
+    };
+  }, [onTokenApiWarningChange]);
 
   const totalCount = useMemo(() => {
     if (cache.total !== null) return cache.total;

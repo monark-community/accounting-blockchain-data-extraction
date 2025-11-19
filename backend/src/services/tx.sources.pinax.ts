@@ -5,6 +5,7 @@ import type {
   TokenApiNftTransfer,
 } from "./../services/tx.normalize";
 import { fetchWithRetry } from "../utils/http";
+import { markTokenApiRateLimited } from "./tokenApiStatus";
 
 // Simple in-process throttle for Token API to avoid 429s.
 // Configurable via env: TOKEN_API_RPM (requests per minute, default 300)
@@ -95,6 +96,9 @@ export async function fetchFungibleTransfersPage(
         });
         if (!res.ok) {
           const text = await res.text().catch(() => "");
+          if (res.status === 429) {
+            markTokenApiRateLimited();
+          }
           throw new Error(
             `${res.status}${text ? `: ${text.slice(0, 200)}` : ""}`
           );
@@ -108,6 +112,9 @@ export async function fetchFungibleTransfersPage(
         if (chunk.length < limitThisCall) break;
         page += 1;
       } catch (e: any) {
+        if (String(e?.message ?? "").includes("429")) {
+          markTokenApiRateLimited();
+        }
         console.error(
           `TokenAPI transfers ${direction === "out" ? "outbound" : "inbound"} ${
             p.network

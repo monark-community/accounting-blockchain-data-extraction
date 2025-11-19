@@ -41,5 +41,7 @@ export type OverviewResponse = {
   warnings?: {
     defiLlamaRateLimited?: boolean;
     defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
   };
 };

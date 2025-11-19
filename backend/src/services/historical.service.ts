@@ -12,6 +12,7 @@ import {
   isAnkrConfigured,
   getAnkrHistoricalPortfolio,
 } from "./ankr.service";
+import { markTokenApiRateLimited, getTokenApiWarnings } from "./tokenApiStatus";
 
 const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL ?? "https://token-api.thegraph.com/v1";
@@ -61,6 +62,9 @@ async function tokenApiGET<T>(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     dbg(`[TokenAPI] Error response body:`, text);
+    if (res.status === 429) {
+      markTokenApiRateLimited();
+    }
     throw new Error(`TokenAPI ${path} ${res.status} ${text}`.trim());
   }
 

@@ -57,5 +57,7 @@ export interface TxListResponse {
   warnings?: {
     defiLlamaRateLimited?: boolean;
     defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
   };
 }

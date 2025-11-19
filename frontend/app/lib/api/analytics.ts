@@ -15,6 +15,8 @@ export type HistoricalResponse = {
   warnings?: {
     defiLlamaRateLimited?: boolean;
     defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
   };
 };
 

@@ -11,6 +11,7 @@ import {
   isLegOlderThanCursor,
 } from "../utils/tx.cursor";
 import { getPricingWarnings } from "../services/pricing.service";
+import { getTokenApiWarnings } from "../services/tokenApiStatus";
 
 const router = Router();
 
@@ -155,7 +156,10 @@ router.get("/:address", async (req, res) => {
       limit,
       hasNext,
       nextCursor,
-      warnings: getPricingWarnings(),
+      warnings: {
+        ...getPricingWarnings(),
+        ...getTokenApiWarnings(),
+      },
     });
     
     // Single summary log with key metrics

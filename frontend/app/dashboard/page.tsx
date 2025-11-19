@@ -71,6 +71,17 @@ const DASHBOARD_DEFAULT_NETWORKS = normalizeNetworkListFromString(
   RAW_DEFAULT_DASHBOARD_NETWORKS
 );
 
+const isTokenApiRateLimit = (message?: string | null) => {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("tokenapi") &&
+    (lower.includes("rate limited") ||
+      lower.includes("too_many_requests") ||
+      lower.includes("429"))
+  );
+};
+
 type NetworkSuggestion = {
   network: string;
   lastActivityTs: number | null;
@@ -342,6 +353,22 @@ const Dashboard = () => {
         nextSet.delete(source);
       }
       pricingWarningSourcesRef.current = nextSet;
+      const next = nextSet.size > 0;
+      return next === prev ? prev : next;
+    });
+  }, []);
+
+  const tokenApiWarningSourcesRef = useRef<Set<string>>(new Set());
+  const [tokenApiWarningActive, setTokenApiWarningActive] = useState(false);
+  const setTokenApiWarningFor = useCallback((source: string, flag: boolean) => {
+    setTokenApiWarningActive((prev) => {
+      const nextSet = new Set(tokenApiWarningSourcesRef.current);
+      if (flag) {
+        nextSet.add(source);
+      } else {
+        nextSet.delete(source);
+      }
+      tokenApiWarningSourcesRef.current = nextSet;
       const next = nextSet.size > 0;
       return next === prev ? prev : next;
     });
@@ -704,12 +731,21 @@ const Dashboard = () => {
         } catch {
           message = await res.text();
         }
+        setTokenApiWarningFor("overview", isTokenApiRateLimit(message));
         throw new Error(message || "Failed to load overview");
       }
       const data = (await res.json()) as OverviewResponse;
+      setTokenApiWarningFor(
+        `overview:${targetAddress}`,
+        !!data?.warnings?.tokenApiRateLimited
+      );
+      setPricingWarningFor(
+        `overview:${targetAddress}`,
+        !!data?.warnings?.defiLlamaRateLimited
+      );
       return data;
     },
-    [networksParam]
+    [networksParam, setTokenApiWarningFor, setPricingWarningFor]
   );
 
   useEffect(() => {
@@ -731,6 +767,7 @@ const Dashboard = () => {
         const merged = mergeOverviewResponses(entries);
         setOv(merged.overview);
         setWalletStats(merged.walletStats);
+        setTokenApiWarningFor("overview", false);
         const warn = entries.some(
           (entry) => entry.overview.warnings?.defiLlamaRateLimited
         );
@@ -746,6 +783,7 @@ const Dashboard = () => {
             ? e.message
             : e?.error ?? "Failed to load overview"
         );
+        setTokenApiWarningFor("overview", isTokenApiRateLimit(e?.message));
         setPricingWarningFor("overview", false);
       })
       .finally(() => {
@@ -809,14 +847,19 @@ const Dashboard = () => {
         const merged = mergeHistoricalResponses(responses);
         setHistoricalData(merged);
         setIsHistoricalEstimated(responses.some((resp) => resp.isEstimated));
-        const warn = responses.some(
+        const priceWarn = responses.some(
           (resp) => resp.warnings?.defiLlamaRateLimited
         );
-        setPricingWarningFor("historical", warn);
+        const tokenWarn = responses.some(
+          (resp) => resp.warnings?.tokenApiRateLimited
+        );
+        setPricingWarningFor("historical", priceWarn);
+        setTokenApiWarningFor("historical", tokenWarn);
       })
       .catch((e) => {
         if (cancelled) return;
         console.error("[Dashboard] Failed to load historical data:", e);
+        setTokenApiWarningFor("historical", isTokenApiRateLimit(e?.message));
         setPricingWarningFor("historical", false);
       })
       .finally(() => {
@@ -834,6 +877,7 @@ const Dashboard = () => {
     overviewReady,
     useFallbackEstimation,
     setPricingWarningFor,
+    setTokenApiWarningFor,
   ]);
 
   useEffect(() => {
@@ -973,6 +1017,7 @@ const Dashboard = () => {
             shortTermGains,
             longTermGains,
           });
+          setTokenApiWarningFor("capitalGains", false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -986,6 +1031,10 @@ const Dashboard = () => {
             shortTermGains: 0,
             longTermGains: 0,
           }));
+          setTokenApiWarningFor(
+            "capitalGains",
+            isTokenApiRateLimit((err as Error)?.message)
+          );
         }
       } finally {
         if (!cancelled) setLoadingCapitalGains(false);
@@ -995,7 +1044,14 @@ const Dashboard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeWallets, networksParam, accountingMethod, overviewReady, ov]);
+  }, [
+    activeWallets,
+    networksParam,
+    accountingMethod,
+    overviewReady,
+    ov,
+    setTokenApiWarningFor,
+  ]);
 
   const historicalChartData = useMemo(() => {
     console.log(
@@ -1698,6 +1754,16 @@ const Dashboard = () => {
             </AlertDescription>
           </Alert>
         )}
+        {tokenApiWarningActive && (
+          <Alert variant="destructive" className="border-rose-200 bg-rose-50">
+            <AlertTitle>Token API rate limit reached</AlertTitle>
+            <AlertDescription>
+              The upstream balance API temporarily blocked requests (429). Some
+              holdings or transactions may be missing data until the limit
+              resets. Please try again in a few minutes.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="flex w-full gap-2">
@@ -1781,6 +1847,9 @@ const Dashboard = () => {
               walletLimit={MAX_MULTI_WALLETS}
               onPricingWarningChange={(flag) =>
                 setPricingWarningFor("transactions", flag)
+              }
+              onTokenApiWarningChange={(flag) =>
+                setTokenApiWarningFor("transactions", flag)
               }
             >
               <AllTransactionsTab
