@@ -1,26 +1,26 @@
-# 🚀 Guide de Déploiement sur Render.com
+# 🚀 Render.com Deployment Guide
 
-Ce guide vous explique comment déployer **LedgerLift** sur Render.com en utilisant le fichier `render.yaml` automatisé.
+This guide walks through deploying **LedgerLift** on Render.com using the automated `render.yaml` file.
 
-## 📋 Table des matières
+## 📋 Table of Contents
 
-1. [Prérequis](#prérequis)
-2. [Préparation](#préparation)
-3. [Déploiement automatique](#déploiement-automatique)
-4. [Configuration des variables d'environnement](#configuration-des-variables-denvironnement)
-5. [Vérification](#vérification)
-6. [Dépannage](#dépannage)
-7. [Limitations du plan gratuit](#limitations-du-plan-gratuit)
+1. [Prerequisites](#prerequisites)
+2. [Preparation](#preparation)
+3. [Automatic Deployment](#automatic-deployment)
+4. [Environment Variables](#environment-variables)
+5. [Verification](#verification)
+6. [Troubleshooting](#troubleshooting)
+7. [Free Plan Limitations](#free-plan-limitations)
 
 ---
 
-## 🔧 Prérequis
+## 🔧 Prerequisites
 
-Avant de commencer, assurez-vous d'avoir :
+Before starting, make sure you have:
 
-- ✅ Un compte GitHub/GitLab avec votre projet LedgerLift
-- ✅ Un compte Render.com (gratuit) : [render.com](https://render.com)
-- ✅ Les clés API suivantes :
+- ✅ A GitHub/GitLab account containing your LedgerLift project
+- ✅ A Render.com account (free) : [render.com](https://render.com)
+- ✅ These API keys:
   - **ANKR_API_KEY** : [ankr.com](https://www.ankr.com/)
   - **ALCHEMY_API_KEY** : [alchemy.com](https://www.alchemy.com/)
   - **GRAPH_TOKEN_API_JWT** : [thegraph.com](https://thegraph.com/)
@@ -29,267 +29,254 @@ Avant de commencer, assurez-vous d'avoir :
 
 ---
 
-## 📦 Préparation
+## 📦 Preparation
 
-### 1. Vérifier que votre code est sur Git
+### 1. Confirm your code is in Git
 
 ```bash
-# Vérifier le statut
+# Check status
 git status
 
-# Ajouter tous les fichiers
+# Stage files
 git add .
 
-# Commiter les changements
-git commit -m "Prêt pour déploiement Render"
+# Commit changes
+git commit -m "Ready for Render deployment"
 
-# Pousser vers votre repository
+# Push to your repository
 git push origin main
 ```
 
-### 2. Vérifier les fichiers de configuration
+### 2. Confirm the configuration files exist
 
-Assurez-vous que ces fichiers existent dans votre projet :
-- ✅ `render.yaml` (racine du projet)
+Make sure these files are available in your project:
+- ✅ `render.yaml` (project root)
 - ✅ `backend/Dockerfile`
 - ✅ `frontend/Dockerfile`
 - ✅ `backend/.dockerignore`
 - ✅ `frontend/.dockerignore`
-- ✅ `db/init/*.sql` (scripts d'initialisation de la base de données)
+- ✅ `db/init/*.sql` (database initialization scripts)
 
 ---
 
-## 🎯 Déploiement automatique
+## 🎯 Automatic Deployment
 
-### Étape 1 : Créer un compte Render
+### Step 1: Create your Render account
 
-1. Allez sur [render.com](https://render.com)
-2. Cliquez sur **"Get Started"**
-3. Connectez-vous avec votre compte GitHub/GitLab
+1. Visit [render.com](https://render.com)
+2. Click **"Get Started"**
+3. Sign in with your GitHub/GitLab account
 
-### Étape 2 : Créer un Blueprint
+### Step 2: Create a Blueprint
 
-1. Dans le dashboard Render, cliquez sur **"New +"** en haut à droite
-2. Sélectionnez **"Blueprint"**
-3. Connectez votre repository GitHub/GitLab si ce n'est pas déjà fait
-4. Sélectionnez le repository **ledgerlift**
-5. Render détectera automatiquement le fichier `render.yaml`
-6. Cliquez sur **"Apply"**
+1. In the Render dashboard, click **"New +"** in the top right corner
+2. Select **"Blueprint"**
+3. Connect your GitHub/GitLab repository if needed
+4. Pick the **ledgerlift** repository
+5. Render automatically detects `render.yaml`
+6. Click **"Apply"**
 
-### Étape 3 : Attendre le déploiement initial
+### Step 3: Wait for the first deployment
 
-Render va créer automatiquement :
-- 📊 **Base de données PostgreSQL** : `ledgerlift-db`
+Render automatically provisions:
+- 📊 **PostgreSQL database** : `ledgerlift-db`
 - 🔧 **Backend API** : `ledgerlift-backend`
 - 🎨 **Frontend** : `ledgerlift-frontend`
 
-⏱️ **Temps estimé** : 10-15 minutes pour le premier déploiement
+⏱️ **Estimated time** : 10-15 minutes for the initial deployment
 
 ---
 
-## 🔑 Configuration des variables d'environnement
+## 🔑 Environment Variables
 
-Après le déploiement initial, vous devez configurer les clés API manuellement.
+After the first deploy completes, add the API keys manually.
 
 ### Backend (ledgerlift-backend)
 
-1. Dans le dashboard Render, cliquez sur **ledgerlift-backend**
-2. Allez dans l'onglet **"Environment"**
-3. Ajoutez ces variables **obligatoires** :
+1. In the Render dashboard, open **ledgerlift-backend**
+2. Go to the **"Environment"** tab
+3. Add the **required** variables:
 
 ```bash
-ANKR_API_KEY=votre_clé_ankr
-ALCHEMY_API_KEY=votre_clé_alchemy
-GRAPH_TOKEN_API_JWT=votre_jwt_thegraph
-GRAPH_TOKEN_API_KEY=votre_clé_thegraph
+ANKR_API_KEY=your_ankr_key
+ALCHEMY_API_KEY=your_alchemy_key
+GRAPH_TOKEN_API_JWT=your_thegraph_jwt
+GRAPH_TOKEN_API_KEY=your_thegraph_key
 ```
 
-4. Variables **optionnelles** (pour fonctionnalités avancées) :
+4. Optional variables (advanced features):
 
 ```bash
-PINAX_RPC_URL=votre_url_pinax_optionnelle
-RPC_URL_MAINNET=votre_url_rpc_optionnelle
+PINAX_RPC_URL=optional_pinax_url
+RPC_URL_MAINNET=optional_rpc_url
 ```
 
-5. Cliquez sur **"Save Changes"**
-6. Le service va automatiquement redémarrer
+5. Click **"Save Changes"**
+6. The service restarts automatically
 
 ### Frontend (ledgerlift-frontend)
 
-1. Dans le dashboard Render, cliquez sur **ledgerlift-frontend**
-2. Allez dans l'onglet **"Environment"**
-3. Ajoutez ces variables **obligatoires** :
+1. In the Render dashboard, open **ledgerlift-frontend**
+2. Go to the **"Environment"** tab
+3. Add the **required** variables:
 
 ```bash
-NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=votre_client_id_web3auth
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=votre_project_id_walletconnect
-NEXT_PUBLIC_ANKR_API_KEY=votre_clé_ankr
+NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=your_web3auth_client_id
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+NEXT_PUBLIC_ANKR_API_KEY=your_ankr_key
 ```
 
-4. Cliquez sur **"Save Changes"**
-5. Le service va automatiquement redémarrer
+4. Click **"Save Changes"** (auto restart)
 
-### Mise à jour de l'URL du backend
+### Update service URLs
 
-Une fois le backend déployé, vous devez mettre à jour l'URL du backend dans le frontend :
+After Render assigns public URLs, wire the two services together.
 
-1. Allez dans **ledgerlift-frontend** → **Environment**
-2. Modifiez la variable `API_BASE` avec l'URL réelle du backend
-   ```bash
-   API_BASE=https://ledgerlift-backend-xxx.onrender.com
-   ```
-   (Remplacez `xxx` par l'identifiant unique de votre service)
+#### Frontend ➝ Backend
+
+1. Copy the backend URL: `https://ledgerlift-backend-xxx.onrender.com`
+2. Dashboard → **ledgerlift-frontend** → **Environment**
+3. Update `API_BASE` with that URL
+4. Save and redeploy
+
+#### Backend ➝ Frontend
+
+1. Copy the frontend URL: `https://ledgerlift-frontend-xxx.onrender.com`
+2. Dashboard → **ledgerlift-backend** → **Environment**
+3. Update `FRONTEND_URL` with that URL
+4. Save and redeploy
 
 ---
 
-## ✅ Vérification
+## ✅ Verification
 
-### 1. Vérifier la base de données
+### 1. Check the backend health endpoint
 
-1. Allez dans **ledgerlift-db** dans le dashboard Render
-2. Cliquez sur **"Connect"** → **"External Connection"**
-3. Utilisez les informations de connexion avec un client PostgreSQL (pgAdmin, DBeaver, etc.)
-4. Vérifiez que les tables ont été créées (users, wallets, mfa_secrets, etc.)
+- Navigate to `https://ledgerlift-backend-xxx.onrender.com/api/health`
+- You should see `{"status":"ok",...}`
 
-### 2. Vérifier le backend
+### 2. Load the frontend
 
-Ouvrez votre navigateur et testez :
+- Visit `https://ledgerlift-frontend-xxx.onrender.com`
+- Confirm the landing page renders
 
-```
-https://ledgerlift-backend-xxx.onrender.com/api/health
-```
+### 3. Confirm database initialization
 
-Vous devriez voir une réponse JSON comme :
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-01-18T...",
-  "env": "mainnet"
-}
-```
+- Dashboard → **ledgerlift-db** → **Connect**
+- Tables `users`, `wallets`, `mfa_secrets`, `transactions` should exist
 
-### 3. Vérifier le frontend
+### 4. Test authentication
 
-Ouvrez votre navigateur :
-
-```
-https://ledgerlift-frontend-xxx.onrender.com
-```
-
-Vous devriez voir la page d'accueil de LedgerLift.
-
-### 4. Tester l'authentification
-
-1. Cliquez sur **"Connect Wallet"**
-2. Testez la connexion avec Web3Auth
-3. Vérifiez que vous pouvez accéder au dashboard
+- Click **"Connect Wallet"**
+- Log in via Web3Auth
+- Confirm you can reach the dashboard
 
 ---
 
-## 🔧 Dépannage
+## 🔧 Troubleshooting
 
-### Le service ne démarre pas
+### Service fails to start
 
-**Problème** : Le service affiche "Deploy failed"
+**Symptom**: The service shows "Deploy failed"
 
-**Solutions** :
-1. Vérifiez les logs dans l'onglet **"Logs"**
-2. Vérifiez que toutes les variables d'environnement obligatoires sont configurées
-3. Vérifiez que le Dockerfile est correct et sans erreur
+**Fixes**:
+1. Open the **"Logs"** tab for details
+2. Verify that required environment variables are set
+3. Confirm the Dockerfile builds locally without errors
 
-### Le backend ne répond pas
+### Backend not responding
 
-**Problème** : Erreur 502 ou timeout
+**Symptom**: HTTP 502 or timeout
 
-**Solutions** :
-1. Attendez 30-60 secondes (démarrage à froid sur le plan gratuit)
-2. Vérifiez que `DATABASE_URL` est correctement configurée
-3. Vérifiez les logs du backend pour voir les erreurs
+**Fixes**:
+1. Wait 30-60 seconds (cold start on free plan)
+2. Confirm `DATABASE_URL` is populated
+3. Tail backend logs to identify stack traces
 
-### Le frontend ne peut pas contacter le backend
+### Frontend cannot reach backend
 
-**Problème** : Erreurs CORS ou Network Error
+**Symptom**: CORS or `Network Error`
 
-**Solutions** :
-1. Vérifiez que `API_BASE` dans le frontend pointe vers la bonne URL du backend
-2. Vérifiez que `FRONTEND_URL` dans le backend correspond à l'URL du frontend
-3. Vérifiez que les deux services sont en cours d'exécution
+**Fixes**:
+1. Ensure `API_BASE` in the frontend points to the backend URL
+2. Ensure `FRONTEND_URL` in the backend matches the frontend URL
+3. Make sure both services are running
 
-### La base de données ne se connecte pas
+### Database connection errors
 
-**Problème** : "Connection refused" ou "Connection timeout"
+**Symptom**: "Connection refused" or "Connection timeout"
 
-**Solutions** :
-1. Vérifiez que le service de base de données est en cours d'exécution
-2. Vérifiez que `DATABASE_URL` est correctement générée par Render
-3. Les scripts SQL dans `db/init/` sont exécutés automatiquement au premier démarrage uniquement
-
----
-
-## ⚠️ Limitations du plan gratuit
-
-### Services Web (Backend & Frontend)
-
-- 🕐 **Inactivité** : Les services "dorment" après 15 minutes d'inactivité
-- ⏱️ **Démarrage à froid** : Premier démarrage peut prendre 30-60 secondes
-- 💾 **Mémoire** : Limitée à 512 MB RAM par service
-- 🔄 **Redémarrage** : Services peuvent redémarrer automatiquement après certaines limites
-
-### Base de données PostgreSQL
-
-- 🆓 **Gratuit pendant 90 jours** après création
-- 💾 **Stockage** : Limité à 1 GB sur le plan gratuit
-- 📅 **Après 90 jours** : Nécessite un upgrade vers un plan payant (~7$/mois)
-
-### Alternatives pour la base de données
-
-Si vous voulez éviter les frais après 90 jours, considérez :
-- **Neon** : [neon.tech](https://neon.tech) - Plan gratuit permanent avec limites
-- **Supabase** : [supabase.com](https://supabase.com) - Plan gratuit avec 500 MB
-- **ElephantSQL** : [elephantsql.com](https://www.elephantsql.com/) - Plan gratuit avec 20 MB
+**Fixes**:
+1. Confirm the database service is running
+2. Ensure `DATABASE_URL` is the value generated by Render
+3. Remember `db/init/*.sql` runs only on the very first boot
 
 ---
 
-## 🔄 Redéploiement automatique
+## ⚠️ Free Plan Limitations
 
-Render redéploie automatiquement votre application à chaque push sur la branche `main` :
+### Web services (backend & frontend)
+
+- 🕐 **Idle timeout**: services sleep after ~15 minutes of no traffic
+- ⏱️ **Cold start**: first request after sleep may take 30-60 seconds
+- 💾 **Memory**: limited to 512 MB RAM per service
+- 🔄 **Restarts**: Render can recycle services periodically
+
+### PostgreSQL database
+
+- 🆓 **Free for 90 days**
+- 💾 **Storage**: capped at 1 GB on the free tier
+- 📅 **After 90 days**: upgrade to a paid plan (~$7/month)
+
+### Alternative databases
+
+Use an external free tier if you want to avoid future costs:
+- **Neon** : [neon.tech](https://neon.tech) — perpetual free tier with limits
+- **Supabase** : [supabase.com](https://supabase.com) — free with 500 MB storage
+- **ElephantSQL** : [elephantsql.com](https://www.elephantsql.com/) — free with 20 MB
+
+---
+
+## 🔄 Automatic Redeploys
+
+Render redeploys the app every time you push `main`:
 
 ```bash
-# Faire des modifications
+# Make your changes
 git add .
-git commit -m "Mise à jour de l'application"
+git commit -m "Update application"
 git push origin main
 ```
 
-Render va :
-1. Détecter le nouveau commit
-2. Rebuilder les images Docker
-3. Redéployer les services automatiquement
-4. ⏱️ Temps estimé : 5-10 minutes
+Render then:
+1. Detects the new commit
+2. Rebuilds the Docker images
+3. Re-deploys each service
+4. ⏱️ Finishes within ~5-10 minutes
 
 ---
 
-## 📊 Monitoring et Logs
+## 📊 Monitoring & Logs
 
-### Consulter les logs
+### View logs
 
-1. Dashboard Render → Votre service
-2. Onglet **"Logs"**
-3. Logs en temps réel de votre application
+1. Render dashboard → select a service
+2. Open **"Logs"**
+3. Stream the live application output
 
-### Métriques
+### Metrics
 
-1. Dashboard Render → Votre service
-2. Onglet **"Metrics"**
-3. Voir CPU, mémoire, requêtes, etc.
+1. Render dashboard → select a service
+2. Open **"Metrics"**
+3. Inspect CPU, memory, request counts, etc.
 
 ---
 
-## 🎉 Félicitations !
+## 🎉 Congrats!
 
-Votre application LedgerLift est maintenant déployée sur Render.com !
+LedgerLift is now live on Render.com.
 
-**URLs de votre application** :
+**Default URLs**:
 - Frontend : `https://ledgerlift-frontend-xxx.onrender.com`
 - Backend : `https://ledgerlift-backend-xxx.onrender.com`
 
@@ -297,11 +284,10 @@ Votre application LedgerLift est maintenant déployée sur Render.com !
 
 ## 📞 Support
 
-- **Documentation Render** : [render.com/docs](https://render.com/docs)
-- **Community Render** : [community.render.com](https://community.render.com)
-- **Support LedgerLift** : Ouvrir une issue sur GitHub
+- **Render docs** : [render.com/docs](https://render.com/docs)
+- **Render community** : [community.render.com](https://community.render.com)
+- **LedgerLift support** : open a GitHub issue
 
 ---
 
-**Made with ❤️ by LedgerLift Team**
-
+**Made with ❤️ by the LedgerLift Team**

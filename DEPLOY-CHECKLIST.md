@@ -1,128 +1,127 @@
-# ✅ Checklist de Déploiement Render.com
+# ✅ Render.com Deployment Checklist
 
-## 🎯 Avant de déployer
+## 🎯 Before you deploy
 
-- [ ] Tous les fichiers sont committés sur Git
-- [ ] Vous avez toutes les clés API nécessaires
-- [ ] Vous avez un compte Render.com
+- [ ] All files committed to Git
+- [ ] Required API keys are ready
+- [ ] Render.com account created
 
-## 📋 Fichiers créés pour le déploiement
+## 📋 Files created for deployment
 
-- ✅ `render.yaml` - Configuration automatique Render
-- ✅ `backend/.dockerignore` - Fichiers à exclure du build backend
-- ✅ `frontend/.dockerignore` - Fichiers à exclure du build frontend
-- ✅ `README-RENDER.md` - Guide complet de déploiement
-- ✅ `.env.backend.example` - Template des variables backend
-- ✅ `.env.frontend.example` - Template des variables frontend
+- ✅ `render.yaml` – Render blueprint configuration
+- ✅ `backend/.dockerignore` – Files ignored during backend builds
+- ✅ `frontend/.dockerignore` – Files ignored during frontend builds
+- ✅ `README-RENDER.md` – Full deployment guide
+- ✅ `.env.backend.example` – Backend environment template
+- ✅ `.env.frontend.example` – Frontend environment template
 
-## 🔑 Clés API à préparer
+## 🔑 API keys to gather
 
 ### Backend
 
-- [ ] **ANKR_API_KEY** → Créer sur [ankr.com](https://www.ankr.com/)
-- [ ] **ALCHEMY_API_KEY** → Créer sur [alchemy.com](https://www.alchemy.com/)
-- [ ] **GRAPH_TOKEN_API_JWT** → Obtenir sur [thegraph.com](https://thegraph.com/)
-- [ ] **GRAPH_TOKEN_API_KEY** → Obtenir sur [thegraph.com](https://thegraph.com/)
+- [ ] **ANKR_API_KEY** → Create at [ankr.com](https://www.ankr.com/)
+- [ ] **ALCHEMY_API_KEY** → Create at [alchemy.com](https://www.alchemy.com/)
+- [ ] **GRAPH_TOKEN_API_JWT** → Get from [thegraph.com](https://thegraph.com/)
+- [ ] **GRAPH_TOKEN_API_KEY** → Get from [thegraph.com](https://thegraph.com/)
 
 ### Frontend
 
-- [ ] **NEXT_PUBLIC_WEB3AUTH_CLIENT_ID** → Créer sur [web3auth.io](https://web3auth.io/)
-- [ ] **NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID** → Créer sur [walletconnect.com](https://walletconnect.com/)
-- [ ] **NEXT_PUBLIC_ANKR_API_KEY** → Même clé que le backend
+- [ ] **NEXT_PUBLIC_WEB3AUTH_CLIENT_ID** → Create at [web3auth.io](https://web3auth.io/)
+- [ ] **NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID** → Create at [walletconnect.com](https://walletconnect.com/)
+- [ ] **NEXT_PUBLIC_ANKR_API_KEY** → Same value as the backend key
 
-## 🚀 Étapes de déploiement
+## 🚀 Deployment steps
 
-### 1. Push sur Git
+### 1. Push to Git
 ```bash
 git add .
-git commit -m "Prêt pour déploiement Render"
+git commit -m "Ready for Render deployment"
 git push origin main
 ```
 
-### 2. Créer un Blueprint sur Render
-- [ ] Aller sur [render.com](https://render.com)
-- [ ] Créer un compte / Se connecter
+### 2. Create a Blueprint on Render
+- [ ] Go to [render.com](https://render.com)
+- [ ] Create an account / sign in
 - [ ] New + → Blueprint
-- [ ] Sélectionner votre repository
-- [ ] Cliquer sur "Apply"
+- [ ] Select your repository
+- [ ] Click "Apply"
 
-### 3. Attendre le déploiement initial
-- [ ] Base de données créée (~2 min)
-- [ ] Backend déployé (~5 min)
-- [ ] Frontend déployé (~5 min)
+### 3. Wait for the first deploy
+- [ ] Database created (~2 min)
+- [ ] Backend deployed (~5 min)
+- [ ] Frontend deployed (~5 min)
 
-### 4. Configurer les variables Backend
+### 4. Configure backend variables
 - [ ] Dashboard → ledgerlift-backend → Environment
-- [ ] Ajouter `ANKR_API_KEY`
-- [ ] Ajouter `ALCHEMY_API_KEY`
-- [ ] Ajouter `GRAPH_TOKEN_API_JWT`
-- [ ] Ajouter `GRAPH_TOKEN_API_KEY`
-- [ ] Save Changes (redémarrage automatique)
+- [ ] Add `ANKR_API_KEY`
+- [ ] Add `ALCHEMY_API_KEY`
+- [ ] Add `GRAPH_TOKEN_API_JWT`
+- [ ] Add `GRAPH_TOKEN_API_KEY`
+- [ ] Save Changes (auto restart)
 
-### 5. Configurer les variables Frontend
+### 5. Configure frontend variables
 - [ ] Dashboard → ledgerlift-frontend → Environment
-- [ ] Ajouter `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID`
-- [ ] Ajouter `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
-- [ ] Ajouter `NEXT_PUBLIC_ANKR_API_KEY`
-- [ ] Save Changes (redémarrage automatique)
+- [ ] Add `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID`
+- [ ] Add `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`
+- [ ] Add `NEXT_PUBLIC_ANKR_API_KEY`
+- [ ] Save Changes (auto restart)
 
-### 6. Mettre à jour l'URL du Backend dans le Frontend
-- [ ] Noter l'URL du backend : `https://ledgerlift-backend-xxx.onrender.com`
+### 6. Point the frontend to the backend
+- [ ] Copy backend URL: `https://ledgerlift-backend-xxx.onrender.com`
 - [ ] Dashboard → ledgerlift-frontend → Environment
-- [ ] Modifier `API_BASE` avec l'URL notée ci-dessus
+- [ ] Update `API_BASE` with that URL
 - [ ] Save Changes
 
-### 7. Mettre à jour l'URL du Frontend dans le Backend
-- [ ] Noter l'URL du frontend : `https://ledgerlift-frontend-xxx.onrender.com`
+### 7. Point the backend to the frontend
+- [ ] Copy frontend URL: `https://ledgerlift-frontend-xxx.onrender.com`
 - [ ] Dashboard → ledgerlift-backend → Environment
-- [ ] Modifier `FRONTEND_URL` avec l'URL notée ci-dessus
+- [ ] Update `FRONTEND_URL` with that URL
 - [ ] Save Changes
 
-## ✅ Vérification
+## ✅ Validation
 
 ### Backend
-- [ ] Tester : `https://ledgerlift-backend-xxx.onrender.com/api/health`
-- [ ] Devrait retourner : `{"status":"ok",...}`
+- [ ] Test `https://ledgerlift-backend-xxx.onrender.com/api/health`
+- [ ] Response should be `{"status":"ok",...}`
 
 ### Frontend
-- [ ] Ouvrir : `https://ledgerlift-frontend-xxx.onrender.com`
-- [ ] La page d'accueil s'affiche correctement
+- [ ] Open `https://ledgerlift-frontend-xxx.onrender.com`
+- [ ] Landing page renders correctly
 
-### Base de données
+### Database
 - [ ] Dashboard → ledgerlift-db → Connect
-- [ ] Vérifier que les tables existent (users, wallets, mfa_secrets, transactions)
+- [ ] Verify tables exist (users, wallets, mfa_secrets, transactions)
 
-### Authentification
-- [ ] Tester la connexion avec Web3Auth
-- [ ] Vérifier l'accès au dashboard
+### Authentication
+- [ ] Test Web3Auth sign-in
+- [ ] Confirm dashboard access
 
-## 🎉 Déploiement terminé !
+## 🎉 Deployment complete!
 
-Votre application est maintenant en ligne ! 
+Your application is online.
 
-**Prochaines étapes :**
-1. Configurer un nom de domaine personnalisé (optionnel)
-2. Activer le SSL (activé par défaut sur Render)
-3. Configurer les alertes et monitoring
-4. Mettre en place des backups de la base de données
+**Next steps:**
+1. Configure a custom domain (optional)
+2. SSL is on by default, confirm certificate status
+3. Set up alerts/monitoring
+4. Plan database backups
 
 ## 📚 Documentation
 
-Pour plus de détails, consultez :
-- **Guide complet** : [README-RENDER.md](./README-RENDER.md)
-- **Documentation Render** : [render.com/docs](https://render.com/docs)
+Need more detail?
+- **Full guide** : [README-RENDER.md](./README-RENDER.md)
+- **Render docs** : [render.com/docs](https://render.com/docs)
 
 ---
 
-**Note sur les coûts :**
-- Services web (backend + frontend) : Gratuit avec limitations
-- Base de données : Gratuit pendant 90 jours, puis ~7$/mois
-- Alternatives gratuites : Neon, Supabase, ElephantSQL
+**Cost notes:**
+- Web services (backend + frontend): free with limits
+- Database: free for 90 days, then ~USD $7/month
+- Free alternatives: Neon, Supabase, ElephantSQL
 
 ---
 
-**Besoin d'aide ?**
-- Consultez le [README-RENDER.md](./README-RENDER.md)
-- Ouvrez une issue sur GitHub
-- Contactez le support Render
-
+**Need help?**
+- Read [README-RENDER.md](./README-RENDER.md)
+- Open a GitHub issue
+- Contact Render support
