@@ -1745,7 +1745,7 @@ const Dashboard = () => {
         </Card>
 
         {pricingWarningActive && (
-          <Alert variant="warning" className="border-amber-200 bg-amber-50">
+          <Alert className="border-amber-200 bg-amber-50">
             <AlertTitle>Price data temporarily limited</AlertTitle>
             <AlertDescription>
               DeFiLlama rate limits prevented fresh USD prices. 24h changes,
