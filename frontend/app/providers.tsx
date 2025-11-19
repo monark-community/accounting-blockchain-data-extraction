@@ -40,7 +40,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         const { getWeb3AuthConfig } = await import("@/lib/web3auth");
         setWeb3authConfig(getWeb3AuthConfig());
       } catch (error) {
-        console.error("Failed to initialize Web3Auth config:", error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Failed to initialize Web3Auth config:", error);
+        }
       }
     })();
   }, []);

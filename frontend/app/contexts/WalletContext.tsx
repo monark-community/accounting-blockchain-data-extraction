@@ -132,7 +132,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
             setWeb3AuthAddress(accounts[0]);
           }
         } catch (error) {
-          console.error("Error getting Web3Auth account:", error);
+          if (process.env.NODE_ENV === 'development') {
+            console.error("Error getting Web3Auth account:", error);
+          }
         }
       } else {
         setWeb3AuthAddress("");
@@ -146,7 +148,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (web3auth?.web3Auth) {
       const handleAccountChange = () => {
-        console.log("Web3Auth account changed, updating address");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Web3Auth account changed, updating address");
+        }
         // Trigger a re-fetch of the account
         setTimeout(() => {
           const getAccount = async () => {
@@ -161,7 +165,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
                 }
               }
             } catch (error) {
-              console.error("Error updating Web3Auth account:", error);
+              if (process.env.NODE_ENV === 'development') {
+                console.error("Error updating Web3Auth account:", error);
+              }
             }
           };
           getAccount();
@@ -229,18 +235,6 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [web3AuthIsConnected, web3auth]);
 
-  // Debug log to see what Web3Auth provides
-  // useEffect(() => {
-  //   if (web3auth) {
-  //     console.log('Web3Auth debug info:', {
-  //       isConnected: web3auth.isConnected,
-  //       userInfo: web3auth.userInfo,
-  //       web3AuthAddress: web3AuthAddress,
-  //       allProperties: Object.keys(web3auth)
-  //     });
-  //   }
-  // }, [web3auth, web3AuthAddress]);
-
   // Determine the primary wallet address (prioritize MetaMask over Web3Auth)
   const primaryAddress = address || web3AuthAddress;
   const primaryIsConnected = isConnected || web3AuthIsConnected;
@@ -275,11 +269,13 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       ensName: undefined,
     });
     // Debug log to verify Web3Auth integration
-    console.log("Web3Auth wallet detected:", {
-      address: web3AuthAddress,
-      userName,
-      userInfo: web3AuthUserInfo,
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Web3Auth wallet detected:", {
+        address: web3AuthAddress,
+        userName,
+        userInfo: web3AuthUserInfo,
+      });
+    }
   }
 
   // Function to load user name from API
@@ -298,7 +294,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         setUserName(data.name || "");
       }
     } catch (error) {
-      console.error('Failed to load user name:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load user name:', error);
+      }
       setUserName("");
     }
   }, [primaryIsConnected]);
@@ -340,7 +338,9 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         disconnect();
       }
     } catch (error) {
-      console.error("Disconnect error:", error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Disconnect error:", error);
+      }
       // Fallback to wagmi disconnect
       disconnect();
     }
@@ -348,17 +348,23 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   const addWallet = (wallet: Omit<Wallet, "id">) => {
     // In Wagmi, we don't manually add wallets - they're managed by the wallet provider
-    console.log("Wallet addition handled by wallet provider:", wallet);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Wallet addition handled by wallet provider:", wallet);
+    }
   };
 
   const removeWallet = (id: string) => {
     // In Wagmi, we don't manually remove wallets - they're managed by the wallet provider
-    console.log("Wallet removal handled by wallet provider:", id);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Wallet removal handled by wallet provider:", id);
+    }
   };
 
   const updatePreferences = (preferences: Partial<UserPreferences>) => {
     // This would typically be stored in localStorage or a backend
-    console.log("Preferences updated:", preferences);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Preferences updated:", preferences);
+    }
   };
 
   const exportWallets = () => {
@@ -379,10 +385,12 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const parsed = JSON.parse(data);
       if (parsed.wallets && Array.isArray(parsed.wallets)) {
         // In Wagmi, wallet management is handled by the wallet provider
-        console.log(
-          "Wallet import handled by wallet provider:",
-          parsed.wallets
-        );
+        if (process.env.NODE_ENV === 'development') {
+          console.log(
+            "Wallet import handled by wallet provider:",
+            parsed.wallets
+          );
+        }
         return true;
       }
       return false;
@@ -397,46 +405,62 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const switchNetworkHandler = async (chainId: number) => {
-    console.log("Attempting to switch to chain ID:", chainId);
-
+    if (process.env.NODE_ENV === 'development') {
+      console.log("Attempting to switch to chain ID:", chainId);
+    }
     if (!window.ethereum) {
       throw new Error("MetaMask is not installed");
     }
 
     try {
       // First try to switch to the network using MetaMask API directly
-      console.log(
-        "Calling wallet_switchEthereumChain with chainId:",
-        `0x${chainId.toString(16)}`
-      );
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          "Calling wallet_switchEthereumChain with chainId:",
+          `0x${chainId.toString(16)}`
+        );
+      }
       await window.ethereum.request({
         method: "wallet_switchEthereumChain",
         params: [{ chainId: `0x${chainId.toString(16)}` }],
       });
-      console.log("Network switched successfully");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Network switched successfully");
+      }
     } catch (error: any) {
-      console.log("Switch failed with error:", error);
-
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Switch failed with error:", error);
+      }
       // If the network is not added to MetaMask (error code 4902), add it first
       if (error.code === 4902) {
-        console.log("Network not found, attempting to add network");
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Network not found, attempting to add network");
+        }
         const networkConfig = getNetworkConfig(chainId);
         if (networkConfig) {
           try {
-            console.log("Adding network with config:", networkConfig);
+            if (process.env.NODE_ENV === 'development') {
+              console.log("Adding network with config:", networkConfig);
+            }
             await window.ethereum.request({
               method: "wallet_addEthereumChain",
               params: [networkConfig],
             });
-            console.log("Network added successfully, switching now");
+            if (process.env.NODE_ENV === 'development') {
+              console.log("Network added successfully, switching now");
+            }
             // After adding, try to switch again
             await window.ethereum.request({
               method: "wallet_switchEthereumChain",
               params: [{ chainId: `0x${chainId.toString(16)}` }],
             });
-            console.log("Network switched after adding");
+            if (process.env.NODE_ENV === 'development') {
+              console.log("Network switched after adding");
+            }
           } catch (addError) {
-            console.error("Failed to add network:", addError);
+            if (process.env.NODE_ENV === 'development') {
+              console.error("Failed to add network:", addError);
+            }
             throw addError;
           }
         } else {

@@ -84,7 +84,9 @@ export default function Auth() {
             }
           }
         } catch (error) {
-          console.error("Failed to check MFA status:", error);
+          if (process.env.NODE_ENV === 'development') {
+            console.error("Failed to check MFA status:", error);
+          }
         }
 
         // No MFA or check failed, create backend session and proceed to dashboard
@@ -152,7 +154,9 @@ export default function Auth() {
 
       // Note: User will be redirected by Web3Auth, so we don't need to navigate manually
     } catch (err: any) {
-      console.error(`${provider} login error:`, err);
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`${provider} login error:`, err);
+      }
       toast?.error?.(
         `${provider} login failed: ${err.message || "Unknown error"}`
       );
@@ -232,7 +236,9 @@ export default function Auth() {
         }),
       });
     } catch (error) {
-      console.error("Error creating backend session:", error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Error creating backend session:", error);
+      }
     }
   }
 

@@ -16,9 +16,6 @@ const Navbar = () => {
   const { isConnected, userWallet, userAlias, disconnectWallet, currentNetwork, connectedWallets } = useWallet();
   const router = useRouter();
   const pathname = usePathname();
-  
-  // Debug log to see wallet values
-  // console.log('Navbar debug:', { isConnected, userWallet, userAlias, currentNetwork });
 
   const handleLogout = () => {
     disconnectWallet();

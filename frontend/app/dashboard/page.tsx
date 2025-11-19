@@ -702,7 +702,9 @@ const Dashboard = () => {
       })
       .catch((err) => {
         if (err?.name === "AbortError") return;
-        console.error("[Dashboard] Failed to load network suggestions:", err);
+        if (process.env.NODE_ENV === 'development') {
+          console.error("[Dashboard] Failed to load network suggestions:", err);
+        }
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -775,7 +777,9 @@ const Dashboard = () => {
       })
       .catch((e) => {
         if (cancelled) return;
-        console.error("[Dashboard] Failed to load overview:", e);
+        if (process.env.NODE_ENV === 'development') {
+          console.error("[Dashboard] Failed to load overview:", e);
+        }
         setOv(null);
         setWalletStats([]);
         setErrorOv(
@@ -826,9 +830,11 @@ const Dashboard = () => {
   // Fetch historical data for 6-month graph
   useEffect(() => {
     if (!activeWallets.length || !overviewReady) {
-      console.log(
-        "[Dashboard] Historical data fetch postponed until overview is ready"
-      );
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          "[Dashboard] Historical data fetch postponed until overview is ready"
+        );
+      }
       return;
     }
     let cancelled = false;
@@ -858,7 +864,9 @@ const Dashboard = () => {
       })
       .catch((e) => {
         if (cancelled) return;
-        console.error("[Dashboard] Failed to load historical data:", e);
+        if (process.env.NODE_ENV === 'development') {
+          console.error("[Dashboard] Failed to load historical data:", e);
+        }
         setTokenApiWarningFor("historical", isTokenApiRateLimit(e?.message));
         setPricingWarningFor("historical", false);
       })
@@ -1021,7 +1029,9 @@ const Dashboard = () => {
         }
       } catch (err) {
         if (!cancelled) {
-          console.error("[Dashboard] Failed to compute capital gains:", err);
+          if (process.env.NODE_ENV === 'development') {
+            console.error("[Dashboard] Failed to compute capital gains:", err);
+          }
           setCapitalGainsData((prev) => ({
             ...prev,
             realized: [],
@@ -1054,11 +1064,15 @@ const Dashboard = () => {
   ]);
 
   const historicalChartData = useMemo(() => {
-    console.log(
-      `[Dashboard] Processing historical data: ${historicalData.length} points`
-    );
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        `[Dashboard] Processing historical data: ${historicalData.length} points`
+      );
+    }
     if (historicalData.length === 0) {
-      console.log("[Dashboard] No historical data to process");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("[Dashboard] No historical data to process");
+      }
       return [];
     }
     const processed = historicalData
@@ -1071,7 +1085,9 @@ const Dashboard = () => {
         value: point.totalValueUsd,
         timestamp: point.timestamp,
       }));
-    console.log(`[Dashboard] Processed chart data: ${processed.length} points`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Dashboard] Processed chart data: ${processed.length} points`);
+    }
     return processed;
   }, [historicalData]);
 

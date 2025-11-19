@@ -37,25 +37,33 @@ export async function fetchHistoricalData(
     address
   )}?${qs.toString()}`;
 
-  console.log(`[API Analytics] Fetching: ${url}`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[API Analytics] Fetching: ${url}`);
+  }
 
   const res = await fetch(url);
-  console.log(`[API Analytics] Response status: ${res.status} ${res.statusText}`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[API Analytics] Response status: ${res.status} ${res.statusText}`);
+  }
 
   if (!res.ok) {
     const msg = await res.text();
-    console.error(`[API Analytics] Error response:`, msg);
+    if (process.env.NODE_ENV === 'development') {
+      console.error(`[API Analytics] Error response:`, msg);
+    }
     throw new Error(msg || "Failed to fetch historical data");
   }
 
   const json = await res.json();
-  console.log(`[API Analytics] Response received:`, {
-    address: json.address,
-    networks: json.networks,
-    days: json.days,
-    dataLength: json.data?.length || 0,
-    useFallback: options?.useFallback,
-  });
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[API Analytics] Response received:`, {
+      address: json.address,
+      networks: json.networks,
+      days: json.days,
+      dataLength: json.data?.length || 0,
+      useFallback: options?.useFallback,
+    });
+  }
 
   return json;
 }

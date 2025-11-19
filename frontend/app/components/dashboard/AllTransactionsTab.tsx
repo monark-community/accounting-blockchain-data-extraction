@@ -60,12 +60,14 @@ export default function AllTransactionsTab({
 
   useEffect(() => {
     if (cache.error) {
-      console.error("[AllTransactionsTab] Error:", {
-        address: address
-          ? `${address.slice(0, 6)}...${address.slice(-4)}`
-          : "none",
-        error: cache.error.slice(0, 100),
-      });
+      if (process.env.NODE_ENV === 'development') {
+        console.error("[AllTransactionsTab] Error:", {
+          address: address
+            ? `${address.slice(0, 6)}...${address.slice(-4)}`
+            : "none",
+          error: cache.error.slice(0, 100),
+        });
+      }
     }
   }, [cache.error, address]);
 

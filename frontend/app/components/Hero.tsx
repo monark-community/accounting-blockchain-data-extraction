@@ -73,7 +73,9 @@ const Hero = () => {
           clearTimeout(timeout);
         }
       } catch (error) {
-        console.log("Dependencies not ready yet:", error);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Dependencies not ready yet:", error);
+        }
       }
     };
 
@@ -161,7 +163,9 @@ const Hero = () => {
       // Don't show success toast here - let the useEffect handle it
       // when isConnected becomes true
     } catch (error: any) {
-      console.error("Connection error:", error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Connection error:", error);
+      }
       toast({
         title: "Connection Failed",
         description:
@@ -232,12 +236,10 @@ const Hero = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!address) return;
-    // console.log("Hero: Submitting search for address:", address);
     router.push(`/dashboard?address=${encodeURIComponent(address)}`);
   };
 
   const handlePick = (addr: string) => {
-    // console.log("Hero: Picked address from suggestions:", addr);
     setAddress(addr);
     setOpenSuggest(false);
   };

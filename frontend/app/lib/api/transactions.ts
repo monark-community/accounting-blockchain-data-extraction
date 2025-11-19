@@ -66,11 +66,13 @@ export async function fetchTransactions(
 
     if (isNetworkError && retryCount < maxRetries) {
       const delay = baseDelay * Math.pow(2, retryCount); // Exponential backoff: 3s, 6s
-      console.log(
-        `[Transactions] Retrying (${
-          retryCount + 1
-        }/${maxRetries}) after ${delay}ms...`
-      );
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          `[Transactions] Retrying (${
+            retryCount + 1
+          }/${maxRetries}) after ${delay}ms...`
+        );
+      }
       await new Promise((resolve) => setTimeout(resolve, delay));
       return fetchTransactions(address, q, retryCount + 1);
     }
@@ -90,12 +92,14 @@ export async function fetchTransactions(
   if (!res.ok) {
     const msg = await res.text();
     const totalTime = performance.now() - fetchStartTime;
-    console.error(
-      `[Transactions] ❌ HTTP ${res.status} (${(totalTime / 1000).toFixed(
-        1
-      )}s):`,
-      msg.slice(0, 100)
-    );
+    if (process.env.NODE_ENV === 'development') {
+      console.error(
+        `[Transactions] ❌ HTTP ${res.status} (${(totalTime / 1000).toFixed(
+          1
+        )}s):`,
+        msg.slice(0, 100)
+      );
+    }
     throw new Error(msg || "Failed to fetch transactions");
   }
 
@@ -113,7 +117,7 @@ export async function fetchTransactions(
   const totalTime = performance.now() - fetchStartTime;
 
   // Single summary log with key timings
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === 'development') {
     const hasNextFlag =
       typeof json.hasNext === "boolean"
         ? json.hasNext

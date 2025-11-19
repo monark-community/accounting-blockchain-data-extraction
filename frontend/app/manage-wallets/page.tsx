@@ -246,10 +246,12 @@ const ManageWallets = () => {
                   });
                 }
               } catch (balanceError) {
-                console.log(
-                  `Could not get balance for ${network.label}:`,
-                  balanceError
-                );
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(
+                    `Could not get balance for ${network.label}:`,
+                    balanceError
+                  );
+                }
               }
             }
           }
@@ -271,7 +273,9 @@ const ManageWallets = () => {
           });
         }
       } catch (error) {
-        console.error("Error detecting networks with funds:", error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Error detecting networks with funds:", error);
+        }
         // Fallback to showing popular networks
         setAvailableNetworks(popularNetworks);
         toast({
@@ -293,18 +297,26 @@ const ManageWallets = () => {
   }, []);
 
   const handleSwitchNetwork = async (chainId: number) => {
-    console.log("handleSwitchNetwork called with chainId:", chainId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("handleSwitchNetwork called with chainId:", chainId);
+    }
     setIsSwitchingNetwork(true);
     try {
-      console.log("Calling switchNetwork function");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Calling switchNetwork function");
+      }
       await switchNetwork(chainId);
-      console.log("switchNetwork completed successfully");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("switchNetwork completed successfully");
+      }
       toast({
         title: "Network Switched",
         description: "Successfully switched network!",
       });
     } catch (error: any) {
-      console.error("switchNetwork failed:", error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error("switchNetwork failed:", error);
+      }
       toast({
         title: "Network Switch Failed",
         description:

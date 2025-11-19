@@ -145,8 +145,7 @@ const ensureRawPage = async (
       comboState.rawNextCursor = nextCursor ?? null;
 
       // Dev-only summary log
-      if (process.env.NODE_ENV !== "production") {
-        // eslint-disable-next-line no-console
+      if (process.env.NODE_ENV === 'development') {
         console.log(
           `[Transactions] 📦 Buffered ${rows.length} legs into ${chunks.length} page(s) starting at ${startPage}`
         );
@@ -516,7 +515,9 @@ export function useTransactionPagination({
       if (loadTokenRef.current !== token) {
         return;
       }
-      console.error(`[Transactions] ❌ Error loading page ${pageToLoad}:`, e?.message || String(e));
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`[Transactions] ❌ Error loading page ${pageToLoad}:`, e?.message || String(e));
+      }
       setError(e?.message || "Failed to load transactions");
       setRows([]);
       setHasNext(false);

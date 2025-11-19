@@ -19,7 +19,9 @@ export function clearWeb3AuthSessionStorage(): void {
       }
     });
   } catch (error) {
-    console.warn("Failed to clear Web3Auth sessionStorage:", error);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn("Failed to clear Web3Auth sessionStorage:", error);
+    }
   }
 }
 
@@ -42,10 +44,14 @@ export function clearWeb3AuthLocalStorage(): void {
       try {
         localStorage.removeItem(key);
       } catch (e) {
-        console.warn(`Failed to remove localStorage key: ${key}`, e);
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`Failed to remove localStorage key: ${key}`, e);
+        }
       }
     });
   } catch (error) {
-    console.warn("Failed to clear Web3Auth localStorage:", error);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn("Failed to clear Web3Auth localStorage:", error);
+    }
   }
 }
