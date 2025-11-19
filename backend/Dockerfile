@@ -4,7 +4,7 @@ WORKDIR /app
 # Install build dependencies for native modules
 RUN apk add --no-cache python3 make g++
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # ---------- Dev target: ts-node-dev ----------
 FROM node:20-alpine AS dev
@@ -13,7 +13,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 # Keep dev independent (fast for new contributors)
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 ENV NODE_ENV=development
 ENV PORT=8080
 EXPOSE 8080
@@ -36,7 +36,7 @@ ENV NODE_ENV=production
 ENV PORT=8080
 # Install only production deps
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 # Copy compiled JS
 COPY --from=builder /app/dist ./dist
 EXPOSE 8080

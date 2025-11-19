@@ -12,8 +12,10 @@ import {
 } from "wagmi/chains";
 import { injected, metaMask, walletConnect } from "wagmi/connectors";
 
-const wcId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
-if (!wcId) throw new Error("Missing NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID");
+const wcId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "placeholder_walletconnect_id";
+if (wcId === "placeholder_walletconnect_id") {
+  console.warn("⚠️ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID not set. WalletConnect won't work.");
+}
 
 export const config = createConfig({
   chains: [

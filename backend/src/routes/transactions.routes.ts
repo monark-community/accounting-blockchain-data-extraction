@@ -120,9 +120,9 @@ router.get("/:address", async (req, res) => {
     // apply filters from query
     const minUsd = req.query.minUsd ? Number(req.query.minUsd) : 0;
     const spamFilter =
-      (req.query.spamFilter as "off" | "soft" | "hard") ??
+      ((req.query.spamFilter as "off" | "soft" | "hard") ??
       process.env.SPAM_FILTER_MODE ??
-      "hard";
+      "hard") as any;
     const legs = applyLegFilters(legsRaw, { minUsd, spamFilter });
 
     const classSet = classParam
@@ -216,9 +216,9 @@ router.get("/summary/:address", async (req, res) => {
 
     const minUsd = req.query.minUsd ? Number(req.query.minUsd) : 0;
     const spamFilter =
-      (req.query.spamFilter as "off" | "soft" | "hard") ??
+      ((req.query.spamFilter as "off" | "soft" | "hard") ??
       process.env.SPAM_FILTER_MODE ??
-      "hard";
+      "hard") as any;
 
     const legs = applyLegFilters(legsRaw, { minUsd, spamFilter });
     const summary = buildSummary(legs, gasMeta ?? {});

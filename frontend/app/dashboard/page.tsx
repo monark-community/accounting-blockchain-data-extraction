@@ -1186,8 +1186,8 @@ const Dashboard = () => {
     for (const h of ov.holdings) {
       byChain.set(h.chain, (byChain.get(h.chain) ?? 0) + (h.valueUsd || 0));
     }
-    const total = [...byChain.values()].reduce((s, v) => s + v, 0) || 1;
-    return [...byChain.entries()]
+    const total = Array.from(byChain.values()).reduce((s, v) => s + v, 0) || 1;
+    return Array.from(byChain.entries())
       .map(([chain, usd]) => ({
         chain,
         label: CHAIN_LABEL[chain] ?? chain,
@@ -1508,7 +1508,7 @@ const Dashboard = () => {
                     size="icon"
                     className="border-2 border-slate-200"
                     onClick={handleSelectMainWallet}
-                    disabled={urlAddress || !allWallets.length}
+                    disabled={!!urlAddress || !allWallets.length}
                     title="Select main wallet"
                   >
                     <Crown className="h-4 w-4 text-amber-500" />
@@ -1518,7 +1518,7 @@ const Dashboard = () => {
                     size="sm"
                     className="border-2 border-slate-200"
                     onClick={handleSelectAllWallets}
-                    disabled={urlAddress || !allWallets.length}
+                    disabled={!!urlAddress || !allWallets.length}
                   >
                     Select {Math.min(MAX_MULTI_WALLETS, allWallets.length)}
                   </Button>

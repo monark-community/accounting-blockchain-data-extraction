@@ -874,7 +874,7 @@ const GraphsTab = ({
                     "Allocation",
                   ];
                 }
-                return [value, "Allocation"];
+                return [String(value), "Allocation"];
               }}
               labelFormatter={(label) => String(label)}
             />

@@ -9,6 +9,12 @@ export function getWeb3AuthConfig() {
     throw new Error("Web3Auth config should only be initialized on client side");
   }
 
+  const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID || "BPi_0EtknDJPJwdN9VqDTiscSxfS5TXYCvCb9IqL1hEVPMiXCvL-ycGQZqmcBNCJXpDdXwWjf1xPuYjaDqk4Eck";
+  
+  if (!process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID) {
+    console.warn("⚠️ NEXT_PUBLIC_WEB3AUTH_CLIENT_ID not set. Using placeholder. Auth won't work properly.");
+  }
+
   const { OpenloginAdapter } = require("@web3auth/openlogin-adapter");
   const { EthereumPrivateKeyProvider } = require("@web3auth/ethereum-provider");
 
@@ -38,7 +44,7 @@ export function getWeb3AuthConfig() {
   const openloginAdapter = new OpenloginAdapter({
     adapterSettings: {
       network: "testnet",
-      clientId: process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID!,
+      clientId: clientId,
       uxMode: "redirect" as const,
       redirectUrl: `${window.location.origin}/auth`,
     },
@@ -48,7 +54,7 @@ export function getWeb3AuthConfig() {
   // Correct Web3Auth configuration with PrivateKey Provider
   return {
     web3AuthOptions: {
-      clientId: process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID!,
+      clientId: clientId,
       web3AuthNetwork: "sapphire_devnet" as const,
       chainConfig: chainConfig,
       privateKeyProvider: privateKeyProvider,
