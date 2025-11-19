@@ -43,13 +43,12 @@ export default function AllTransactionsTab({
     goNext,
     setRefreshKey,
   } = useTransactionsWorkspace();
+  const loadedTxCount = cache.loadedRowsAll.length;
   const coveragePct = useMemo(() => {
     if (!totalCount || totalCount <= 0) return null;
-    return Math.min(
-      1,
-      stats.capitalGainsSummary.transactionsCount / totalCount
-    );
-  }, [totalCount, stats.capitalGainsSummary.transactionsCount]);
+    if (!loadedTxCount || loadedTxCount <= 0) return 0;
+    return Math.min(1, loadedTxCount / totalCount);
+  }, [totalCount, loadedTxCount]);
 
   // Check if there are no transactions at all in the wallet (after loading is complete and no error)
   // This is different from "no transactions match current filter" (which would have loadedRowsAll.length > 0)
@@ -80,9 +79,7 @@ export default function AllTransactionsTab({
         {activeWallets.length > 0 && (
           <CapitalGainsSnapshot
             address={exportLabel}
-            loadedTransactionsCount={
-              stats.capitalGainsSummary.transactionsCount
-            }
+            loadedTransactionsCount={loadedTxCount}
             totalCount={totalCount}
             dateRangeLabel={filters.dateRange.label}
             capitalGainsSummary={stats.capitalGainsSummary}
@@ -196,7 +193,7 @@ export default function AllTransactionsTab({
                 Loaded transactions
               </p>
               <p className="text-2xl font-semibold text-slate-900">
-                {stats.capitalGainsSummary.transactionsCount.toLocaleString()}
+                {loadedTxCount.toLocaleString()}
               </p>
               <p className="text-xs text-slate-500">
                 Page {cache.page} · {filters.networksButtonLabel}
@@ -213,7 +210,7 @@ export default function AllTransactionsTab({
               </p>
               {totalCount && (
                 <p className="text-xs text-slate-500">
-                  {stats.capitalGainsSummary.transactionsCount.toLocaleString()}{" "}
+                  {loadedTxCount.toLocaleString()}{" "}
                   / {totalCount.toLocaleString()}
                 </p>
               )}

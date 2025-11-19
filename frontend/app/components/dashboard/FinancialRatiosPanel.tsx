@@ -63,12 +63,10 @@ export default function FinancialRatiosPanel({
   totalCount,
   hasActiveWallets,
 }: FinancialRatiosPanelProps) {
+  const loadedTxCount = cache.loadedRowsAll.length;
   const coveragePct =
     totalCount && totalCount > 0
-      ? Math.min(
-          1,
-          stats.capitalGainsSummary.transactionsCount / totalCount
-        )
+      ? Math.min(1, (loadedTxCount || 0) / totalCount)
       : null;
   const coveragePctDisplay =
     coveragePct != null ? Math.round(coveragePct * 100) : null;
@@ -259,7 +257,7 @@ export default function FinancialRatiosPanel({
           <div>
             <p className="text-xs uppercase text-slate-500">Loaded tx</p>
             <p className="text-2xl font-semibold text-slate-900">
-              {stats.capitalGainsSummary.transactionsCount.toLocaleString()}
+              {loadedTxCount.toLocaleString()}
             </p>
           </div>
           <div>
@@ -271,7 +269,7 @@ export default function FinancialRatiosPanel({
             </p>
             {totalCount && (
               <p className="text-xs text-slate-500">
-                {stats.capitalGainsSummary.transactionsCount.toLocaleString()}{" "}
+                {loadedTxCount.toLocaleString()}{" "}
                 / {totalCount.toLocaleString()}
               </p>
             )}
