@@ -32,6 +32,29 @@ function dbg(...args: any[]) {
   if (LOGS_DEBUG) console.log(...args);
 }
 
+const RATE_LIMIT_COOLDOWN_MS = Number(
+  process.env.DEFI_LLAMA_RATE_LIMIT_COOLDOWN_MS ?? 5 * 60 * 1000
+);
+let defiLlamaRateLimitedUntil = 0;
+
+function markDefiLlamaRateLimited() {
+  defiLlamaRateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+}
+
+export function getPricingWarnings() {
+  const remaining = defiLlamaRateLimitedUntil - Date.now();
+  if (remaining > 0) {
+    return {
+      defiLlamaRateLimited: true,
+      defiLlamaRetryAfterMs: remaining,
+    };
+  }
+  return {
+    defiLlamaRateLimited: false,
+    defiLlamaRetryAfterMs: 0,
+  };
+}
+
 const ENABLE_DEXSCREENER =
   (process.env.ENABLE_DEXSCREENER ?? "false") === "true";
 const ENABLE_DEFI_LLAMA = (process.env.ENABLE_DEFI_LLAMA ?? "false") === "true";
@@ -253,6 +276,9 @@ async function fetchDefiLlamaPrices(
   dbg("[DeFiLlama] Fetching prices from:", url);
   const res = await fetch(url);
   if (!res.ok) {
+    if (res.status === 429) {
+      markDefiLlamaRateLimited();
+    }
     console.error("[DeFiLlama] Error fetching prices:", res.status);
     return map;
   }
@@ -379,6 +405,7 @@ export async function getPricesAtTimestamp(
       try {
         const res = await fetch(url);
         if (res.status === 429) {
+          markDefiLlamaRateLimited();
           // Rate limited - wait and retry
           retries--;
           if (retries > 0) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWallet } from "@/contexts/WalletContext";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
@@ -10,6 +10,7 @@ import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
 import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
 import OverviewTab from "@/components/dashboard/OverviewTab";
 import GraphsTab from "@/components/dashboard/GraphsTab";
+import { TransactionsWorkspaceProvider } from "@/components/dashboard/TransactionsWorkspaceProvider";
 import {
   CapitalGainsCalculator,
   type CapitalGainEntry,
@@ -55,6 +56,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import { Plus, X, Sparkles } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const DASHBOARD_NETWORK_STORAGE_KEY = "dashboard.networks";
 const DASHBOARD_NETWORK_HINTS_KEY = "dashboard.networkSuggestions";
@@ -68,6 +70,17 @@ const RAW_DEFAULT_DASHBOARD_NETWORKS =
 const DASHBOARD_DEFAULT_NETWORKS = normalizeNetworkListFromString(
   RAW_DEFAULT_DASHBOARD_NETWORKS
 );
+
+const isTokenApiRateLimit = (message?: string | null) => {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("tokenapi") &&
+    (lower.includes("rate limited") ||
+      lower.includes("too_many_requests") ||
+      lower.includes("429"))
+  );
+};
 
 type NetworkSuggestion = {
   network: string;
@@ -329,6 +342,37 @@ const Dashboard = () => {
   const [showChange, setShowChange] = useState(false);
   const [selectedWallets, setSelectedWallets] = useState<string[]>([]);
   const [appliedWallets, setAppliedWallets] = useState<string[]>([]);
+  const pricingWarningSourcesRef = useRef<Set<string>>(new Set());
+  const [pricingWarningActive, setPricingWarningActive] = useState(false);
+  const setPricingWarningFor = useCallback((source: string, flag: boolean) => {
+    setPricingWarningActive((prev) => {
+      const nextSet = new Set(pricingWarningSourcesRef.current);
+      if (flag) {
+        nextSet.add(source);
+      } else {
+        nextSet.delete(source);
+      }
+      pricingWarningSourcesRef.current = nextSet;
+      const next = nextSet.size > 0;
+      return next === prev ? prev : next;
+    });
+  }, []);
+
+  const tokenApiWarningSourcesRef = useRef<Set<string>>(new Set());
+  const [tokenApiWarningActive, setTokenApiWarningActive] = useState(false);
+  const setTokenApiWarningFor = useCallback((source: string, flag: boolean) => {
+    setTokenApiWarningActive((prev) => {
+      const nextSet = new Set(tokenApiWarningSourcesRef.current);
+      if (flag) {
+        nextSet.add(source);
+      } else {
+        nextSet.delete(source);
+      }
+      tokenApiWarningSourcesRef.current = nextSet;
+      const next = nextSet.size > 0;
+      return next === prev ? prev : next;
+    });
+  }, []);
   const [walletSelectionDirty, setWalletSelectionDirty] = useState(false);
   const [minUsdFilter, setMinUsdFilter] = useState(5);
   const [hideStables, setHideStables] = useState(false);
@@ -339,7 +383,7 @@ const Dashboard = () => {
   const [walletLabelMode, setWalletLabelMode] = useState<"name" | "address">(
     "name"
   );
-const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
+  const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
   const [loadedFromStorage, setLoadedFromStorage] = useState(false);
   const handleToggleWallet = (walletAddress: string, checked: boolean) => {
     setSelectedWallets((prev) => {
@@ -380,7 +424,9 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
 
   const handleSelectAllWallets = () => {
     if (urlAddress) return;
-    const next = allWallets.slice(0, MAX_MULTI_WALLETS).map((wallet) => wallet.address);
+    const next = allWallets
+      .slice(0, MAX_MULTI_WALLETS)
+      .map((wallet) => wallet.address);
     setSelectedWallets(next);
     setWalletSelectionDirty(true);
   };
@@ -685,12 +731,21 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
         } catch {
           message = await res.text();
         }
+        setTokenApiWarningFor("overview", isTokenApiRateLimit(message));
         throw new Error(message || "Failed to load overview");
       }
       const data = (await res.json()) as OverviewResponse;
+      setTokenApiWarningFor(
+        `overview:${targetAddress}`,
+        !!data?.warnings?.tokenApiRateLimited
+      );
+      setPricingWarningFor(
+        `overview:${targetAddress}`,
+        !!data?.warnings?.defiLlamaRateLimited
+      );
       return data;
     },
-    [networksParam]
+    [networksParam, setTokenApiWarningFor, setPricingWarningFor]
   );
 
   useEffect(() => {
@@ -712,6 +767,11 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
         const merged = mergeOverviewResponses(entries);
         setOv(merged.overview);
         setWalletStats(merged.walletStats);
+        setTokenApiWarningFor("overview", false);
+        const warn = entries.some(
+          (entry) => entry.overview.warnings?.defiLlamaRateLimited
+        );
+        setPricingWarningFor("overview", warn);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -723,6 +783,8 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
             ? e.message
             : e?.error ?? "Failed to load overview"
         );
+        setTokenApiWarningFor("overview", isTokenApiRateLimit(e?.message));
+        setPricingWarningFor("overview", false);
       })
       .finally(() => {
         if (!cancelled) {
@@ -733,7 +795,7 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
     return () => {
       cancelled = true;
     };
-  }, [activeWallets, fetchOverviewSnapshot]);
+  }, [activeWallets, fetchOverviewSnapshot, setPricingWarningFor]);
 
   const addNetwork = (networkId: string) =>
     setNetworks((prev) => {
@@ -785,10 +847,20 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
         const merged = mergeHistoricalResponses(responses);
         setHistoricalData(merged);
         setIsHistoricalEstimated(responses.some((resp) => resp.isEstimated));
+        const priceWarn = responses.some(
+          (resp) => resp.warnings?.defiLlamaRateLimited
+        );
+        const tokenWarn = responses.some(
+          (resp) => resp.warnings?.tokenApiRateLimited
+        );
+        setPricingWarningFor("historical", priceWarn);
+        setTokenApiWarningFor("historical", tokenWarn);
       })
       .catch((e) => {
         if (cancelled) return;
         console.error("[Dashboard] Failed to load historical data:", e);
+        setTokenApiWarningFor("historical", isTokenApiRateLimit(e?.message));
+        setPricingWarningFor("historical", false);
       })
       .finally(() => {
         if (!cancelled) {
@@ -799,7 +871,14 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
     return () => {
       cancelled = true;
     };
-  }, [activeWallets, networksParam, overviewReady, useFallbackEstimation]);
+  }, [
+    activeWallets,
+    networksParam,
+    overviewReady,
+    useFallbackEstimation,
+    setPricingWarningFor,
+    setTokenApiWarningFor,
+  ]);
 
   useEffect(() => {
     if (!activeWallets.length || !overviewReady) {
@@ -938,6 +1017,7 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
             shortTermGains,
             longTermGains,
           });
+          setTokenApiWarningFor("capitalGains", false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -951,6 +1031,10 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
             shortTermGains: 0,
             longTermGains: 0,
           }));
+          setTokenApiWarningFor(
+            "capitalGains",
+            isTokenApiRateLimit((err as Error)?.message)
+          );
         }
       } finally {
         if (!cancelled) setLoadingCapitalGains(false);
@@ -960,7 +1044,14 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
     return () => {
       cancelled = true;
     };
-  }, [activeWallets, networksParam, accountingMethod, overviewReady, ov]);
+  }, [
+    activeWallets,
+    networksParam,
+    accountingMethod,
+    overviewReady,
+    ov,
+    setTokenApiWarningFor,
+  ]);
 
   const historicalChartData = useMemo(() => {
     console.log(
@@ -1185,6 +1276,8 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
       assetCount: counts[id],
     }));
   }, [ov]);
+  const stableBucketUsd =
+    riskBuckets.find((bucket) => bucket.id === "stable")?.usd ?? 0;
 
   const appliedWalletDisplay = useMemo(() => {
     const list = urlAddress
@@ -1443,14 +1536,17 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
                 </div>
                 <div className="flex flex-col items-end text-xs text-slate-500 gap-1">
                   <span>
-                    Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS} wallets
+                    Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS}{" "}
+                    wallets
                   </span>
-                  {walletSelectionDirty && selectedWallets.length > 0 && !urlAddress && (
-                    <span className="inline-flex items-center gap-1 text-amber-600">
-                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
-                      Apply the new selection to refresh data
-                    </span>
-                  )}
+                  {walletSelectionDirty &&
+                    selectedWallets.length > 0 &&
+                    !urlAddress && (
+                      <span className="inline-flex items-center gap-1 text-amber-600">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Apply the new selection to refresh data
+                      </span>
+                    )}
                 </div>
                 {walletLimitReached && (
                   <p className="text-xs text-amber-600">
@@ -1648,6 +1744,27 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
           </div>
         </Card>
 
+        {pricingWarningActive && (
+          <Alert variant="warning" className="border-amber-200 bg-amber-50">
+            <AlertTitle>Price data temporarily limited</AlertTitle>
+            <AlertDescription>
+              DeFiLlama rate limits prevented fresh USD prices. 24h changes,
+              charts, and transaction values may appear as zero until pricing
+              resumes.
+            </AlertDescription>
+          </Alert>
+        )}
+        {tokenApiWarningActive && (
+          <Alert variant="destructive" className="border-rose-200 bg-rose-50">
+            <AlertTitle>Token API rate limit reached</AlertTitle>
+            <AlertDescription>
+              The upstream balance API temporarily blocked requests (429). Some
+              holdings or transactions may be missing data until the limit
+              resets. Please try again in a few minutes.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="overview" className="space-y-6">
           <TabsList className="flex w-full gap-2">
             <TabsTrigger className="flex-1" value="overview">
@@ -1723,9 +1840,23 @@ const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
               currency={userPreferences.currency}
             />
           </TabsContent> */}
-
           <TabsContent value="all-transactions" forceMount>
-            <AllTransactionsTab address={address} />
+            <TransactionsWorkspaceProvider
+              address={address}
+              walletOptions={appliedWalletDisplay}
+              walletLimit={MAX_MULTI_WALLETS}
+              onPricingWarningChange={(flag) =>
+                setPricingWarningFor("transactions", flag)
+              }
+              onTokenApiWarningChange={(flag) =>
+                setTokenApiWarningFor("transactions", flag)
+              }
+            >
+              <AllTransactionsTab
+                totalAssetsUsd={ov?.kpis.totalValueUsd ?? null}
+                stableHoldingsUsd={stableBucketUsd}
+              />
+            </TransactionsWorkspaceProvider>
           </TabsContent>
         </Tabs>
       </main>

@@ -12,6 +12,12 @@ export type HistoricalResponse = {
   days: number;
   data: HistoricalPoint[];
   isEstimated?: boolean;
+  warnings?: {
+    defiLlamaRateLimited?: boolean;
+    defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
+  };
 };
 
 export async function fetchHistoricalData(

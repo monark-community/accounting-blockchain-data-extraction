@@ -38,4 +38,10 @@ export type OverviewResponse = {
     weightPct: number;
     chain: PricedHolding["chain"];
   }[];
+  warnings?: {
+    defiLlamaRateLimited?: boolean;
+    defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
+  };
 };

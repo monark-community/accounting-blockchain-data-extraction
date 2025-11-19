@@ -6,6 +6,7 @@ export interface TxRow {
   blockNumber: number;
   hash: string;
   network: string; // e.g. "mainnet"
+  walletAddress?: string;
   direction: Direction;
   type: TxType; // UI bucket (transfer_in -> income, transfer_out -> expense)
   asset: {
@@ -53,4 +54,10 @@ export interface TxListResponse {
   limit: number;
   hasNext?: boolean;
   nextCursor?: string | null;
+  warnings?: {
+    defiLlamaRateLimited?: boolean;
+    defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
+  };
 }

@@ -11,7 +11,12 @@ import {
   getNativePriceUsd,
   normalizeContractKey,
   getPricesAtTimestamp,
+  getPricingWarnings,
 } from "./pricing.service";
+import {
+  markTokenApiRateLimited,
+  getTokenApiWarnings,
+} from "./tokenApiStatus";
 
 const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL ?? "https://token-api.thegraph.com/v1";
@@ -40,6 +45,11 @@ type PricedHolding = {
   priceSource: "native" | "map" | "tokenapi" | "unknown";
 };
 
+type PricingWarnings = {
+  defiLlamaRateLimited?: boolean;
+  defiLlamaRetryAfterMs?: number;
+};
+
 type OverviewResponse = {
   address: string;
   asOf: string;
@@ -58,6 +68,7 @@ type OverviewResponse = {
     weightPct: number;
     chain: EvmNetwork;
   }[];
+  warnings?: PricingWarnings;
 };
 
 async function tokenApiGET<T>(
@@ -77,6 +88,9 @@ async function tokenApiGET<T>(
   if (!res.ok) {
     const text = await res.text();
     console.error(`TokenAPI ${path} ${res.status}: ${text}`);
+    if (res.status === 429) {
+      markTokenApiRateLimited();
+    }
     throw new Error(`TokenAPI ${path} ${res.status}`);
   }
   return res.json() as Promise<{ data: T }>;
@@ -375,5 +389,9 @@ export async function getHoldingsOverview(
     holdings,
     allocation,
     topHoldings,
+    warnings: {
+      ...getPricingWarnings(),
+      ...getTokenApiWarnings(),
+    },
   };
 }
