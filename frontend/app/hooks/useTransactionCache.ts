@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import type { TxRow, TxType } from "@/lib/types/transactions";
+import type { TxRow, TxType, TxListResponse } from "@/lib/types/transactions";
 import { fetchTransactions } from "@/lib/api/transactions";
 import { PAGE_SIZE } from "@/utils/transactionHelpers";
 
@@ -53,6 +53,8 @@ export function useTransactionCache({
   const [error, setError] = useState<string | null>(null);
   const [total, setTotal] = useState<number | null>(null);
   const [cacheVersion, setCacheVersion] = useState(0);
+  const [warnings, setWarnings] =
+    useState<TxListResponse["warnings"] | null>(null);
   const isDefaultTypeFilter = useMemo(
     () =>
       Array.isArray(selectedTypes) &&
@@ -184,6 +186,7 @@ export function useTransactionCache({
       nextCursor: string | null;
       total: number | null;
       networkMap: Map<string, TxRow[]>;
+      warnings: TxListResponse["warnings"] | null;
     }> => {
       const resp = await fetchTransactions(addr, {
         networks,
@@ -206,6 +209,7 @@ export function useTransactionCache({
         nextCursor: resp.nextCursor,
         total: (resp as any)?.total ?? null,
         networkMap,
+        warnings: resp.warnings ?? null,
       };
     },
     [dateRange]
@@ -253,6 +257,7 @@ export function useTransactionCache({
             networksWithoutCache.join(","),
             null
           );
+          setWarnings(result.warnings ?? null);
           for (const network of networksWithoutCache) {
             const networkKey = getNetworkCacheKey(addr, network);
             const networkTxs = result.networkMap.get(network) || [];
@@ -306,6 +311,7 @@ export function useTransactionCache({
           sharedCursor
         );
 
+        setWarnings(result.warnings ?? null);
         let hasNewData = false;
         for (const network of networksToLoad) {
           const networkKey = getNetworkCacheKey(addr, network);
@@ -587,5 +593,6 @@ export function useTransactionCache({
     cachedAheadCount,
     isOverloaded,
     loadIndicatorLabel,
+    warnings,
   };
 }
