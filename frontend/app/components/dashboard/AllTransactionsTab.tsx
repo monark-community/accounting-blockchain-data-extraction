@@ -51,6 +51,14 @@ export default function AllTransactionsTab({
     );
   }, [totalCount, stats.capitalGainsSummary.transactionsCount]);
 
+  // Check if there are no transactions at all in the wallet (after loading is complete and no error)
+  // This is different from "no transactions match current filter" (which would have loadedRowsAll.length > 0)
+  const hasNoTransactions =
+    cache.loadedRowsAll.length === 0 &&
+    !cache.loading &&
+    !cache.error &&
+    activeWallets.length > 0;
+
   useEffect(() => {
     if (cache.error) {
       console.error("[AllTransactionsTab] Error:", {
@@ -160,7 +168,9 @@ export default function AllTransactionsTab({
               goNext={goNext}
               refresh={cache.refresh}
               setRefreshKey={setRefreshKey}
-              walletOptions={walletDropdownVisible ? walletOptionList : undefined}
+              walletOptions={
+                walletDropdownVisible ? walletOptionList : undefined
+              }
               selectedWallets={selectedWallets}
               walletButtonLabel={walletButtonLabel}
               toggleWalletSelection={
@@ -176,6 +186,7 @@ export default function AllTransactionsTab({
                 walletDropdownVisible ? walletLimitReached : undefined
               }
               walletLimit={walletDropdownVisible ? walletLimit : undefined}
+              hasNoTransactions={hasNoTransactions}
             />
           </div>
 
@@ -268,7 +279,11 @@ export default function AllTransactionsTab({
                   id="type-all"
                   checked={(filters.selectedTypes as any)[0] === "all"}
                   onCheckedChange={(c) => filters.toggleType("all", !!c)}
-                  disabled={cache.loading || filters.isOnlyAllSelected}
+                  disabled={
+                    cache.loading ||
+                    filters.isOnlyAllSelected ||
+                    hasNoTransactions
+                  }
                 />
                 <Label htmlFor="type-all" className="text-sm font-medium">
                   All types
@@ -292,7 +307,7 @@ export default function AllTransactionsTab({
                     onCheckedChange={(c) =>
                       filters.toggleType(t as TxType, !!c)
                     }
-                    disabled={cache.loading}
+                    disabled={cache.loading || hasNoTransactions}
                   />
                   <Label
                     htmlFor={`type-${t}`}
@@ -319,10 +334,10 @@ export default function AllTransactionsTab({
             goPrev={goPrev}
             goNext={goNext}
             walletLabels={walletLabelLookup}
+            loadedRowsAll={cache.loadedRowsAll}
           />
         </div>
       </Card>
-
     </div>
   );
 }

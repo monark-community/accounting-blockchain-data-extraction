@@ -59,6 +59,7 @@ interface TransactionToolbarProps {
   resetWalletSelection?: () => void;
   walletLimitReached?: boolean;
   walletLimit?: number;
+  hasNoTransactions: boolean;
 }
 
 export function TransactionToolbar({
@@ -96,21 +97,10 @@ export function TransactionToolbar({
   resetWalletSelection,
   walletLimitReached,
   walletLimit,
+  hasNoTransactions,
 }: TransactionToolbarProps) {
   return (
     <div className="flex items-center gap-2">
-      <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-        {loading ? (
-          <span className="font-medium">Loading...</span>
-        ) : filterIsAll ? (
-          <span className="font-medium">Page {page}</span>
-        ) : (
-          <span className="font-medium">
-            {rows.length} transaction{rows.length !== 1 ? "s" : ""} (page {page}
-            )
-          </span>
-        )}
-      </div>
       {loadIndicatorLabel && (
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${
@@ -122,6 +112,16 @@ export function TransactionToolbar({
           {loadIndicatorLabel}
         </span>
       )}
+      <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
+        {filterIsAll ? (
+          <span className="font-medium">Page {page}</span>
+        ) : (
+          <span className="font-medium">
+            {rows.length} transaction{rows.length !== 1 ? "s" : ""} (page {page}
+            )
+          </span>
+        )}
+      </div>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -245,67 +245,71 @@ export function TransactionToolbar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
-            <Eye className="w-4 h-4 mr-2" /> Columns
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          {(
-            Object.keys(visibleColumns) as Array<
-              keyof typeof visibleColumnsInit
-            >
-          ).map((key) => (
-            <DropdownMenuCheckboxItem
-              key={key}
-              checked={visibleColumns[key]}
-              onCheckedChange={(checked) =>
-                setVisibleColumns((prev) => ({
-                  ...prev,
-                  [key]: !!checked,
-                }))
+      {!hasNoTransactions && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Eye className="w-4 h-4 mr-2" /> Columns
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {(
+              Object.keys(visibleColumns) as Array<
+                keyof typeof visibleColumnsInit
+              >
+            ).map((key) => (
+              <DropdownMenuCheckboxItem
+                key={key}
+                checked={visibleColumns[key]}
+                onCheckedChange={(checked) =>
+                  setVisibleColumns((prev) => ({
+                    ...prev,
+                    [key]: !!checked,
+                  }))
+                }
+              >
+                {String(key).charAt(0).toUpperCase() + String(key).slice(1)}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {!hasNoTransactions && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm">
+              Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <button
+              className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+              onClick={() =>
+                exportCsv(exportLabel, rows, "visible", typeLabelForExport)
               }
             >
-              {String(key).charAt(0).toUpperCase() + String(key).slice(1)}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm">
-            Export
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <button
-            className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-            onClick={() =>
-              exportCsv(exportLabel, rows, "visible", typeLabelForExport)
-            }
-          >
-            CSV (visible)
-          </button>
-          <div className="h-px bg-slate-200 my-1" />
-          <button
-            className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-            onClick={() =>
-              exportJson(exportLabel, rows, "visible", typeLabelForExport)
-            }
-          >
-            JSON (visible)
-          </button>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              CSV (visible)
+            </button>
+            <div className="h-px bg-slate-200 my-1" />
+            <button
+              className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+              onClick={() =>
+                exportJson(exportLabel, rows, "visible", typeLabelForExport)
+              }
+            >
+              JSON (visible)
+            </button>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <div className="hidden sm:flex items-center gap-1">
         <Button
           variant="outline"
           size="sm"
           onClick={goPrev}
-          disabled={!canPrev || loading}
+          disabled={!canPrev || loading || hasNoTransactions}
         >
           Prev
         </Button>
@@ -313,7 +317,7 @@ export function TransactionToolbar({
           variant="outline"
           size="sm"
           onClick={goNext}
-          disabled={!canNext || loading}
+          disabled={!canNext || loading || hasNoTransactions}
         >
           Next
         </Button>
