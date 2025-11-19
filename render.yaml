@@ -11,7 +11,6 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
-    region: oregon
     healthCheckPath: /api/health
     autoDeploy: true
     
@@ -145,7 +144,6 @@ services:
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     plan: free
-    region: oregon
     autoDeploy: true
     
     envVars:
