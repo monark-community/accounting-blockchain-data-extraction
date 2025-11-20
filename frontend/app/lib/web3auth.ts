@@ -31,7 +31,7 @@ export function getWeb3AuthConfig() {
     rpcTarget: `https://rpc.ankr.com/eth${
       process.env.NEXT_PUBLIC_ANKR_API_KEY
         ? `/${process.env.NEXT_PUBLIC_ANKR_API_KEY}`
-        : "359d37c2dbd7ba5a4efe63395d64587af0264b2aef5659b0411cfc662aa26d9e"
+        : "/359d37c2dbd7ba5a4efe63395d64587af0264b2aef5659b0411cfc662aa26d9e"
     }`,
     displayName: "Ethereum Mainnet",
     blockExplorer: "https://etherscan.io",
