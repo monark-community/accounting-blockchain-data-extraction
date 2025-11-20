@@ -9,7 +9,7 @@ export function getWeb3AuthConfig() {
     throw new Error("Web3Auth config should only be initialized on client side");
   }
 
-  const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID || "BPi_0EtknDJPJwdN9VqDTiscSxfS5TXYCvCb9IqL1hEVPMiXCvL-ycGQZqmcBNCJXpDdXwWjf1xPuYjaDqk4Eck";
+  const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID || "BIx-z-wuZBd1kin7X-dhH0Y0-lhePnm_1e4JnpzWQWB1NgBgigLUifarfWCMEChxeI0DwTRuusaVjncM2-_4EMg";
   
   if (!process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID) {
     console.warn("⚠️ NEXT_PUBLIC_WEB3AUTH_CLIENT_ID not set. Using placeholder. Auth won't work properly.");
