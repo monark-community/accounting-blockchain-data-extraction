@@ -92,6 +92,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const chainId = useChainId();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [userName, setUserName] = useState<string>("");
+  const [sessionWallet, setSessionWallet] = useState<string | null>(null);
 
   // Web3Auth integration
   const web3auth = useWeb3Auth();
@@ -132,7 +133,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
             setWeb3AuthAddress(accounts[0]);
           }
         } catch (error) {
-          if (process.env.NODE_ENV === 'development') {
+          if (process.env.NODE_ENV === "development") {
             console.error("Error getting Web3Auth account:", error);
           }
         }
@@ -148,7 +149,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (web3auth?.web3Auth) {
       const handleAccountChange = () => {
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === "development") {
           console.log("Web3Auth account changed, updating address");
         }
         // Trigger a re-fetch of the account
@@ -165,7 +166,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
                 }
               }
             } catch (error) {
-              if (process.env.NODE_ENV === 'development') {
+              if (process.env.NODE_ENV === "development") {
                 console.error("Error updating Web3Auth account:", error);
               }
             }
@@ -200,12 +201,12 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         try {
           // Clear backend session cookie using sendBeacon (more reliable during unload)
           if (navigator.sendBeacon) {
-            navigator.sendBeacon('/api/auth/logout', '');
+            navigator.sendBeacon("/api/auth/logout", "");
           } else {
             // Fallback to fetch with keepalive
-            fetch('/api/auth/logout', {
-              method: 'POST',
-              credentials: 'include',
+            fetch("/api/auth/logout", {
+              method: "POST",
+              credentials: "include",
               keepalive: true,
             }).catch(() => {});
           }
@@ -269,7 +270,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       ensName: undefined,
     });
     // Debug log to verify Web3Auth integration
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log("Web3Auth wallet detected:", {
         address: web3AuthAddress,
         userName,
@@ -284,25 +285,74 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       setUserName("");
       return;
     }
-    
+
     try {
-      const response = await fetch('/api/auth/me', {
-        credentials: 'include',
+      const response = await fetch("/api/auth/me", {
+        credentials: "include",
       });
       if (response.ok) {
         const data = await response.json();
         setUserName(data.name || "");
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to load user name:', error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Failed to load user name:", error);
       }
       setUserName("");
     }
   }, [primaryIsConnected]);
 
+  // Ensure backend session exists for the connected wallet (MetaMask or Web3Auth)
+  useEffect(() => {
+    const addressForSession = primaryIsConnected ? primaryAddress : "";
+    if (!addressForSession) {
+      setSessionWallet(null);
+      return;
+    }
+    if (sessionWallet === addressForSession) return;
+
+    let cancelled = false;
+
+    const ensureSession = async () => {
+      try {
+        const me = await fetch("/api/auth/me", { credentials: "include" });
+        if (me.ok) {
+          if (!cancelled) setSessionWallet(addressForSession);
+          return;
+        }
+      } catch {
+        // Ignore, will attempt session creation below
+      }
+
+      try {
+        const resp = await fetch("/api/auth/web3auth-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            address: addressForSession,
+            userInfo: web3AuthUserInfo,
+          }),
+        });
+        if (resp.ok && !cancelled) {
+          setSessionWallet(addressForSession);
+        }
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("Failed to establish backend session:", error);
+        }
+      }
+    };
+
+    ensureSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [primaryIsConnected, primaryAddress, web3AuthUserInfo, sessionWallet]);
+
   const userWallet = primaryAddress;
-  
+
   // Calculate userAlias: priority order: API userName > ENS name > Web3Auth name/email > wallet address
   const userAlias =
     userName ||
@@ -338,7 +388,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         disconnect();
       }
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         console.error("Disconnect error:", error);
       }
       // Fallback to wagmi disconnect
@@ -348,21 +398,21 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
   const addWallet = (wallet: Omit<Wallet, "id">) => {
     // In Wagmi, we don't manually add wallets - they're managed by the wallet provider
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log("Wallet addition handled by wallet provider:", wallet);
     }
   };
 
   const removeWallet = (id: string) => {
     // In Wagmi, we don't manually remove wallets - they're managed by the wallet provider
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log("Wallet removal handled by wallet provider:", id);
     }
   };
 
   const updatePreferences = (preferences: Partial<UserPreferences>) => {
     // This would typically be stored in localStorage or a backend
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log("Preferences updated:", preferences);
     }
   };
@@ -385,7 +435,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
       const parsed = JSON.parse(data);
       if (parsed.wallets && Array.isArray(parsed.wallets)) {
         // In Wagmi, wallet management is handled by the wallet provider
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === "development") {
           console.log(
             "Wallet import handled by wallet provider:",
             parsed.wallets
@@ -405,7 +455,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const switchNetworkHandler = async (chainId: number) => {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log("Attempting to switch to chain ID:", chainId);
     }
     if (!window.ethereum) {
@@ -414,7 +464,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       // First try to switch to the network using MetaMask API directly
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         console.log(
           "Calling wallet_switchEthereumChain with chainId:",
           `0x${chainId.toString(16)}`
@@ -424,29 +474,29 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         method: "wallet_switchEthereumChain",
         params: [{ chainId: `0x${chainId.toString(16)}` }],
       });
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         console.log("Network switched successfully");
       }
     } catch (error: any) {
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         console.log("Switch failed with error:", error);
       }
       // If the network is not added to MetaMask (error code 4902), add it first
       if (error.code === 4902) {
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === "development") {
           console.log("Network not found, attempting to add network");
         }
         const networkConfig = getNetworkConfig(chainId);
         if (networkConfig) {
           try {
-            if (process.env.NODE_ENV === 'development') {
+            if (process.env.NODE_ENV === "development") {
               console.log("Adding network with config:", networkConfig);
             }
             await window.ethereum.request({
               method: "wallet_addEthereumChain",
               params: [networkConfig],
             });
-            if (process.env.NODE_ENV === 'development') {
+            if (process.env.NODE_ENV === "development") {
               console.log("Network added successfully, switching now");
             }
             // After adding, try to switch again
@@ -454,11 +504,11 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
               method: "wallet_switchEthereumChain",
               params: [{ chainId: `0x${chainId.toString(16)}` }],
             });
-            if (process.env.NODE_ENV === 'development') {
+            if (process.env.NODE_ENV === "development") {
               console.log("Network switched after adding");
             }
           } catch (addError) {
-            if (process.env.NODE_ENV === 'development') {
+            if (process.env.NODE_ENV === "development") {
               console.error("Failed to add network:", addError);
             }
             throw addError;
