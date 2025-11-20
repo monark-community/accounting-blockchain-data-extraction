@@ -7,6 +7,7 @@ services:
   # ========================================
   - type: web
     name: ledgerlift-backend
+    region: oregon
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
@@ -140,6 +141,7 @@ services:
   # ========================================
   - type: web
     name: ledgerlift-frontend
+    region: oregon
     runtime: docker
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
