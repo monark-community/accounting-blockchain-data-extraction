@@ -39,5 +39,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 # Copy compiled JS
 COPY --from=builder /app/dist ./dist
+# Copy SQL migration files (needed for database initialization)
+COPY --from=builder /app/db ./db
 EXPOSE 8080
 CMD ["node", "dist/index.js"]

@@ -10,6 +10,7 @@ import holdingsRouter from "./routes/holdings.routes";
 import transactionsRouter from "./routes/transactions.routes";
 import analyticsRouter from "./routes/analytics.routes";
 import networksRouter from "./routes/networks.routes";
+import { initializeDatabase } from "./db/init";
 
 const app = express();
 
@@ -42,6 +43,19 @@ app.use("/api/analytics", analyticsRouter); // → /api/analytics/historical/:ad
 app.use("/api/networks", networksRouter); // → /api/networks/activity/:address
 
 const PORT = process.env.PORT ?? "8080";
-app.listen(PORT, () => {
-  console.log(`[backend] listening on :${PORT}`);
-});
+
+// Initialize database schema on startup
+initializeDatabase()
+  .then(() => {
+    // Start server after database initialization
+    app.listen(PORT, () => {
+      console.log(`[backend] listening on :${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("[backend] Failed to initialize database, starting server anyway:", error);
+    // Start server anyway - initialization errors might be non-critical
+    app.listen(PORT, () => {
+      console.log(`[backend] listening on :${PORT}`);
+    });
+  });
