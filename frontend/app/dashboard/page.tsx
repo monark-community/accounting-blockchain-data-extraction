@@ -12,11 +12,8 @@ import OverviewTab from "@/components/dashboard/OverviewTab";
 import GraphsTab from "@/components/dashboard/GraphsTab";
 import { TransactionsWorkspaceProvider } from "@/components/dashboard/TransactionsWorkspaceProvider";
 import {
-  CapitalGainsCalculator,
-  type CapitalGainEntry,
   type AccountingMethod,
 } from "@/utils/capitalGains";
-import { fetchTransactions } from "@/lib/api/transactions";
 import { useRouter } from "next/navigation";
 import { useWallets } from "@/hooks/use-wallets";
 import { OverviewResponse } from "@/lib/types/portfolio";
@@ -432,22 +429,6 @@ const Dashboard = () => {
   };
   const [useFallbackEstimation, setUseFallbackEstimation] = useState(false);
   const overviewReady = !!ov && !loadingOv;
-  const [capitalGainsData, setCapitalGainsData] = useState<{
-    realized: CapitalGainEntry[];
-    unrealized: CapitalGainEntry[];
-    totalRealizedGains: number;
-    totalUnrealizedGains: number;
-    shortTermGains: number;
-    longTermGains: number;
-  }>({
-    realized: [],
-    unrealized: [],
-    totalRealizedGains: 0,
-    totalUnrealizedGains: 0,
-    shortTermGains: 0,
-    longTermGains: 0,
-  });
-  const [loadingCapitalGains, setLoadingCapitalGains] = useState(false);
 
   // Callback to handle historical fallback preference change
   const handleFallbackPreferenceChange = (useFallback: boolean) => {
@@ -888,185 +869,9 @@ const Dashboard = () => {
     setTokenApiWarningFor,
   ]);
 
-  useEffect(() => {
-    if (!activeWallets.length || !overviewReady) {
-      return;
-    }
-    let cancelled = false;
-    async function loadCapitalGains() {
-      setLoadingCapitalGains(true);
-      try {
-        const calculator = new CapitalGainsCalculator(accountingMethod);
-        const rows: TxRow[] = [];
-        const MAX_PAGES = 3;
-        for (const walletAddress of activeWallets) {
-          for (let page = 1; page <= MAX_PAGES; page++) {
-            const resp = await fetchTransactions(
-              walletAddress,
-              {
-                networks: networksParam,
-                page,
-                limit: 40,
-                minUsd: 0,
-                spamFilter: "hard",
-              },
-              0,
-              "dashboard/capitalGains"
-            );
-            rows.push(...resp.rows);
-            if (!resp.hasNext) break;
-          }
-        }
-        rows.sort(
-          (a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime()
-        );
-        const assetLabels = new Map<string, string>();
-        const getAssetKey = (row: TxRow) =>
-          row.asset.contract?.toLowerCase() ??
-          row.asset.symbol?.toUpperCase() ??
-          "UNKNOWN";
-        const formatLabel = (row: TxRow, key: string) =>
-          row.asset.symbol ||
-          (row.asset.contract
-            ? `${row.asset.contract.slice(0, 6)}…${row.asset.contract.slice(
-                -4
-              )}`
-            : key);
-
-        const realizedEntries: CapitalGainEntry[] = [];
-
-        rows.forEach((row, idx) => {
-          const totalValue = row.usdAtTs ?? null;
-          const qty = Math.abs(parseFloat(row.qty || "0"));
-          if (!totalValue || !Number.isFinite(totalValue) || !qty) return;
-          const unitPrice = totalValue / qty;
-          if (!Number.isFinite(unitPrice) || unitPrice === 0) return;
-
-          const assetKey = getAssetKey(row);
-          const label = formatLabel(row, assetKey);
-          assetLabels.set(assetKey, label);
-          const day = row.ts.split("T")[0];
-
-          if (row.direction === "in") {
-            calculator.addToCostBasis({
-              id: `${row.hash}-${idx}`,
-              asset: assetKey,
-              quantity: qty,
-              costBasis: totalValue,
-              purchaseDate: day,
-              purchasePrice: unitPrice,
-            });
-          } else {
-            const gains = calculator.calculateGains(
-              assetKey,
-              qty,
-              unitPrice,
-              day,
-              row.hash
-            );
-            if (gains.length === 0) {
-              realizedEntries.push({
-                id: `${row.hash}-${idx}`,
-                asset: label,
-                quantity: qty,
-                salePrice: unitPrice,
-                costBasis: 0,
-                gain: totalValue,
-                gainPercent: 100,
-                holdingPeriod: 0,
-                isLongTerm: false,
-                saleDate: day,
-                purchaseDate: day,
-                transactionId: row.hash,
-              });
-              return;
-            }
-            gains.forEach((g) =>
-              realizedEntries.push({
-                ...g,
-                asset: assetLabels.get(g.asset) ?? label,
-              })
-            );
-          }
-        });
-
-        const currentPriceMap = new Map<string, number>();
-        (ov?.holdings ?? []).forEach((holding) => {
-          const key =
-            holding.contract?.toLowerCase() ?? holding.symbol?.toUpperCase();
-          if (!key) return;
-          currentPriceMap.set(key, holding.priceUsd ?? 0);
-          if (!assetLabels.has(key)) assetLabels.set(key, holding.symbol);
-        });
-
-        const unrealizedEntries = calculator
-          .getUnrealizedGains(currentPriceMap)
-          .map((entry) => ({
-            ...entry,
-            asset: assetLabels.get(entry.asset) ?? entry.asset,
-          }));
-
-        const totalRealizedGains = realizedEntries.reduce(
-          (sum, item) => sum + (item.gain ?? 0),
-          0
-        );
-        const totalUnrealizedGains = unrealizedEntries.reduce(
-          (sum, item) => sum + (item.gain ?? 0),
-          0
-        );
-        const shortTermGains = realizedEntries
-          .filter((item) => !item.isLongTerm)
-          .reduce((sum, item) => sum + item.gain, 0);
-        const longTermGains = realizedEntries
-          .filter((item) => item.isLongTerm)
-          .reduce((sum, item) => sum + item.gain, 0);
-
-        if (!cancelled) {
-          setCapitalGainsData({
-            realized: realizedEntries,
-            unrealized: unrealizedEntries,
-            totalRealizedGains,
-            totalUnrealizedGains,
-            shortTermGains,
-            longTermGains,
-          });
-          setTokenApiWarningFor("capitalGains", false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (process.env.NODE_ENV === 'development') {
-            console.error("[Dashboard] Failed to compute capital gains:", err);
-          }
-          setCapitalGainsData((prev) => ({
-            ...prev,
-            realized: [],
-            unrealized: [],
-            totalRealizedGains: 0,
-            totalUnrealizedGains: 0,
-            shortTermGains: 0,
-            longTermGains: 0,
-          }));
-          setTokenApiWarningFor(
-            "capitalGains",
-            isTokenApiRateLimit((err as Error)?.message)
-          );
-        }
-      } finally {
-        if (!cancelled) setLoadingCapitalGains(false);
-      }
-    }
-    loadCapitalGains();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeWallets,
-    networksParam,
-    accountingMethod,
-    overviewReady,
-    ov,
-    setTokenApiWarningFor,
-  ]);
+  // Capital gains are now calculated from the transaction cache via useTransactionStats
+  // No need for separate API requests - the data is already available in AllTransactionsTab
+  // The CapitalGainsSnapshot component uses stats.capitalGainsSummary which comes from the cache
 
   const historicalChartData = useMemo(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -1854,8 +1659,15 @@ const Dashboard = () => {
 
           {/* <TabsContent value="capital-gains" className="space-y-6">
             <CapitalGainsTab
-              loading={loadingCapitalGains}
-              capitalGainsData={capitalGainsData}
+              loading={false}
+              capitalGainsData={{
+                realized: [],
+                unrealized: [],
+                totalRealizedGains: 0,
+                totalUnrealizedGains: 0,
+                shortTermGains: 0,
+                longTermGains: 0,
+              }}
               accountingMethod={accountingMethod}
               setAccountingMethod={setAccountingMethod}
               currency={userPreferences.currency}
