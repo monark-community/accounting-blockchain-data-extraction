@@ -70,6 +70,11 @@ export function useTransactionCache({
   const totalCountCache = useRef(new Map<string, number | null>());
   const prevSelectedTypesKeyRef = useRef<string | null>(null);
   const networksLoadingRef = useRef(false);
+  // Track in-flight requests to prevent duplicates
+  const inflightRequests = useRef(new Set<string>());
+  // Track if initial load has been triggered to prevent multiple useEffect triggers
+  const initialLoadTriggeredRef = useRef<string | null>(null);
+  const prevNetworksKeyRef = useRef<string | null>(null);
 
   // Cache Key Helpers
   const getBaseCacheKey = useCallback(
@@ -188,16 +193,21 @@ export function useTransactionCache({
       networkMap: Map<string, TxRow[]>;
       warnings: TxListResponse["warnings"] | null;
     }> => {
-      const resp = await fetchTransactions(addr, {
-        networks,
-        page: 1,
-        limit: FETCH_LIMIT,
-        minUsd: 0,
-        spamFilter: "hard",
-        ...(cursor ? { cursor } : {}),
-        ...(dateRange.from ? { from: dateRange.from } : {}),
-        ...(dateRange.to ? { to: dateRange.to } : {}),
-      });
+      const resp = await fetchTransactions(
+        addr,
+        {
+          networks,
+          page: 1,
+          limit: FETCH_LIMIT,
+          minUsd: 0,
+          spamFilter: "hard",
+          ...(cursor ? { cursor } : {}),
+          ...(dateRange.from ? { from: dateRange.from } : {}),
+          ...(dateRange.to ? { to: dateRange.to } : {}),
+        },
+        0,
+        "useTransactionCache"
+      );
       const networkMap = new Map<string, TxRow[]>();
       resp.rows.forEach((tx) => {
         if (!networkMap.has(tx.network)) networkMap.set(tx.network, []);
@@ -241,6 +251,14 @@ export function useTransactionCache({
     ): Promise<void> => {
       if (!selectedNetworks.length) return;
       if (retryCount > 20) return;
+      
+      // Create a unique key for this request to prevent duplicates
+      const requestKey = `${addr}:${selectedNetworks.sort().join(",")}:${neededCount}:${retryCount}`;
+      if (inflightRequests.current.has(requestKey)) {
+        return;
+      }
+      
+      inflightRequests.current.add(requestKey);
       beginLoading();
       setError(null);
       try {
@@ -340,6 +358,7 @@ export function useTransactionCache({
       } catch (e: any) {
         setError(e?.message || "Failed to load transactions");
       } finally {
+        inflightRequests.current.delete(requestKey);
         endLoading();
       }
     },
@@ -472,6 +491,17 @@ export function useTransactionCache({
 
   useEffect(() => {
     if (!activeAddresses.length) return;
+    
+    // Create a stable key for this effect's dependencies
+    const effectKey = `${activeAddresses.map(a => a.toLowerCase()).sort().join('|')}:${refreshKey}:${dateRangeKey}`;
+    
+    // Prevent re-triggering if the same effect key was already processed
+    if (initialLoadTriggeredRef.current === effectKey) {
+      return;
+    }
+    
+    initialLoadTriggeredRef.current = effectKey;
+    
     activeAddresses.forEach((addr) => {
       const baseKey = getBaseCacheKey(addr);
       for (const key of Array.from(networkCache.current.keys())) {
@@ -492,6 +522,17 @@ export function useTransactionCache({
 
   useEffect(() => {
     if (!activeAddresses.length) return;
+    
+    // Create a stable key for this effect's dependencies
+    const networksEffectKey = `${activeAddresses.map(a => a.toLowerCase()).sort().join('|')}:${networksParam || "all"}`;
+    
+    // Prevent re-triggering if networks haven't actually changed
+    if (prevNetworksKeyRef.current === networksEffectKey) {
+      return;
+    }
+    
+    prevNetworksKeyRef.current = networksEffectKey;
+    
     setPage(1);
     networksLoadingRef.current = false;
     const selectedNetworks = getSelectedNetworks();

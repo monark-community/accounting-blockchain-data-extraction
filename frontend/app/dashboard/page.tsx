@@ -901,13 +901,18 @@ const Dashboard = () => {
         const MAX_PAGES = 3;
         for (const walletAddress of activeWallets) {
           for (let page = 1; page <= MAX_PAGES; page++) {
-            const resp = await fetchTransactions(walletAddress, {
-              networks: networksParam,
-              page,
-              limit: 40,
-              minUsd: 0,
-              spamFilter: "hard",
-            });
+            const resp = await fetchTransactions(
+              walletAddress,
+              {
+                networks: networksParam,
+                page,
+                limit: 40,
+                minUsd: 0,
+                spamFilter: "hard",
+              },
+              0,
+              "dashboard/capitalGains"
+            );
             rows.push(...resp.rows);
             if (!resp.hasNext) break;
           }
