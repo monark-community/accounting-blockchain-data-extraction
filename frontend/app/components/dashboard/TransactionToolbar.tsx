@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Eye, RefreshCw } from "lucide-react";
+import { Eye, RefreshCw, FileText } from "lucide-react";
 import { NETWORK_OPTIONS } from "@/lib/networks";
 import type { DatePreset } from "@/hooks/useTransactionFilters";
 import { exportCsv, exportJson } from "@/utils/transactionExport";
@@ -60,6 +60,7 @@ interface TransactionToolbarProps {
   walletLimitReached?: boolean;
   walletLimit?: number;
   hasNoTransactions: boolean;
+  onExportReport?: (format: "pdf" | "quickbooks") => void;
 }
 
 export function TransactionToolbar({
@@ -98,6 +99,7 @@ export function TransactionToolbar({
   walletLimitReached,
   walletLimit,
   hasNoTransactions,
+  onExportReport,
 }: TransactionToolbarProps) {
   return (
     <div className="flex items-center gap-2">
@@ -276,32 +278,63 @@ export function TransactionToolbar({
       )}
 
       {!hasNoTransactions && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm">
-              Export
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <button
-              className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-              onClick={() =>
-                exportCsv(exportLabel, rows, "visible", typeLabelForExport)
-              }
-            >
-              CSV (visible)
-            </button>
-            <div className="h-px bg-slate-200 my-1" />
-            <button
-              className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-              onClick={() =>
-                exportJson(exportLabel, rows, "visible", typeLabelForExport)
-              }
-            >
-              JSON (visible)
-            </button>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <button
+                className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                onClick={() =>
+                  exportCsv(exportLabel, rows, "visible", typeLabelForExport)
+                }
+              >
+                CSV (visible)
+              </button>
+              <div className="h-px bg-slate-200 my-1" />
+              <button
+                className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                onClick={() =>
+                  exportJson(exportLabel, rows, "visible", typeLabelForExport)
+                }
+              >
+                JSON (visible)
+              </button>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {onExportReport && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={loading}
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Export Report
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <button
+                  className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                  onClick={() => onExportReport("pdf")}
+                >
+                  PDF Format
+                </button>
+                <div className="h-px bg-slate-200 my-1" />
+                <button
+                  className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
+                  onClick={() => onExportReport("quickbooks")}
+                >
+                  QuickBooks Format
+                </button>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </>
       )}
 
       <div className="hidden sm:flex items-center gap-1">

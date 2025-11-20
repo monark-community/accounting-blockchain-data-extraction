@@ -9,6 +9,7 @@ import { TransactionTable } from "./TransactionTable";
 import FinancialRatiosPanel from "./FinancialRatiosPanel";
 import { typeIcon, shortAddr, fmtUSD } from "@/utils/transactionHelpers";
 import { useTransactionsWorkspace } from "./TransactionsWorkspaceProvider";
+import { generateFinancialReport } from "@/utils/financialReport";
 
 interface AllTransactionsTabProps {
   totalAssetsUsd: number | null;
@@ -186,6 +187,23 @@ export default function AllTransactionsTab({
               }
               walletLimit={walletDropdownVisible ? walletLimit : undefined}
               hasNoTransactions={hasNoTransactions}
+              onExportReport={(format) => {
+                generateFinancialReport(
+                  {
+                    transactions: cache.loadedRowsAll,
+                    stats,
+                    dateRangeLabel: filters.dateRange.label,
+                    exportLabel,
+                    totalAssetsUsd,
+                    stableHoldingsUsd,
+                    totalCount,
+                    loadedTxCount,
+                    activeWallets,
+                    walletLabelLookup,
+                  },
+                  format
+                );
+              }}
             />
           </div>
 
