@@ -7,7 +7,7 @@ services:
   # ========================================
   - type: web
     name: ledgerlift-backend
-    region: oregon
+    region: frankfurt
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
@@ -141,7 +141,7 @@ services:
   # ========================================
   - type: web
     name: ledgerlift-frontend
-    region: oregon
+    region: frankfurt
     runtime: docker
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
@@ -183,6 +183,6 @@ databases:
     databaseName: ledgerlift
     user: ledgerlift
     plan: free
-    region: oregon
+    region: frankfurt
     postgresMajorVersion: 16
     ipAllowList: []
