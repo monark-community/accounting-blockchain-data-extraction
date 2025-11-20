@@ -43,7 +43,7 @@ export function getWeb3AuthConfig() {
   // Initialize Openlogin adapter with PrivateKey Provider
   const openloginAdapter = new OpenloginAdapter({
     adapterSettings: {
-      network: "testnet",
+      network: "mainnet",
       clientId: clientId,
       uxMode: "redirect" as const,
       redirectUrl: `${window.location.origin}/auth`,
@@ -55,7 +55,7 @@ export function getWeb3AuthConfig() {
   return {
     web3AuthOptions: {
       clientId: clientId,
-      web3AuthNetwork: "sapphire_devnet" as const,
+      web3AuthNetwork: "sapphire_mainnet" as const,
       chainConfig: chainConfig,
       privateKeyProvider: privateKeyProvider,
       storageType: "session" as const,
