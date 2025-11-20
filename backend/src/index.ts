@@ -13,6 +13,9 @@ import networksRouter from "./routes/networks.routes";
 
 const app = express();
 
+// Required so secure cookies work behind Render's proxy/HTTPS terminator
+app.set("trust proxy", 1);
+
 // Increase timeout for long-running requests (multi-network requests without cap can take longer)
 app.use((req, res, next) => {
   req.setTimeout(300000); // 5 minutes
