@@ -33,4 +33,12 @@ pool.query("SELECT NOW()")
   .catch((err) => {
     console.error("[db] Database connection failed:", err.message);
     console.error("[db] Connection string hostname:", connectionString ? new URL(connectionString).hostname : "N/A");
+    console.error("[db] Full error:", err);
+    // If hostname resolution fails, suggest checking region alignment
+    if (err.code === 'ENOTFOUND' || err.message.includes('getaddrinfo')) {
+      console.error("[db] DNS resolution failed. Check:");
+      console.error("  1. Database and backend are in the same region");
+      console.error("  2. Database is not paused");
+      console.error("  3. Internal Database URL is correct in Render dashboard");
+    }
   });

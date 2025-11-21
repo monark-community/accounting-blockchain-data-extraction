@@ -17,9 +17,11 @@ export type TxQuery = {
 export async function fetchTransactions(
   address: string,
   q: TxQuery,
-  retryCount = 0
+  retryCount = 0,
+  source?: string
 ) {
   const fetchStartTime = performance.now();
+  const sourceLabel = source ? `[${source}]` : '';
   const qs = new URLSearchParams();
   if (q.networks) qs.set("networks", q.networks);
   if (q.from) qs.set("from", q.from);
@@ -74,7 +76,7 @@ export async function fetchTransactions(
         );
       }
       await new Promise((resolve) => setTimeout(resolve, delay));
-      return fetchTransactions(address, q, retryCount + 1);
+      return fetchTransactions(address, q, retryCount + 1, source);
     }
 
     if (error.name === "AbortError") {
@@ -116,23 +118,6 @@ export async function fetchTransactions(
 
   const totalTime = performance.now() - fetchStartTime;
 
-  // Single summary log with key timings
-  if (process.env.NODE_ENV === 'development') {
-    const hasNextFlag =
-      typeof json.hasNext === "boolean"
-        ? json.hasNext
-          ? "yes"
-          : "no"
-        : "unknown";
-    const cursorFlag = json.nextCursor ? "yes" : "no";
-    console.log(
-      `[Transactions] ✅ Page ${json.page} | ${
-        rows.length
-      } rows | hasNext=${hasNextFlag} | cursor=${cursorFlag} | Network: ${(
-        networkTime / 1000
-      ).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
-    );
-  }
 
   return {
     rows,

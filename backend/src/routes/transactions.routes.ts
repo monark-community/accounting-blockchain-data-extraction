@@ -166,6 +166,7 @@ router.get("/:address", async (req, res) => {
     console.log(
       `[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | return-all ${pagedLegs.length}/${legsRaw.length} legs | hasNext=${hasNext ? "yes" : "no"} | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
     );
+
   } catch (err: any) {
     const errorTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
     console.error(`[Backend] ❌ Error (${(errorTime / 1000).toFixed(1)}s):`, err?.message || String(err));

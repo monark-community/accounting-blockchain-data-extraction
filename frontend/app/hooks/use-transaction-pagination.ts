@@ -110,17 +110,22 @@ const ensureRawPage = async (
     return comboState.rawPromises.get(pageNum)!;
   }
 
-  const promise = fetchTransactions(addr, {
-    ...(comboState.networks.length
-      ? { networks: comboState.networks.join(",") }
-      : {}),
-    page: pageNum,
-    limit: PAGE_SIZE,
-    minUsd: 0,
-    spamFilter: "hard",
-    ...(from ? { from } : {}),
-    ...(to ? { to } : {}),
-  })
+  const promise = fetchTransactions(
+    addr,
+    {
+      ...(comboState.networks.length
+        ? { networks: comboState.networks.join(",") }
+        : {}),
+      page: pageNum,
+      limit: PAGE_SIZE,
+      minUsd: 0,
+      spamFilter: "hard",
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+    0,
+    "useTransactionPagination"
+  )
     .then(({ rows, hasNext, page: respPage, nextCursor }) => {
       // Chunk all returned rows into PAGE_SIZE pages starting at the response page
       const startPage = respPage ?? pageNum;
