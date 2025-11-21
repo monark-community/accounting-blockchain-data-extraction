@@ -107,12 +107,14 @@ export async function listTransactionLegs(
   // Calculate fetchWindow per network to produce ~100 legs total across all networks
   // Target: ~100 legs total (not per network) to reduce backend processing time
   // We ignore the frontend limit for production - always target ~100 legs
+  // Note: Each network fetches BOTH fungible AND nft transfers, so we divide by 2
   const TARGET_TOTAL_LEGS = 100;
   const numNetworks = Math.max(1, nets.length);
-  const fetchWindowPerNetwork = Math.ceil(TARGET_TOTAL_LEGS / numNetworks);
+  // Divide by 2 because we fetch both fungible + nft (each creates legs)
+  const fetchWindowPerNetwork = Math.ceil((TARGET_TOTAL_LEGS / numNetworks) / 2);
   // Ensure minimum buffer per network, but cap to avoid excessive fetching
   const fetchWindow = Math.max(
-    20, // Minimum buffer per network
+    10, // Minimum buffer per network (reduced since we fetch fungible + nft)
     Math.min(fetchWindowPerNetwork, TX_FETCH_WINDOW_CAP)
   );
   const fromTime = toEpochSeconds(params.from);
