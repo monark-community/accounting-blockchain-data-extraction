@@ -100,15 +100,21 @@ export async function listTransactionLegs(
     Math.max(1, params.limit ?? defaultLimit),
     maxLimit
   );
-  // Fetch enough per network to have buffer after filtering, but cap to avoid excessive fetching
-  // We'll slice to exact pageSize after combining all networks
-  const fetchWindow = Math.min(
-    Math.max(pageSize * 2, 20), // At least 2x the requested size for filtering buffer
-    TX_FETCH_WINDOW_CAP
-  );
   const wallet = params.address.toLowerCase() as `0x${string}`;
 
   const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
+  
+  // Calculate fetchWindow per network to produce ~100 legs total across all networks
+  // Target: ~100 legs total (not per network) to reduce backend processing time
+  // We ignore the frontend limit for production - always target ~100 legs
+  const TARGET_TOTAL_LEGS = 100;
+  const numNetworks = Math.max(1, nets.length);
+  const fetchWindowPerNetwork = Math.ceil(TARGET_TOTAL_LEGS / numNetworks);
+  // Ensure minimum buffer per network, but cap to avoid excessive fetching
+  const fetchWindow = Math.max(
+    20, // Minimum buffer per network
+    Math.min(fetchWindowPerNetwork, TX_FETCH_WINDOW_CAP)
+  );
   const fromTime = toEpochSeconds(params.from);
   const toTimeRaw = toEpochSeconds(params.to);
   const cursorTime = cursor?.timestamp;
