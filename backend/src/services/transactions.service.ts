@@ -100,11 +100,11 @@ export async function listTransactionLegs(
     Math.max(1, params.limit ?? defaultLimit),
     maxLimit
   );
-  const windowMultiplier = cursor ? 3 : page;
-  const requestedWindow = pageSize * windowMultiplier;
-  const fetchWindow = Math.max(
-    pageSize,
-    Math.min(requestedWindow, TX_FETCH_WINDOW_CAP)
+  // Fetch enough per network to have buffer after filtering, but cap to avoid excessive fetching
+  // We'll slice to exact pageSize after combining all networks
+  const fetchWindow = Math.min(
+    Math.max(pageSize * 2, 20), // At least 2x the requested size for filtering buffer
+    TX_FETCH_WINDOW_CAP
   );
   const wallet = params.address.toLowerCase() as `0x${string}`;
 

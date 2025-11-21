@@ -134,8 +134,8 @@ router.get("/:address", async (req, res) => {
     const legsAfterCursor = cursor
       ? legsFilteredByClass.filter((leg) => isLegOlderThanCursor(leg, cursor))
       : legsFilteredByClass;
-    // Return all legs (no cap), frontend paginates locally and continues via cursor
-    const pagedLegs = legsAfterCursor;
+    // Slice to exact limit requested (total across all networks)
+    const pagedLegs = legsAfterCursor.slice(0, limit);
 
     // Cursor rule: Always create cursor from last sent transaction to ensure progression.
     // hasNext: true if we got at least the requested limit, suggesting more may be available
@@ -165,6 +165,13 @@ router.get("/:address", async (req, res) => {
     // Single summary log with key metrics
     console.log(
       `[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | return-all ${pagedLegs.length}/${legsRaw.length} legs | hasNext=${hasNext ? "yes" : "no"} | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
+    );
+    
+    // Log all transaction hashes from the legs
+    const txHashes = Array.from(new Set(pagedLegs.map((leg) => leg.txHash)));
+    console.log(
+      `[Backend] 📋 Transaction hashes (${txHashes.length} unique):`,
+      //txHashes.join(", ")
     );
   } catch (err: any) {
     const errorTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
