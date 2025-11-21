@@ -3,8 +3,8 @@ import type { TxRow, TxType, TxListResponse } from "@/lib/types/transactions";
 import { fetchTransactions } from "@/lib/api/transactions";
 import { PAGE_SIZE } from "@/utils/transactionHelpers";
 
-// Backend TX_MAX_LIMIT is 40, use it to reduce number of requests
-const FETCH_LIMIT = 40;
+// Backend TX_MAX_LIMIT is 40, but we use 20 to avoid Render.com's 30s timeout
+const FETCH_LIMIT = 20;
 
 interface UseTransactionCacheParams {
   address?: string | null;
