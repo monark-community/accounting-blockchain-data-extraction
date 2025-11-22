@@ -607,7 +607,7 @@ export default function AllTransactionsTab({
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-sm font-semibold text-slate-800">
-                Rechercher des transactions
+                Search transactions
               </p>
               {activeSearchValue && (
                 <button
@@ -619,7 +619,7 @@ export default function AllTransactionsTab({
                   className="text-xs text-slate-500 underline flex items-center gap-1 hover:text-slate-700"
                 >
                   <X className="w-3 h-3" />
-                  Effacer
+                  Clear
                 </button>
               )}
             </div>
@@ -632,12 +632,12 @@ export default function AllTransactionsTab({
                   }
                 >
                   <SelectTrigger className="h-10 bg-white border-slate-200">
-                    <SelectValue placeholder="Sélectionner un paramètre" />
+                    <SelectValue placeholder="Select a field" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="hash">Hash de transaction</SelectItem>
-                    <SelectItem value="address">Adresse de destination</SelectItem>
-                    <SelectItem value="amount">Montant exact (USD)</SelectItem>
+                    <SelectItem value="hash">Transaction hash</SelectItem>
+                    <SelectItem value="address">Destination address</SelectItem>
+                    <SelectItem value="amount">Exact amount (USD)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -647,10 +647,10 @@ export default function AllTransactionsTab({
                   type="text"
                   placeholder={
                     searchType === "hash"
-                      ? "Ex: 0x4809...a413 ou hash complet"
+                      ? "Ex: 0x4809...a413 or full hash"
                       : searchType === "address"
-                      ? "Ex: 0x7f58...33ec ou adresse complète"
-                      : "Entrer le montant exact en USD..."
+                      ? "Ex: 0x7f58...33ec or full address"
+                      : "Enter the exact amount in USD..."
                   }
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
@@ -664,12 +664,12 @@ export default function AllTransactionsTab({
                 disabled={!searchValue.trim()}
               >
                 <Search className="w-4 h-4 mr-2" />
-                Rechercher
+                Search
               </Button>
             </div>
             {activeSearchValue && (
               <p className="text-xs text-slate-500">
-                {filteredRows.length} transaction{filteredRows.length !== 1 ? "s" : ""} trouvée{filteredRows.length !== 1 ? "s" : ""}
+                {filteredRows.length} transaction{filteredRows.length !== 1 ? "s" : ""} found
               </p>
             )}
           </div>
