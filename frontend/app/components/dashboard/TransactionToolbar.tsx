@@ -422,8 +422,8 @@ export function TransactionToolbar({
             </DropdownMenuItem>
 
             <div className="border-t border-slate-200 mt-2 pt-2 px-2 text-[11px] text-slate-500">
-              Exports use the currently loaded pages. Load more to expand
-              coverage.
+              Exports reflect only the pages you’ve loaded. Load more pages to
+              expand coverage.
             </div>
           </DropdownMenuContent>
         </DropdownMenu>

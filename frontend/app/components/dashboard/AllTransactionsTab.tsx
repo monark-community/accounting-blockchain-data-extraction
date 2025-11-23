@@ -17,7 +17,12 @@ import { CapitalGainsSnapshot } from "./CapitalGainsSnapshot";
 import { TransactionToolbar } from "./TransactionToolbar";
 import { TransactionTable } from "./TransactionTable";
 import FinancialRatiosPanel from "./FinancialRatiosPanel";
-import { typeIcon, shortAddr, fmtUSD, PAGE_SIZE } from "@/utils/transactionHelpers";
+import {
+  typeIcon,
+  shortAddr,
+  fmtUSD,
+  PAGE_SIZE,
+} from "@/utils/transactionHelpers";
 import { useTransactionsWorkspace } from "./TransactionsWorkspaceProvider";
 import { generateFinancialReport } from "@/utils/financialReport";
 import { Search, X } from "lucide-react";
@@ -63,10 +68,14 @@ export default function AllTransactionsTab({
   }, [totalCount, loadedTxCount]);
 
   // Search state
-  const [searchType, setSearchType] = useState<"hash" | "address" | "amount">("hash");
+  const [searchType, setSearchType] = useState<"hash" | "address" | "amount">(
+    "hash"
+  );
   const [searchValue, setSearchValue] = useState<string>("");
   const [activeSearchValue, setActiveSearchValue] = useState<string>("");
-  const [activeSearchType, setActiveSearchType] = useState<"hash" | "address" | "amount">("hash");
+  const [activeSearchType, setActiveSearchType] = useState<
+    "hash" | "address" | "amount"
+  >("hash");
 
   // Helper function to normalize address/hash for comparison
   const normalizeAddress = (addr: string | null | undefined): string => {
@@ -78,17 +87,17 @@ export default function AllTransactionsTab({
   const extractSearchPatterns = (search: string): string[] => {
     const trimmed = search.trim().toLowerCase();
     const patterns: Set<string> = new Set([trimmed]);
-    
+
     // Handle truncated format - support both "..." and "…" (Unicode ellipsis)
     const hasEllipsis = trimmed.includes("...") || trimmed.includes("…");
-    
+
     if (hasEllipsis) {
       // Split by either "..." or "…"
       const parts = trimmed.split(/\.\.\.|…/);
       if (parts.length === 2) {
         const start = parts[0].replace(/^0x/, "").trim();
         const end = parts[1].trim();
-        
+
         // Add patterns: full with 0x, full without 0x, start only, end only
         if (start && end) {
           // Try to reconstruct full hash
@@ -124,14 +133,14 @@ export default function AllTransactionsTab({
         patterns.add(trimmed);
       }
     }
-    
+
     // Remove empty patterns and ensure minimum length of 2 chars
-    const result = Array.from(patterns).filter(p => p && p.length >= 2);
-    
+    const result = Array.from(patterns).filter((p) => p && p.length >= 2);
+
     if (process.env.NODE_ENV === "development") {
       console.log("[Search] Extracted patterns from", search, ":", result);
     }
-    
+
     return result;
   };
 
@@ -146,7 +155,7 @@ export default function AllTransactionsTab({
     // Search in all loaded transactions, not just current page
     // Use loadedRowsAll if available and has data, otherwise fall back to rows
     let transactionsToSearch: TxRow[] = [];
-    
+
     if (cache.loadedRowsAll && cache.loadedRowsAll.length > 0) {
       transactionsToSearch = cache.loadedRowsAll;
     } else if (cache.rows && cache.rows.length > 0) {
@@ -179,9 +188,12 @@ export default function AllTransactionsTab({
           if (!tx.hash) return false;
           const txHashLower = tx.hash.toLowerCase();
           const txHashWithout0x = txHashLower.replace(/^0x/, "");
-          
+
           // For truncated format (e.g., "0x4809...a413"), check if hash starts with start part AND ends with end part
-          if (searchValueLower.includes("...") || searchValueLower.includes("…")) {
+          if (
+            searchValueLower.includes("...") ||
+            searchValueLower.includes("…")
+          ) {
             const parts = searchValueLower.split(/\.\.\.|…/);
             if (parts.length === 2) {
               const startPart = parts[0].replace(/^0x/, "").trim();
@@ -191,111 +203,127 @@ export default function AllTransactionsTab({
                 const hashStarts = txHashWithout0x.startsWith(startPart);
                 const hashEnds = txHashWithout0x.endsWith(endPart);
                 const match = hashStarts && hashEnds;
-                
+
                 if (process.env.NODE_ENV === "development" && match) {
                   console.log("[Search] Hash match (truncated):", {
                     searchValue: activeSearchValue,
                     startPart,
                     endPart,
                     txHash: txHashLower,
-                    match
+                    match,
                   });
                 }
                 return match;
               }
             }
           }
-          
+
           // For full hash or partial hash (without ellipsis), check exact match or start/end match
           const searchWithout0x = searchValueLower.replace(/^0x/, "");
-          
+
           // If it's a full hash (64+ chars), require exact match
           if (searchWithout0x.length >= 64) {
-            const exactMatch = txHashWithout0x === searchWithout0x || txHashLower === searchValueLower;
+            const exactMatch =
+              txHashWithout0x === searchWithout0x ||
+              txHashLower === searchValueLower;
             if (process.env.NODE_ENV === "development" && exactMatch) {
               console.log("[Search] Hash match (exact):", {
                 searchValue: activeSearchValue,
                 txHash: txHashLower,
-                match: exactMatch
+                match: exactMatch,
               });
             }
             return exactMatch;
           }
-          
+
           // For partial hash, check if hash starts OR ends with the pattern (not contains!)
-          const startsWith = txHashWithout0x.startsWith(searchWithout0x) || txHashLower.startsWith(searchValueLower);
-          const endsWith = txHashWithout0x.endsWith(searchWithout0x) || txHashLower.endsWith(searchValueLower);
+          const startsWith =
+            txHashWithout0x.startsWith(searchWithout0x) ||
+            txHashLower.startsWith(searchValueLower);
+          const endsWith =
+            txHashWithout0x.endsWith(searchWithout0x) ||
+            txHashLower.endsWith(searchValueLower);
           const hashMatch = startsWith || endsWith;
-          
+
           if (process.env.NODE_ENV === "development" && hashMatch) {
             console.log("[Search] Hash match (partial):", {
               searchValue: activeSearchValue,
               txHash: txHashLower,
               startsWith,
               endsWith,
-              match: hashMatch
+              match: hashMatch,
             });
           }
-          
+
           return hashMatch;
-          
+
         case "address":
           const addressesToCheck: string[] = [];
-          
+
           if (tx.counterparty?.address) {
             addressesToCheck.push(tx.counterparty.address.toLowerCase());
             addressesToCheck.push(normalizeAddress(tx.counterparty.address));
           }
-          
+
           if (tx.walletAddress) {
             addressesToCheck.push(tx.walletAddress.toLowerCase());
             addressesToCheck.push(normalizeAddress(tx.walletAddress));
           }
-          
+
           if (tx.asset?.contract) {
             addressesToCheck.push(tx.asset.contract.toLowerCase());
             addressesToCheck.push(normalizeAddress(tx.asset.contract));
           }
-          
+
           // Check each address
-          const addressMatch = addressesToCheck.some(addr => {
+          const addressMatch = addressesToCheck.some((addr) => {
             if (!addr) return false;
             const addrWithout0x = addr.replace(/^0x/, "");
-            
+
             // For truncated format (e.g., "0x7f58...33ec"), check start AND end - EXACT match
-            if (searchValueLower.includes("...") || searchValueLower.includes("…")) {
+            if (
+              searchValueLower.includes("...") ||
+              searchValueLower.includes("…")
+            ) {
               const parts = searchValueLower.split(/\.\.\.|…/);
               if (parts.length === 2) {
                 const startPart = parts[0].replace(/^0x/, "").trim();
                 const endPart = parts[1].trim();
                 if (startPart && endPart) {
-                  return addrWithout0x.startsWith(startPart) && addrWithout0x.endsWith(endPart);
+                  return (
+                    addrWithout0x.startsWith(startPart) &&
+                    addrWithout0x.endsWith(endPart)
+                  );
                 }
               }
             }
-            
+
             // For full address (42 chars with 0x, or 40 without), require exact match
             const searchWithout0x = searchValueLower.replace(/^0x/, "");
             if (searchWithout0x.length >= 40) {
-              return addrWithout0x === searchWithout0x || addr === searchValueLower;
+              return (
+                addrWithout0x === searchWithout0x || addr === searchValueLower
+              );
             }
-            
+
             // For partial address, check if address starts OR ends with the pattern (not contains!)
-            return addrWithout0x.startsWith(searchWithout0x) ||
-                   addr.startsWith(searchValueLower) ||
-                   addrWithout0x.endsWith(searchWithout0x) ||
-                   addr.endsWith(searchValueLower);
+            return (
+              addrWithout0x.startsWith(searchWithout0x) ||
+              addr.startsWith(searchValueLower) ||
+              addrWithout0x.endsWith(searchWithout0x) ||
+              addr.endsWith(searchValueLower)
+            );
           });
-          
+
           if (process.env.NODE_ENV === "development" && addressMatch) {
             console.log("[Search] Address match found:", {
               searchValue: activeSearchValue,
-              addresses: addressesToCheck
+              addresses: addressesToCheck,
             });
           }
-          
+
           return addressMatch;
-          
+
         case "amount":
           // Clean the search value: replace comma with dot, remove spaces and currency symbols
           let cleanedSearch = activeSearchValue.trim();
@@ -305,25 +333,28 @@ export default function AllTransactionsTab({
           cleanedSearch = cleanedSearch.replace(/[$€£¥\s]/g, "");
           // Keep only digits and dots
           cleanedSearch = cleanedSearch.replace(/[^\d.]/g, "");
-          
+
           const searchAmount = parseFloat(cleanedSearch);
           if (isNaN(searchAmount) || searchAmount < 0) {
             if (process.env.NODE_ENV === "development") {
               console.log("[Search] Invalid amount:", {
                 searchValue: activeSearchValue,
                 cleanedSearch,
-                searchAmount
+                searchAmount,
               });
             }
             return false;
           }
-          
+
           // For exact amount search, allow small difference for floating point precision
           // Use 0.005 tolerance (half a cent) to account for rounding
           // Check both usdAtTs and fee.usdAtTs
-          const usdMatch = tx.usdAtTs != null && Math.abs(tx.usdAtTs - searchAmount) < 0.005;
-          const feeMatch = tx.fee?.usdAtTs != null && Math.abs(tx.fee.usdAtTs - searchAmount) < 0.005;
-          
+          const usdMatch =
+            tx.usdAtTs != null && Math.abs(tx.usdAtTs - searchAmount) < 0.005;
+          const feeMatch =
+            tx.fee?.usdAtTs != null &&
+            Math.abs(tx.fee.usdAtTs - searchAmount) < 0.005;
+
           if (process.env.NODE_ENV === "development") {
             if (usdMatch || feeMatch) {
               console.log("[Search] Amount match found:", {
@@ -332,10 +363,16 @@ export default function AllTransactionsTab({
                 searchAmount,
                 txUsdAtTs: tx.usdAtTs,
                 feeUsdAtTs: tx.fee?.usdAtTs,
-                usdDiff: tx.usdAtTs != null ? Math.abs(tx.usdAtTs - searchAmount) : null,
-                feeDiff: tx.fee?.usdAtTs != null ? Math.abs(tx.fee.usdAtTs - searchAmount) : null,
+                usdDiff:
+                  tx.usdAtTs != null
+                    ? Math.abs(tx.usdAtTs - searchAmount)
+                    : null,
+                feeDiff:
+                  tx.fee?.usdAtTs != null
+                    ? Math.abs(tx.fee.usdAtTs - searchAmount)
+                    : null,
                 usdMatch,
-                feeMatch
+                feeMatch,
               });
             }
             // Log first few transactions for debugging
@@ -345,13 +382,13 @@ export default function AllTransactionsTab({
                 feeUsdAtTs: tx.fee?.usdAtTs,
                 searchAmount,
                 usdMatch,
-                feeMatch
+                feeMatch,
               });
             }
           }
-          
+
           return usdMatch || feeMatch;
-          
+
         default:
           return true;
       }
@@ -360,7 +397,7 @@ export default function AllTransactionsTab({
     if (process.env.NODE_ENV === "development") {
       console.log("[Search] Results:", {
         found: filtered.length,
-        searched: transactionsToSearch.length
+        searched: transactionsToSearch.length,
       });
     }
 
@@ -390,10 +427,11 @@ export default function AllTransactionsTab({
 
   const pageStart = (cache.page - 1) * PAGE_SIZE + 1;
   const pageEnd = pageStart + filteredRows.length - 1;
+  const lowCoverage = coveragePct != null && coveragePct < 0.5;
 
   useEffect(() => {
     if (cache.error) {
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === "development") {
         console.error("[AllTransactionsTab] Error:", {
           address: address
             ? `${address.slice(0, 6)}...${address.slice(-4)}`
@@ -473,17 +511,17 @@ export default function AllTransactionsTab({
                 </div>
               )}
             </div>
-          <TransactionToolbar
-            exportLabel={exportLabel}
-            loading={cache.loading}
-            page={cache.page}
-            rows={cache.rows}
-            loadedRowsAll={cache.loadedRowsAll}
-            filterIsAll={filters.filterIsAll}
-            loadIndicatorLabel={cache.loadIndicatorLabel}
-            isOverloaded={cache.isOverloaded}
-            datePreset={filters.datePreset}
-            dateRangeLabel={filters.dateRange.label}
+            <TransactionToolbar
+              exportLabel={exportLabel}
+              loading={cache.loading}
+              page={cache.page}
+              rows={cache.rows}
+              loadedRowsAll={cache.loadedRowsAll}
+              filterIsAll={filters.filterIsAll}
+              loadIndicatorLabel={cache.loadIndicatorLabel}
+              isOverloaded={cache.isOverloaded}
+              datePreset={filters.datePreset}
+              dateRangeLabel={filters.dateRange.label}
               currentYear={filters.currentYear}
               setDatePreset={filters.setDatePreset}
               networks={filters.networks}
@@ -515,20 +553,20 @@ export default function AllTransactionsTab({
               resetWalletSelection={
                 walletDropdownVisible ? resetWalletSelection : undefined
               }
-            walletLimitReached={
-              walletDropdownVisible ? walletLimitReached : undefined
-            }
-            walletLimit={walletDropdownVisible ? walletLimit : undefined}
-            hasNoTransactions={hasNoTransactions}
-            stats={stats}
-            totalAssetsUsd={totalAssetsUsd}
-            stableHoldingsUsd={stableHoldingsUsd}
-            totalCount={totalCount}
-            onExportReport={(format) => {
-              generateFinancialReport(
-                {
-                  transactions: cache.loadedRowsAll,
-                  stats,
+              walletLimitReached={
+                walletDropdownVisible ? walletLimitReached : undefined
+              }
+              walletLimit={walletDropdownVisible ? walletLimit : undefined}
+              hasNoTransactions={hasNoTransactions}
+              stats={stats}
+              totalAssetsUsd={totalAssetsUsd}
+              stableHoldingsUsd={stableHoldingsUsd}
+              totalCount={totalCount}
+              onExportReport={(format) => {
+                generateFinancialReport(
+                  {
+                    transactions: cache.loadedRowsAll,
+                    stats,
                     dateRangeLabel: filters.dateRange.label,
                     exportLabel,
                     totalAssetsUsd,
@@ -567,8 +605,8 @@ export default function AllTransactionsTab({
               </p>
               {totalCount && (
                 <p className="text-xs text-slate-500">
-                  {loadedTxCount.toLocaleString()}{" "}
-                  / {totalCount.toLocaleString()}
+                  {loadedTxCount.toLocaleString()} /{" "}
+                  {totalCount.toLocaleString()}
                 </p>
               )}
             </div>
@@ -663,8 +701,12 @@ export default function AllTransactionsTab({
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  className="pl-10 bg-white border-slate-200"
+                  className="pl-10 bg-white border-slate-200 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
                 />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tip: use ellipsis for partials (e.g., 0x123…89ab) or enter
+                  exact USD amount.
+                </p>
               </div>
               <Button
                 onClick={handleSearch}
@@ -677,7 +719,8 @@ export default function AllTransactionsTab({
             </div>
             {activeSearchValue && (
               <p className="text-xs text-slate-500">
-                {filteredRows.length} transaction{filteredRows.length !== 1 ? "s" : ""} found
+                {filteredRows.length} transaction
+                {filteredRows.length !== 1 ? "s" : ""} found
               </p>
             )}
           </div>
@@ -745,6 +788,18 @@ export default function AllTransactionsTab({
           </div>
         </div>
 
+        {lowCoverage && (
+          <div className="px-6 py-3 bg-amber-50 border-t border-b border-amber-200 text-sm text-amber-700 flex items-center justify-between gap-3">
+            <span>
+              Only {Math.round((coveragePct || 0) * 100)}% of estimated history
+              loaded. Exports and ratios reflect loaded pages.
+            </span>
+            <span className="text-xs text-amber-600">
+              Load more pages to improve coverage.
+            </span>
+          </div>
+        )}
+
         <div className="border-t border-slate-100">
           <TransactionTable
             address={activeWallets.length ? exportLabel : null}
@@ -765,11 +820,13 @@ export default function AllTransactionsTab({
         <div className="flex flex-col items-center gap-2 px-6 py-4 border-t border-slate-100 bg-white">
           <p className="text-xs text-slate-600">
             {filteredRows.length > 0
-              ? `Page ${cache.page} • ${pageStart.toLocaleString()}–${pageEnd.toLocaleString()} of ${
+              ? `Page ${
+                  cache.page
+                } • ${pageStart.toLocaleString()}–${pageEnd.toLocaleString()} of ${
                   totalCount
                     ? `${totalCount.toLocaleString()} total`
                     : `${loadedTxCount.toLocaleString()} loaded`
-                }`
+                } `
               : `Page ${cache.page} • No rows on this page${
                   totalCount ? ` (out of ${totalCount.toLocaleString()})` : ""
                 }`}
@@ -795,4 +852,3 @@ export default function AllTransactionsTab({
     </div>
   );
 }
-

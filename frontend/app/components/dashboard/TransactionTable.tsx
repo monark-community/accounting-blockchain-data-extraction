@@ -124,6 +124,14 @@ export function TransactionTable({
               {loadedRowsAll.length !== 1 ? "s" : ""} available with different
               filters.
             </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={goPrev} disabled={!canPrev}>
+                Load previous page
+              </Button>
+              <Button variant="outline" size="sm" onClick={goNext} disabled={!canNext}>
+                Load next page
+              </Button>
+            </div>
           </div>
         </div>
       );
@@ -140,6 +148,9 @@ export function TransactionTable({
               No transactions match the current filters. Try adjusting your
               filters or date range.
             </div>
+            <Button variant="outline" size="sm" onClick={goPrev} disabled={!canPrev}>
+              Reset / previous page
+            </Button>
           </div>
         </div>
       );
@@ -149,16 +160,16 @@ export function TransactionTable({
   return (
     <div className="overflow-x-auto relative">
       <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 bg-white z-10 shadow-[0_1px_0_rgba(15,23,42,0.06)]">
           <TableRow>
-            <TableHead className="w-12">#</TableHead>
+            <TableHead className="w-12 text-slate-500">#</TableHead>
             {visibleColumns.type && <TableHead>Type</TableHead>}
             {visibleColumns.date && <TableHead>Date</TableHead>}
             {visibleColumns.network && <TableHead>Network</TableHead>}
             {visibleColumns.asset && <TableHead>Asset</TableHead>}
-            {visibleColumns.qty && <TableHead>Qty</TableHead>}
-            {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
-            {visibleColumns.fee && <TableHead>Gas (USD)</TableHead>}
+            {visibleColumns.qty && <TableHead className="text-right">Qty</TableHead>}
+            {visibleColumns.usd && <TableHead className="text-right">USD @ time</TableHead>}
+            {visibleColumns.fee && <TableHead className="text-right">Gas (USD)</TableHead>}
             {visibleColumns.counterparty && <TableHead>Counterparty</TableHead>}
             {visibleColumns.tx && <TableHead>Tx</TableHead>}
           </TableRow>
@@ -167,7 +178,10 @@ export function TransactionTable({
           {rows.map((tx, idx) => {
             const rowNumber = (page - 1) * PAGE_SIZE + idx + 1;
             return (
-              <TableRow key={`${tx.hash}-${idx}`}>
+              <TableRow
+                key={`${tx.hash}-${idx}`}
+                className="hover:bg-slate-50/80 transition-colors"
+              >
                 <TableCell className="text-slate-500 font-medium">
                   {rowNumber}
                 </TableCell>
@@ -229,7 +243,7 @@ export function TransactionTable({
                 )}
                 {visibleColumns.qty && (
                   <TableCell
-                    className={`font-mono ${
+                    className={`font-mono text-right ${
                       tx.direction === "in" ? "text-green-600" : "text-red-600"
                     }`}
                   >
@@ -237,12 +251,12 @@ export function TransactionTable({
                   </TableCell>
                 )}
                 {visibleColumns.usd && (
-                  <TableCell className="font-mono">
+                  <TableCell className="font-mono text-right">
                     {fmtUSD(tx.usdAtTs)}
                   </TableCell>
                 )}
                 {visibleColumns.fee && (
-                  <TableCell className="font-mono">
+                  <TableCell className="font-mono text-right">
                     {fmtUSD(tx.fee?.usdAtTs ?? null)}
                   </TableCell>
                 )}
@@ -255,7 +269,7 @@ export function TransactionTable({
                 {visibleColumns.tx && (
                   <TableCell>
                     <a
-                      className="inline-flex items-center gap-1 text-xs font-mono underline text-slate-700 hover:text-slate-900"
+                      className="inline-flex items-center gap-1 text-xs font-mono text-slate-700 hover:text-slate-900 px-2 py-1 rounded-full bg-slate-100"
                       href={etherscanTxUrl(tx.hash, tx.network)}
                       target="_blank"
                       rel="noreferrer"
@@ -269,7 +283,7 @@ export function TransactionTable({
           })}
         </TableBody>
       </Table>
-
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-6 bg-gradient-to-t from-white to-transparent" />
     </div>
   );
 }
