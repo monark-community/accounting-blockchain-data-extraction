@@ -473,16 +473,17 @@ export default function AllTransactionsTab({
                 </div>
               )}
             </div>
-            <TransactionToolbar
-              exportLabel={exportLabel}
-              loading={cache.loading}
-              page={cache.page}
-              rows={cache.rows}
-              filterIsAll={filters.filterIsAll}
-              loadIndicatorLabel={cache.loadIndicatorLabel}
-              isOverloaded={cache.isOverloaded}
-              datePreset={filters.datePreset}
-              dateRangeLabel={filters.dateRange.label}
+          <TransactionToolbar
+            exportLabel={exportLabel}
+            loading={cache.loading}
+            page={cache.page}
+            rows={cache.rows}
+            loadedRowsAll={cache.loadedRowsAll}
+            filterIsAll={filters.filterIsAll}
+            loadIndicatorLabel={cache.loadIndicatorLabel}
+            isOverloaded={cache.isOverloaded}
+            datePreset={filters.datePreset}
+            dateRangeLabel={filters.dateRange.label}
               currentYear={filters.currentYear}
               setDatePreset={filters.setDatePreset}
               networks={filters.networks}
@@ -514,16 +515,20 @@ export default function AllTransactionsTab({
               resetWalletSelection={
                 walletDropdownVisible ? resetWalletSelection : undefined
               }
-              walletLimitReached={
-                walletDropdownVisible ? walletLimitReached : undefined
-              }
-              walletLimit={walletDropdownVisible ? walletLimit : undefined}
-              hasNoTransactions={hasNoTransactions}
-              onExportReport={(format) => {
-                generateFinancialReport(
-                  {
-                    transactions: cache.loadedRowsAll,
-                    stats,
+            walletLimitReached={
+              walletDropdownVisible ? walletLimitReached : undefined
+            }
+            walletLimit={walletDropdownVisible ? walletLimit : undefined}
+            hasNoTransactions={hasNoTransactions}
+            stats={stats}
+            totalAssetsUsd={totalAssetsUsd}
+            stableHoldingsUsd={stableHoldingsUsd}
+            totalCount={totalCount}
+            onExportReport={(format) => {
+              generateFinancialReport(
+                {
+                  transactions: cache.loadedRowsAll,
+                  stats,
                     dateRangeLabel: filters.dateRange.label,
                     exportLabel,
                     totalAssetsUsd,

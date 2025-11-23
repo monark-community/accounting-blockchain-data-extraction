@@ -13,7 +13,14 @@ import {
 import { Eye, RefreshCw, FileText } from "lucide-react";
 import { NETWORK_OPTIONS } from "@/lib/networks";
 import type { DatePreset } from "@/hooks/useTransactionFilters";
-import { exportCsv, exportJson } from "@/utils/transactionExport";
+import type { useTransactionStats } from "@/hooks/useTransactionStats";
+import {
+  exportCsv,
+  exportJson,
+  downloadBlob,
+  nowStamp,
+  shortForFile,
+} from "@/utils/transactionExport";
 import type { TxRow } from "@/lib/types/transactions";
 
 interface WalletPickerOption {
@@ -27,6 +34,7 @@ interface TransactionToolbarProps {
   loading: boolean;
   page: number;
   rows: TxRow[];
+  loadedRowsAll: TxRow[];
   filterIsAll: boolean;
   loadIndicatorLabel: string | null;
   isOverloaded: boolean;
@@ -61,6 +69,10 @@ interface TransactionToolbarProps {
   walletLimit?: number;
   hasNoTransactions: boolean;
   onExportReport?: (format: "pdf" | "quickbooks") => void;
+  stats?: ReturnType<typeof useTransactionStats>;
+  totalAssetsUsd?: number | null;
+  stableHoldingsUsd?: number;
+  totalCount?: number | null;
 }
 
 export function TransactionToolbar({
@@ -68,6 +80,7 @@ export function TransactionToolbar({
   loading,
   page,
   rows,
+  loadedRowsAll,
   filterIsAll,
   loadIndicatorLabel,
   isOverloaded,
@@ -100,7 +113,58 @@ export function TransactionToolbar({
   walletLimit,
   hasNoTransactions,
   onExportReport,
+  stats,
+  totalAssetsUsd,
+  stableHoldingsUsd,
+  totalCount,
 }: TransactionToolbarProps) {
+  const hasLoadedRows = loadedRowsAll?.length > 0;
+
+  const exportCapitalGains = () => {
+    if (!stats || !hasLoadedRows) return;
+    const payload = {
+      dateRange: dateRangeLabel,
+      coverage: { loaded: loadedRowsAll.length, total: totalCount ?? null },
+      capitalGainsSummary: stats.capitalGainsSummary,
+      costBasisBuckets: stats.costBasisBuckets,
+      washSaleSignals: stats.washSaleSignals,
+      unmatchedSales: stats.capitalGainsSummary.unmatchedSales,
+    };
+    downloadBlob(
+      new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      }),
+      `ledgerlift_${shortForFile(
+        exportLabel
+      )}_capital-gains_${nowStamp()}_loaded.json`
+    );
+  };
+
+  const exportFinancialRatios = () => {
+    if (!stats || !hasLoadedRows) return;
+    const payload = {
+      dateRange: dateRangeLabel,
+      coverage: { loaded: loadedRowsAll.length, total: totalCount ?? null },
+      totals: {
+        totalAssetsUsd: totalAssetsUsd ?? null,
+        stableHoldingsUsd: stableHoldingsUsd ?? null,
+      },
+      ratiosSource: {
+        incomeBreakdown: stats.incomeBreakdown,
+        gasVsProceeds: stats.gasVsProceeds,
+        stableBufferStats: stats.stableBufferStats,
+      },
+    };
+    downloadBlob(
+      new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      }),
+      `ledgerlift_${shortForFile(
+        exportLabel
+      )}_financial-ratios_${nowStamp()}_loaded.json`
+    );
+  };
+
   return (
     <div className="flex items-center gap-2">
       {loadIndicatorLabel && (
@@ -278,59 +342,91 @@ export function TransactionToolbar({
       )}
 
       {!hasNoTransactions && (
-        <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <button
-                className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                onClick={() =>
-                  exportCsv(exportLabel, rows, "visible", typeLabelForExport)
-                }
-              >
-                CSV (visible)
-              </button>
-              <div className="h-px bg-slate-200 my-1" />
-              <button
-                className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                onClick={() =>
-                  exportJson(exportLabel, rows, "visible", typeLabelForExport)
-                }
-              >
-                JSON (visible)
-              </button>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          {onExportReport && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" disabled={loading}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  Export Report
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <button
-                  className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                  onClick={() => onExportReport("pdf")}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={loading}>
+              <FileText className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuLabel>Transactions (loaded pages)</DropdownMenuLabel>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                exportCsv(
+                  exportLabel,
+                  loadedRowsAll,
+                  "loaded",
+                  typeLabelForExport
+                );
+              }}
+              disabled={!hasLoadedRows}
+            >
+              CSV · loaded pages
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                exportJson(
+                  exportLabel,
+                  loadedRowsAll,
+                  "loaded",
+                  typeLabelForExport
+                );
+              }}
+              disabled={!hasLoadedRows}
+            >
+              JSON · loaded pages
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel>Reports & summaries</DropdownMenuLabel>
+            {onExportReport && (
+              <>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    onExportReport("pdf");
+                  }}
                 >
-                  PDF Format
-                </button>
-                <div className="h-px bg-slate-200 my-1" />
-                <button
-                  className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                  onClick={() => onExportReport("quickbooks")}
+                  Full report · PDF
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    onExportReport("quickbooks");
+                  }}
                 >
-                  QuickBooks Format
-                </button>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </>
+                  Full report · QuickBooks
+                </DropdownMenuItem>
+              </>
+            )}
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                exportCapitalGains();
+              }}
+              disabled={!hasLoadedRows || !stats}
+            >
+              Capital gains snapshot · JSON
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(event) => {
+                event.preventDefault();
+                exportFinancialRatios();
+              }}
+              disabled={!hasLoadedRows || !stats}
+            >
+              Financial ratios · JSON
+            </DropdownMenuItem>
+
+            <div className="border-t border-slate-200 mt-2 pt-2 px-2 text-[11px] text-slate-500">
+              Exports use the currently loaded pages. Load more to expand
+              coverage.
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
 
       <Button
