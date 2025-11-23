@@ -83,6 +83,8 @@ type NetworkSuggestion = {
   network: string;
   lastActivityTs: number | null;
   direction: "in" | "out" | "unknown";
+  walletAddress: string;
+  walletLabel: string;
 };
 
 const RISK_BUCKET_META: Record<
@@ -636,7 +638,8 @@ const Dashboard = () => {
       setLoadingNetworkHints(false);
       return;
     }
-    if (!address) {
+    const targets = activeWallets.filter(Boolean);
+    if (!targets.length) {
       setNetworkSuggestions([]);
       return;
     }
@@ -648,27 +651,32 @@ const Dashboard = () => {
     const controller = new AbortController();
     setLoadingNetworkHints(true);
     const query = serializeNetworks(remaining);
-    fetch(
-      `/api/networks/activity/${encodeURIComponent(
-        address
-      )}?networks=${encodeURIComponent(query)}&_ts=${Date.now()}`,
-      { signal: controller.signal }
-    )
-      .then(async (res) => {
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          throw new Error(text || "Failed to load network activity");
-        }
-        return res.json();
-      })
-      .then((payload) => {
-        const list = Array.isArray(payload?.suggestions)
-          ? payload.suggestions
-          : Array.isArray(payload?.summaries)
-          ? payload.summaries
-          : [];
-        setNetworkSuggestions(
-          list.map((item: any) => ({
+    const fetches = targets.map((walletAddr) => {
+      const meta = walletMetaMap.get(walletAddr.toLowerCase());
+      const walletLabel =
+        walletLabelMode === "address" || urlAddress
+          ? shortAddress(walletAddr)
+          : meta?.name ?? shortAddress(walletAddr);
+      return fetch(
+        `/api/networks/activity/${encodeURIComponent(
+          walletAddr
+        )}?networks=${encodeURIComponent(query)}&_ts=${Date.now()}`,
+        { signal: controller.signal }
+      )
+        .then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(text || "Failed to load network activity");
+          }
+          return res.json();
+        })
+        .then((payload) => {
+          const list = Array.isArray(payload?.suggestions)
+            ? payload.suggestions
+            : Array.isArray(payload?.summaries)
+            ? payload.summaries
+            : [];
+          return list.map((item: any) => ({
             network: item?.network,
             lastActivityTs:
               typeof item?.lastActivityTs === "number"
@@ -678,22 +686,50 @@ const Dashboard = () => {
               item?.direction === "in" || item?.direction === "out"
                 ? item.direction
                 : "unknown",
-          }))
-        );
-      })
-      .catch((err) => {
-        if (err?.name === "AbortError") return;
-        if (process.env.NODE_ENV === 'development') {
-          console.error("[Dashboard] Failed to load network suggestions:", err);
-        }
+            walletAddress: walletAddr,
+            walletLabel,
+          })) as NetworkSuggestion[];
+        })
+        .catch((err) => {
+          if (err?.name === "AbortError") return [];
+          if (process.env.NODE_ENV === 'development') {
+            console.error(
+              `[Dashboard] Failed to load network suggestions for ${walletAddr}:`,
+              err
+            );
+          }
+          return [];
+        });
+    });
+
+    Promise.all(fetches)
+      .then((results) => {
+        const merged = results.flat();
+        // Deduplicate per wallet+network in case API echoes duplicates
+        const seen = new Set<string>();
+        const filtered = merged.filter((item) => {
+          const key = `${item.walletAddress}-${item.network}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return !!item.network;
+        });
+        setNetworkSuggestions(filtered);
       })
       .finally(() => {
         if (!controller.signal.aborted) {
           setLoadingNetworkHints(false);
         }
       });
+
     return () => controller.abort();
-  }, [address, networks, enableNetworkSuggestions]);
+  }, [
+    activeWallets,
+    networks,
+    enableNetworkSuggestions,
+    walletLabelMode,
+    walletMetaMap,
+    urlAddress,
+  ]);
 
   const fetchOverviewSnapshot = useCallback(
     async (targetAddress: string) => {
@@ -1255,7 +1291,7 @@ const Dashboard = () => {
 
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h1 className="text-3xl font-bold text-slate-800 mb-2">
                 Portfolio Dashboard
@@ -1268,305 +1304,327 @@ const Dashboard = () => {
               <div className="text-sm text-slate-500 border border-slate-200 rounded-full px-4 py-2 bg-white shadow-sm">
                 Viewing shared address {shortAddress(urlAddress)}
               </div>
-            ) : isConnected && allWallets.length > 0 ? (
-              <div className="flex flex-col items-end gap-3">
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="border-2 border-slate-200"
-                      >
-                        Select wallets ({selectedWallets.length}/
-                        {MAX_MULTI_WALLETS})
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-72">
-                      <DropdownMenuLabel>
-                        Wallets (max {MAX_MULTI_WALLETS})
-                      </DropdownMenuLabel>
-                      {allWallets.map((wallet) => {
-                        const checked = selectedWallets.includes(
-                          wallet.address
-                        );
-                        const disabled =
-                          !checked &&
-                          selectedWallets.length >= MAX_MULTI_WALLETS;
-                        return (
-                          <DropdownMenuCheckboxItem
-                            key={wallet.address}
-                            checked={checked}
-                            disabled={disabled}
-                            onCheckedChange={(value) =>
-                              handleToggleWallet(wallet.address, !!value)
-                            }
-                          >
-                            <div className="flex items-center gap-2">
-                              {wallet.isMain && (
-                                <Crown className="w-3.5 h-3.5 text-amber-500" />
-                              )}
-                              <div className="flex flex-col">
-                                <span className="text-sm font-medium text-slate-800">
-                                  {wallet.name}
-                                </span>
-                                <span className="text-[11px] text-slate-500 font-mono">
-                                  {shortAddress(wallet.address)}
-                                </span>
-                              </div>
-                            </div>
-                          </DropdownMenuCheckboxItem>
-                        );
-                      })}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        disabled={!selectedWallets.length}
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          handleClearSelection();
-                        }}
-                      >
-                        Clear selection
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="border-2 border-slate-200"
-                    onClick={handleSelectMainWallet}
-                    disabled={!!urlAddress || !allWallets.length}
-                    title="Select main wallet"
-                  >
-                    <Crown className="h-4 w-4 text-amber-500" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-2 border-slate-200"
-                    onClick={handleSelectAllWallets}
-                    disabled={!!urlAddress || !allWallets.length}
-                  >
-                    Select {Math.min(MAX_MULTI_WALLETS, allWallets.length)}
-                  </Button>
-                  <Button
-                    onClick={handleApplyWallets}
-                    disabled={!selectedWallets.length || !walletSelectionDirty}
-                  >
-                    Update selection
-                    {walletSelectionDirty && selectedWallets.length ? (
-                      <span className="ml-2 text-xs text-amber-200">
-                        pending
-                      </span>
-                    ) : null}
-                  </Button>
-                </div>
-                <div className="flex flex-col items-end text-xs text-slate-500 gap-1">
-                  <span>
-                    Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS}{" "}
-                    wallets
-                  </span>
-                  {walletSelectionDirty &&
-                    selectedWallets.length > 0 &&
-                    !urlAddress && (
-                      <span className="inline-flex items-center gap-1 text-amber-600">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
-                        Apply the new selection to refresh data
-                      </span>
-                    )}
-                </div>
-                {walletLimitReached && (
-                  <p className="text-xs text-amber-600">
-                    Free tier limited to {MAX_MULTI_WALLETS} wallets. Manage
-                    additional wallets from the Manage Wallets tab.
-                  </p>
-                )}
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {appliedWalletDisplay.length ? (
-                    appliedWalletDisplay.map((wallet) => (
-                      <Badge
-                        key={wallet.address}
-                        variant="secondary"
-                        className="flex items-center gap-2 rounded-full bg-white text-slate-700 border border-slate-200"
-                      >
-                        <span
-                          className="inline-block w-2 h-2 rounded-full"
-                          style={{ backgroundColor: wallet.color }}
-                        />
-                        {wallet.label}
-                      </Badge>
-                    ))
-                  ) : (
-                    <p className="text-xs text-slate-500">
-                      Select up to {MAX_MULTI_WALLETS} wallets to aggregate.
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span>Label style:</span>
-                  <Button
-                    size="sm"
-                    variant={walletLabelMode === "name" ? "default" : "outline"}
-                    onClick={() => setWalletLabelMode("name")}
-                  >
-                    Nicknames
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={
-                      walletLabelMode === "address" ? "default" : "outline"
-                    }
-                    onClick={() => setWalletLabelMode("address")}
-                  >
-                    Addresses
-                  </Button>
-                </div>
-              </div>
             ) : null}
           </div>
         </div>
 
-        <Card className="mb-8 shadow-sm border border-slate-200">
-          <div className="flex flex-col gap-4 p-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Card className="mb-8 shadow-sm border border-slate-200 bg-white/90 backdrop-blur">
+          <div className="flex flex-col gap-6 p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-slate-800">
-                  Chains in Overview & Graphs
+                  Portfolio Manager
                 </h2>
-                <p className="text-sm text-slate-500">
-                  Only the selected chains are fetched for balances, KPIs, and
-                  visualizations.
+                <p className="text-sm text-slate-600">
+                  Choose which wallets and chains feed your dashboard visuals and
+                  KPIs.
                 </p>
               </div>
-              <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <Switch
-                    checked={enableNetworkSuggestions}
-                    onCheckedChange={setEnableNetworkSuggestions}
-                    id="suggestion-switch"
-                  />
-                  <label htmlFor="suggestion-switch">
-                    Suggest chains automatically
-                  </label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={resetNetworks}
-                    disabled={sameNetworks(
-                      networks,
-                      DASHBOARD_DEFAULT_NETWORKS
-                    )}
-                  >
-                    Reset
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-2">
-                        <Plus className="h-4 w-4" />
-                        Manage Chains
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-60">
-                      <DropdownMenuLabel>Select chains</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {NETWORK_OPTIONS.map((net) => (
-                        <DropdownMenuCheckboxItem
-                          key={net.id}
-                          checked={networks.includes(net.id)}
-                          onCheckedChange={(checked) =>
-                            toggleNetwork(net.id, Boolean(checked))
-                          }
-                        >
-                          {net.label}
-                        </DropdownMenuCheckboxItem>
-                      ))}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          selectAllNetworks();
-                        }}
-                      >
-                        Select all
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={(event) => {
-                          event.preventDefault();
-                          resetNetworks();
-                        }}
-                      >
-                        Reset to default
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                  {appliedWalletDisplay.length || selectedWallets.length
+                    ? `${appliedWalletDisplay.length || selectedWallets.length}/${
+                        MAX_MULTI_WALLETS
+                      } wallets active`
+                    : "No wallets applied"}
+                </Badge>
+                <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                  {networks.length} chains selected
+                </Badge>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {networks.map((networkId) => (
-                <Badge
-                  key={networkId}
-                  variant="secondary"
-                  className="flex items-center gap-2 rounded-full px-3 py-1 text-sm"
-                >
-                  {networkLabel(networkId)}
-                  {networks.length > 1 && (
-                    <button
-                      type="button"
-                      aria-label={`Remove ${networkLabel(networkId)}`}
-                      className="text-slate-500 hover:text-slate-700 transition-colors"
-                      onClick={() => removeNetwork(networkId)}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  )}
-                </Badge>
-              ))}
-            </div>
-            {!enableNetworkSuggestions ? (
-              <p className="text-xs text-slate-500">Suggestions disabled.</p>
-            ) : loadingNetworkHints ? (
-              <p className="text-xs text-slate-500">
-                Scanning other chains for recent activity…
-              </p>
-            ) : suggestionCandidates.length > 0 ? (
-              <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
-                  <Sparkles className="h-4 w-4" />
-                  Recently active chains
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      Wallets
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Aggregate up to {MAX_MULTI_WALLETS} wallets for analytics.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50">
+                    {aggregatedWalletCount} in view
+                  </Badge>
                 </div>
-                <div className="space-y-3">
-                  {suggestionCandidates.map((hint) => (
-                    <div
-                      key={hint.network}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white p-3 shadow-sm"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">
-                          {networkLabel(hint.network)}
-                        </p>
+
+                {isConnected && allWallets.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {appliedWalletDisplay.length ? (
+                        appliedWalletDisplay.map((wallet) => (
+                          <Badge
+                            key={wallet.address}
+                            variant="secondary"
+                            className="flex items-center gap-2 rounded-full bg-slate-50 text-slate-700 border border-slate-200 shadow-sm"
+                          >
+                            <span
+                              className="inline-block w-2 h-2 rounded-full"
+                              style={{ backgroundColor: wallet.color }}
+                            />
+                            {wallet.label}
+                          </Badge>
+                        ))
+                      ) : (
                         <p className="text-xs text-slate-500">
-                          Last tx {formatLastActivity(hint.lastActivityTs)}
-                          {hint.direction !== "unknown"
-                            ? ` • ${
-                                hint.direction === "in" ? "Inbound" : "Outbound"
-                              }`
-                            : ""}
+                          No wallets applied. Pick a set below.
                         </p>
-                      </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="border-2 border-slate-200 bg-white"
+                          >
+                            Select wallets ({selectedWallets.length}/
+                            {MAX_MULTI_WALLETS})
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-72">
+                          <DropdownMenuLabel>
+                            Wallets (max {MAX_MULTI_WALLETS})
+                          </DropdownMenuLabel>
+                          {allWallets.map((wallet) => {
+                            const checked = selectedWallets.includes(
+                              wallet.address
+                            );
+                            const disabled =
+                              !checked &&
+                              selectedWallets.length >= MAX_MULTI_WALLETS;
+                            return (
+                              <DropdownMenuCheckboxItem
+                                key={wallet.address}
+                                checked={checked}
+                                disabled={disabled}
+                                onCheckedChange={(value) =>
+                                  handleToggleWallet(wallet.address, !!value)
+                                }
+                              >
+                                <div className="flex items-center gap-2">
+                                  {wallet.isMain && (
+                                    <Crown className="w-3.5 h-3.5 text-amber-500" />
+                                  )}
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-slate-800">
+                                      {wallet.name}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-mono">
+                                      {shortAddress(wallet.address)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </DropdownMenuCheckboxItem>
+                            );
+                          })}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={!selectedWallets.length}
+                            onSelect={(event) => {
+                              event.preventDefault();
+                              handleClearSelection();
+                            }}
+                          >
+                            Clear selection
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                       <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => addNetwork(hint.network)}
+                        onClick={handleApplyWallets}
+                        disabled={!selectedWallets.length || !walletSelectionDirty}
                       >
-                        Add
+                        Apply selection
+                        {walletSelectionDirty && selectedWallets.length ? (
+                          <span className="ml-2 text-xs text-amber-200">
+                            pending
+                          </span>
+                        ) : null}
                       </Button>
                     </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                      <span>
+                        Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS} wallets
+                      </span>
+                      {walletSelectionDirty &&
+                        selectedWallets.length > 0 &&
+                        !urlAddress && (
+                          <span className="inline-flex items-center gap-1 text-amber-700">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            Apply to refresh data
+                          </span>
+                        )}
+                    </div>
+                    {walletLimitReached && (
+                      <p className="text-xs text-amber-700">
+                        Free tier limited to {MAX_MULTI_WALLETS} wallets. Manage
+                        additional wallets from the Manage Wallets tab.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    Connect a wallet to start aggregating balances.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      Chains
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Only selected chains are fetched for balances and charts.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-slate-200 text-slate-700 bg-slate-50">
+                    {networks.length} active
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <div className="flex items-center gap-2 text-sm text-slate-700">
+                    <Switch
+                      checked={enableNetworkSuggestions}
+                      onCheckedChange={setEnableNetworkSuggestions}
+                      id="suggestion-switch"
+                    />
+                    <label htmlFor="suggestion-switch" className="cursor-pointer">
+                      Smart suggestions
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={resetNetworks}
+                      disabled={sameNetworks(networks, DASHBOARD_DEFAULT_NETWORKS)}
+                    >
+                      Reset
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <Plus className="h-4 w-4" />
+                          Manage chains
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-60">
+                        <DropdownMenuLabel>Select chains</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {NETWORK_OPTIONS.map((net) => (
+                          <DropdownMenuCheckboxItem
+                            key={net.id}
+                            checked={networks.includes(net.id)}
+                            onCheckedChange={(checked) =>
+                              toggleNetwork(net.id, Boolean(checked))
+                            }
+                          >
+                            {net.label}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            selectAllNetworks();
+                          }}
+                        >
+                          Select all
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            resetNetworks();
+                          }}
+                        >
+                          Reset to default
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {networks.map((networkId) => (
+                    <Badge
+                      key={networkId}
+                      variant="secondary"
+                      className="flex items-center gap-2 rounded-full px-3 py-1 text-sm"
+                    >
+                      {networkLabel(networkId)}
+                      {networks.length > 1 && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${networkLabel(networkId)}`}
+                          className="text-slate-500 hover:text-slate-700 transition-colors"
+                          onClick={() => removeNetwork(networkId)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </Badge>
                   ))}
                 </div>
+
+                {!enableNetworkSuggestions ? (
+                  <p className="text-xs text-slate-500">Suggestions disabled.</p>
+                ) : loadingNetworkHints ? (
+                  <p className="text-xs text-slate-500">
+                    Scanning other chains for recent activity…
+                  </p>
+                ) : suggestionCandidates.length > 0 ? (
+                  <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
+                      <Sparkles className="h-4 w-4" />
+                      Recently active chains
+                    </div>
+                    <div className="space-y-3">
+                      {suggestionCandidates.map((hint) => (
+                        <div
+                          key={`${hint.network}-${hint.walletAddress}`}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white p-3 shadow-sm"
+                        >
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-slate-900">
+                              {networkLabel(hint.network)}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Last tx {formatLastActivity(hint.lastActivityTs)}
+                              {hint.direction !== "unknown"
+                                ? ` • ${
+                                    hint.direction === "in"
+                                      ? "Inbound"
+                                      : "Outbound"
+                                  }`
+                                : ""}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs text-slate-600">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
+                                From {hint.walletLabel}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addNetwork(hint.network)}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            </div>
           </div>
         </Card>
 
