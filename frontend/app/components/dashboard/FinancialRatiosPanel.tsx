@@ -240,7 +240,7 @@ export default function FinancialRatiosPanel({
       <div className="p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h3 className="text-xl font-bold text-slate-800">
+            <h3 className="text-xl font-semibold text-slate-800">
               Financial Ratios
             </h3>
             <p className="text-sm text-slate-500">
@@ -281,23 +281,6 @@ export default function FinancialRatiosPanel({
             </p>
           </div>
         </div>
-
-        {coveragePct != null && (
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-              <span>Loaded vs estimated total</span>
-              <span>{coveragePctDisplay}%</span>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div
-                className="h-2 bg-indigo-500"
-                style={{
-                  width: `${Math.min(coveragePct * 100, 100)}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
 
         {!hasActiveWallets ? (
           <p className="mt-6 text-sm text-slate-600">

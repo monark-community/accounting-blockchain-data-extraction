@@ -17,7 +17,7 @@ import { CapitalGainsSnapshot } from "./CapitalGainsSnapshot";
 import { TransactionToolbar } from "./TransactionToolbar";
 import { TransactionTable } from "./TransactionTable";
 import FinancialRatiosPanel from "./FinancialRatiosPanel";
-import { typeIcon, shortAddr, fmtUSD } from "@/utils/transactionHelpers";
+import { typeIcon, shortAddr, fmtUSD, PAGE_SIZE } from "@/utils/transactionHelpers";
 import { useTransactionsWorkspace } from "./TransactionsWorkspaceProvider";
 import { generateFinancialReport } from "@/utils/financialReport";
 import { Search, X } from "lucide-react";
@@ -388,6 +388,9 @@ export default function AllTransactionsTab({
     !cache.error &&
     activeWallets.length > 0;
 
+  const pageStart = (cache.page - 1) * PAGE_SIZE + 1;
+  const pageEnd = pageStart + filteredRows.length - 1;
+
   useEffect(() => {
     if (cache.error) {
       if (process.env.NODE_ENV === 'development') {
@@ -753,6 +756,35 @@ export default function AllTransactionsTab({
             walletLabels={walletLabelLookup}
             loadedRowsAll={cache.loadedRowsAll}
           />
+        </div>
+        <div className="flex flex-col items-center gap-2 px-6 py-4 border-t border-slate-100 bg-white">
+          <p className="text-xs text-slate-600">
+            {filteredRows.length > 0
+              ? `Page ${cache.page} • ${pageStart.toLocaleString()}–${pageEnd.toLocaleString()} of ${
+                  totalCount
+                    ? `${totalCount.toLocaleString()} total`
+                    : `${loadedTxCount.toLocaleString()} loaded`
+                }`
+              : `Page ${cache.page} • No rows on this page${
+                  totalCount ? ` (out of ${totalCount.toLocaleString()})` : ""
+                }`}
+          </p>
+          <div className="flex justify-center gap-3">
+            <Button
+              variant="outline"
+              onClick={goPrev}
+              disabled={!canPrev || cache.loading}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              onClick={goNext}
+              disabled={!canNext || cache.loading}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       </Card>
     </div>

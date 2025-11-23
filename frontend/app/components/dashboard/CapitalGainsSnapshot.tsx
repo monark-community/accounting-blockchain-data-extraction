@@ -55,7 +55,7 @@ export function CapitalGainsSnapshot({
       <div className="p-6 space-y-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-slate-800">
+            <h3 className="text-xl font-semibold text-slate-800">
               Capital Gains Snapshot (loaded data)
             </h3>
             <p className="text-sm text-slate-500">
@@ -66,7 +66,7 @@ export function CapitalGainsSnapshot({
           </div>
           <div className="text-right">
             <p className="text-xs text-slate-500">Coverage</p>
-            <p className="text-lg font-semibold text-slate-800">
+            <p className="text-2xl font-semibold text-slate-900">
               {coveragePctDisplay != null ? `${coveragePctDisplay}%` : "—"}
             </p>
             {totalCount && (
@@ -99,7 +99,7 @@ export function CapitalGainsSnapshot({
             <p className="text-xs text-slate-500 uppercase tracking-wide">
               Loaded transactions
             </p>
-            <p className="text-xl font-semibold text-slate-900">
+            <p className="text-2xl font-semibold text-slate-900">
               {loadedTransactionsCount.toLocaleString()}
             </p>
             <p className="text-xs text-slate-500">
@@ -112,7 +112,7 @@ export function CapitalGainsSnapshot({
               Realized gains (loaded)
             </p>
             <p
-              className={`text-xl font-semibold ${
+              className={`text-2xl font-semibold ${
                 capitalGainsSummary.totalRealized >= 0
                   ? "text-emerald-600"
                   : "text-rose-600"
@@ -127,7 +127,7 @@ export function CapitalGainsSnapshot({
               Short-term
             </p>
             <p
-              className={`text-xl font-semibold ${
+              className={`text-2xl font-semibold ${
                 capitalGainsSummary.shortTerm >= 0
                   ? "text-emerald-600"
                   : "text-rose-600"
@@ -144,7 +144,7 @@ export function CapitalGainsSnapshot({
               Long-term
             </p>
             <p
-              className={`text-xl font-semibold ${
+              className={`text-2xl font-semibold ${
                 capitalGainsSummary.longTerm >= 0
                   ? "text-emerald-600"
                   : "text-rose-600"

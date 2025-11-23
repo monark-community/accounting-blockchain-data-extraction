@@ -308,11 +308,7 @@ export function TransactionToolbar({
           {onExportReport && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={loading}
-                >
+                <Button variant="outline" size="sm" disabled={loading}>
                   <FileText className="w-4 h-4 mr-2" />
                   Export Report
                 </Button>
@@ -336,25 +332,6 @@ export function TransactionToolbar({
           )}
         </>
       )}
-
-      <div className="hidden sm:flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={goPrev}
-          disabled={!canPrev || loading || hasNoTransactions}
-        >
-          Prev
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={goNext}
-          disabled={!canNext || loading || hasNoTransactions}
-        >
-          Next
-        </Button>
-      </div>
 
       <Button
         variant="outline"

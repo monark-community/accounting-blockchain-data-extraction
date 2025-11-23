@@ -270,25 +270,6 @@ export function TransactionTable({
         </TableBody>
       </Table>
 
-      {/* Pager footer (mobile) */}
-      <div className="flex sm:hidden justify-end gap-2 p-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={goPrev}
-          disabled={!canPrev}
-        >
-          Prev
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={goNext}
-          disabled={!canNext}
-        >
-          Next
-        </Button>
-      </div>
     </div>
   );
 }
