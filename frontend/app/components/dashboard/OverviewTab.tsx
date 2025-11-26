@@ -22,6 +22,7 @@ import {
   Pie,
   Cell,
   Legend,
+  Tooltip as RechartsTooltip,
 } from "recharts";
 import {
   Wallet,
@@ -691,7 +692,7 @@ const OverviewTab = ({
             Chain Concentration
           </h3>
           {loadingOv ? (
-            <Skeleton className="h-[300px] w-full" />
+            <Skeleton className="h-[320px] w-full" />
           ) : !ov ? (
             <div className="text-sm text-slate-500">
               Load an address to see chain distribution.
@@ -701,14 +702,20 @@ const OverviewTab = ({
               No priced tokens to display.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={280}>
               <RPieChart>
                 <Pie
                   data={chainExposureData}
                   dataKey="value"
                   nameKey="name"
-                  outerRadius={110}
-                  label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={75}
+                  label={(entry) => {
+                    if (entry.pct < 5) return null;
+                    return `${entry.name.slice(0, 10)}${entry.name.length > 10 ? '...' : ''}`;
+                  }}
+                  labelLine={{ strokeWidth: 1 }}
                 >
                   {chainExposureData.map((entry, idx) => (
                     <Cell
@@ -717,7 +724,21 @@ const OverviewTab = ({
                     />
                   ))}
                 </Pie>
-                <Legend />
+                <RechartsTooltip
+                  content={({ active, payload }) => {
+                    if (!active || !payload || payload.length === 0) return null;
+                    const data = payload[0].payload as ChainExposureSlice;
+                    
+                    return (
+                      <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
+                        <p className="font-semibold text-sm">{data.name}</p>
+                        <p className="text-xs text-slate-600">{fmtUSD(data.value)}</p>
+                        <p className="text-xs text-slate-500">{fmtPct(data.pct)}</p>
+                      </div>
+                    );
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: '12px' }} />
               </RPieChart>
             </ResponsiveContainer>
           )}

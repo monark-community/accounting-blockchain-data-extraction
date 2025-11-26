@@ -237,13 +237,15 @@ const CapitalGainsTab = ({
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={realizedTimeline}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
+                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
                 <YAxis
                   tickFormatter={(v) =>
                     v >= 1000
                       ? `$${(v / 1000).toFixed(0)}k`
                       : `$${v.toFixed(0)}`
                   }
+                  tick={{ fontSize: 12 }}
+                  width={60}
                 />
                 <RechartsTooltip
                   formatter={(value: number) => [
@@ -293,7 +295,16 @@ const CapitalGainsTab = ({
                     data={realizedByAsset}
                     dataKey="value"
                     nameKey="asset"
-                    outerRadius={90}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={70}
+                    label={(entry) => {
+                      const totalAbs = realizedByAsset.reduce((sum, e) => sum + Math.abs(e.value), 0);
+                      const pct = totalAbs > 0 ? (Math.abs(entry.value) / totalAbs) * 100 : 0;
+                      if (pct < 8) return null;
+                      return `${entry.asset.slice(0, 6)}${entry.asset.length > 6 ? '...' : ''}`;
+                    }}
+                    labelLine={{ strokeWidth: 1 }}
                   >
                     {realizedByAsset.map((entry, idx) => {
                       const colors = [
@@ -313,14 +324,27 @@ const CapitalGainsTab = ({
                     })}
                   </Pie>
                   <RechartsTooltip
-                    formatter={(value: number, name: string) => [
-                      new Intl.NumberFormat("en-US", {
-                        style: "currency",
-                        currency,
-                      }).format(value as number),
-                      name,
-                    ]}
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null;
+                      const data = payload[0].payload;
+                      
+                      return (
+                        <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
+                          <p className="font-semibold text-sm">{data.asset}</p>
+                          <p className="text-xs text-slate-600">
+                            {new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency,
+                            }).format(data.value)}
+                          </p>
+                          <p className={`text-xs ${data.value >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {data.value >= 0 ? "Gain" : "Loss"}
+                          </p>
+                        </div>
+                      );
+                    }}
                   />
+                  <Legend wrapperStyle={{ fontSize: '11px' }} />
                 </RPieChart>
               </ResponsiveContainer>
               <ul className="flex-1 text-sm space-y-1">

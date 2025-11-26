@@ -144,6 +144,26 @@ interface GraphsTabProps {
   walletSummary: string;
 }
 
+// Helper function to group small holdings into "Others"
+const groupSmallHoldings = (
+  data: AllocationRow[],
+  threshold: number = 3
+): { mainData: AllocationRow[]; othersData: AllocationRow[] } => {
+  const sorted = [...data].sort((a, b) => b.pct - a.pct);
+  const mainData: AllocationRow[] = [];
+  const othersData: AllocationRow[] = [];
+
+  sorted.forEach((item) => {
+    if (item.pct >= threshold || mainData.length < 5) {
+      mainData.push(item);
+    } else {
+      othersData.push(item);
+    }
+  });
+
+  return { mainData, othersData };
+};
+
 const GraphsTab = ({
   address,
   networks,
@@ -226,7 +246,7 @@ const GraphsTab = ({
           Asset Distribution
         </h3>
         {loadingOv ? (
-          <Skeleton className="h-[300px] w-full" />
+          <Skeleton className="h-[320px] w-full" />
         ) : !ov ? (
           <div className="text-sm text-slate-500">
           Select at least one wallet to see asset distribution.
@@ -234,45 +254,94 @@ const GraphsTab = ({
         ) : allocationData.length === 0 ? (
           <div className="text-sm text-slate-500">No assets to display.</div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <RPieChart>
-              <Pie
-                data={allocationData}
-                dataKey="usd"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label={(entry) => `${entry.name} (${fmtPct(entry.pct)})`}
-              >
-                {allocationData.map((entry, index) => {
-                  const colors = [
-                    "#3b82f6",
-                    "#10b981",
-                    "#f59e0b",
-                    "#ef4444",
-                    "#8b5cf6",
-                    "#ec4899",
-                    "#06b6d4",
-                    "#84cc16",
-                  ];
-                  return (
-                    <Cell
-                      key={`asset-dist-${index}`}
-                      fill={colors[index % colors.length]}
-                    />
-                  );
-                })}
-              </Pie>
-              <RechartsTooltip
-                formatter={(value: number, name: string, props: any) => [
-                  fmtUSD(value),
-                  `${name} (${fmtPct(props.payload.pct)})`,
-                ]}
-              />
-              <Legend />
-            </RPieChart>
-          </ResponsiveContainer>
+          (() => {
+            const { mainData, othersData } = groupSmallHoldings(allocationData, 3);
+            const hasOthers = othersData.length > 0;
+            const othersTotal = othersData.reduce((sum, item) => sum + item.usd, 0);
+            const othersPct = othersData.reduce((sum, item) => sum + item.pct, 0);
+            
+            const chartData = hasOthers
+              ? [...mainData, { name: "Others", usd: othersTotal, pct: othersPct }]
+              : mainData;
+
+            return (
+              <ResponsiveContainer width="100%" height={280}>
+                <RPieChart>
+                  <Pie
+                    data={chartData}
+                    dataKey="usd"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={75}
+                    label={(entry) => {
+                      if (entry.pct < 5) return null;
+                      return `${entry.name.slice(0, 8)}${entry.name.length > 8 ? '...' : ''}`;
+                    }}
+                    labelLine={{ strokeWidth: 1 }}
+                  >
+                    {chartData.map((entry, index) => {
+                      const colors = [
+                        "#3b82f6",
+                        "#10b981",
+                        "#f59e0b",
+                        "#ef4444",
+                        "#8b5cf6",
+                        "#ec4899",
+                        "#06b6d4",
+                        "#84cc16",
+                        "#94a3b8",
+                      ];
+                      return (
+                        <Cell
+                          key={`asset-dist-${index}`}
+                          fill={entry.name === "Others" ? "#94a3b8" : colors[index % colors.length]}
+                        />
+                      );
+                    })}
+                  </Pie>
+                  <RechartsTooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null;
+                      const data = payload[0].payload;
+                      
+                      if (data.name === "Others" && hasOthers) {
+                        return (
+                          <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200 max-w-xs">
+                            <p className="font-semibold text-sm mb-2">Others ({fmtPct(othersPct)})</p>
+                            <p className="text-xs text-slate-600 mb-2">{fmtUSD(othersTotal)}</p>
+                            <div className="space-y-1 max-h-40 overflow-y-auto">
+                              {othersData.map((item, idx) => (
+                                <div key={idx} className="flex justify-between text-xs gap-2">
+                                  <span className="text-slate-700">{item.name}</span>
+                                  <span className="text-slate-500">{fmtPct(item.pct)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div className="bg-white p-2 rounded-lg shadow-lg border border-slate-200">
+                          <p className="font-semibold text-sm">{data.name}</p>
+                          <p className="text-xs text-slate-600">{fmtUSD(data.usd)}</p>
+                          <p className="text-xs text-slate-500">{fmtPct(data.pct)}</p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Legend 
+                    wrapperStyle={{ fontSize: '12px' }}
+                    formatter={(value) => {
+                      if (value.length > 15) return value.slice(0, 15) + '...';
+                      return value;
+                    }}
+                  />
+                </RPieChart>
+              </ResponsiveContainer>
+            );
+          })()
         )}
       </Card>
     );
@@ -285,11 +354,11 @@ const GraphsTab = ({
           Stablecoin vs Risk Assets
         </h3>
         {loadingOv || !ov ? (
-          <Skeleton className="h-[300px] w-full" />
+          <Skeleton className="h-[320px] w-full" />
         ) : stableVsRisk.stable === 0 && stableVsRisk.nonStable === 0 ? (
           <div className="text-sm text-slate-500">No data available.</div>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
+          <ResponsiveContainer width="100%" height={280}>
             <RPieChart>
               <Pie
                 data={[
@@ -300,18 +369,32 @@ const GraphsTab = ({
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                outerRadius={100}
-                label={(entry) =>
-                  `${entry.name}: ${fmtPct(
-                    (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100
-                  )}`
-                }
+                outerRadius={75}
+                label={(entry) => {
+                  const pct = (entry.value / (ov?.kpis.totalValueUsd || 1)) * 100;
+                  return `${fmtPct(pct)}`;
+                }}
+                labelLine={{ strokeWidth: 1 }}
               >
                 <Cell fill="#10b981" />
                 <Cell fill="#f59e0b" />
               </Pie>
-              <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
-              <Legend />
+              <RechartsTooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload || payload.length === 0) return null;
+                  const data = payload[0].payload;
+                  const pct = (data.value / (ov?.kpis.totalValueUsd || 1)) * 100;
+                  
+                  return (
+                    <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
+                      <p className="font-semibold text-sm">{data.name}</p>
+                      <p className="text-xs text-slate-600">{fmtUSD(data.value)}</p>
+                      <p className="text-xs text-slate-500">{fmtPct(pct)}</p>
+                    </div>
+                  );
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: '12px' }} />
             </RPieChart>
           </ResponsiveContainer>
         )}
@@ -371,7 +454,7 @@ const GraphsTab = ({
                 No classification data available.
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={320}>
+              <ResponsiveContainer width="100%" height={280}>
                 <RPieChart>
                   <Pie
                     data={accountingData}
@@ -379,8 +462,13 @@ const GraphsTab = ({
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    outerRadius={110}
-                    label={(entry) => `${entry.name} (${entry.percentage})`}
+                    outerRadius={75}
+                    label={(entry) => {
+                      const pctNum = parseFloat(entry.percentage);
+                      if (pctNum < 5) return null;
+                      return `${entry.name.slice(0, 10)}${entry.name.length > 10 ? '...' : ''}`;
+                    }}
+                    labelLine={{ strokeWidth: 1 }}
                   >
                     {accountingData.map((entry, index) => {
                       const colors = [
@@ -399,8 +487,21 @@ const GraphsTab = ({
                       );
                     })}
                   </Pie>
-                  <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
-                  <Legend />
+                  <RechartsTooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null;
+                      const data = payload[0].payload;
+                      
+                      return (
+                        <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
+                          <p className="font-semibold text-sm">{data.name}</p>
+                          <p className="text-xs text-slate-600">{fmtUSD(data.value)}</p>
+                          <p className="text-xs text-slate-500">{data.percentage}</p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
                 </RPieChart>
               </ResponsiveContainer>
             );
@@ -704,7 +805,7 @@ const GraphsTab = ({
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 11 }}
+                tick={{ fontSize: 12 }}
                 angle={-45}
                 textAnchor="end"
                 height={80}
@@ -712,7 +813,8 @@ const GraphsTab = ({
               />
               <YAxis
                 tickFormatter={(v) => fmtUSD(v)}
-                tick={{ fontSize: 11 }}
+                tick={{ fontSize: 12 }}
+                width={70}
                 domain={["dataMin", "dataMax"]}
               />
               <RechartsTooltip
@@ -768,8 +870,8 @@ const GraphsTab = ({
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={netFlowData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis tickFormatter={(v) => fmtUSD(v)} />
+            <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+            <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
             <RechartsTooltip
               formatter={(value: number) => fmtUSD(value)}
               labelFormatter={(label) => `Date: ${label}`}
@@ -808,8 +910,8 @@ const GraphsTab = ({
         <ResponsiveContainer width="100%" height={320}>
           <AreaChart data={chainHistory.data} stackOffset="expand">
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} />
+            <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+            <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fontSize: 12 }} width={50} />
             <RechartsTooltip
               formatter={(value: number, name: string) => [
                 `${value.toFixed(1)}%`,
@@ -859,8 +961,8 @@ const GraphsTab = ({
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chainBreakdown}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="label" />
-            <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
+            <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+            <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} tick={{ fontSize: 12 }} width={50} />
             <RechartsTooltip
               formatter={(
                 value: unknown,
@@ -902,10 +1004,12 @@ const GraphsTab = ({
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="label" />
+            <XAxis dataKey="label" tick={{ fontSize: 12 }} />
             <YAxis
               tickFormatter={(v) => fmtUSD(v)}
               domain={["auto", "auto"]}
+              tick={{ fontSize: 12 }}
+              width={70}
             />
             <RechartsTooltip
               formatter={(v: any, _n: any, e: any) => [
@@ -1040,9 +1144,9 @@ const GraphsTab = ({
                   angle={-45}
                   textAnchor="end"
                   height={80}
-                  tick={{ fontSize: 10 }}
+                  tick={{ fontSize: 11 }}
                 />
-                <YAxis tickFormatter={(v) => `${v}%`} />
+                <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} width={50} />
                 <RechartsTooltip
                   formatter={(
                     value: number,
@@ -1145,8 +1249,8 @@ const GraphsTab = ({
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={liquidityData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                    <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                    <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${fmtUSD(value)} (${props.payload.percentage.toFixed(
@@ -1227,7 +1331,7 @@ const GraphsTab = ({
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tickFormatter={(v) => fmtUSD(v)} />
+                  <XAxis type="number" tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} />
                   <YAxis
                     type="category"
                     dataKey="label"
@@ -1328,8 +1432,8 @@ const GraphsTab = ({
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={reserveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
                   <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
                   <Bar dataKey="value">
                     {reserveData.map((entry) => (
@@ -1629,8 +1733,8 @@ const GraphsTab = ({
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={crossChainData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} />
-                    <YAxis tickFormatter={(v) => fmtUSD(v)} />
+                    <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 11 }} />
+                    <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${fmtUSD(value)} (${props.payload.percentage}%)`,
@@ -1786,9 +1890,9 @@ const GraphsTab = ({
                       angle={-45}
                       textAnchor="end"
                       height={80}
-                      tick={{ fontSize: 10 }}
+                      tick={{ fontSize: 11 }}
                     />
-                    <YAxis tickFormatter={(v) => `${v}%`} />
+                    <YAxis tickFormatter={(v) => `${v}%`} tick={{ fontSize: 12 }} width={50} />
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${value.toFixed(2)}% (${fmtUSD(props.payload.value)})`,
