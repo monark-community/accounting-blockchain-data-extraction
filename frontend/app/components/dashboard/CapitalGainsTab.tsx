@@ -103,10 +103,20 @@ const CapitalGainsTab = ({
       if (!entry.asset) return;
       map.set(entry.asset, (map.get(entry.asset) ?? 0) + entry.gain);
     });
-    return Array.from(map.entries())
+    const sorted = Array.from(map.entries())
       .map(([asset, value]) => ({ asset, value }))
-      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-      .slice(0, 6);
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    
+    // Keep top 5 and group the rest into "Others"
+    const top5 = sorted.slice(0, 5);
+    const others = sorted.slice(5);
+    
+    if (others.length > 0) {
+      const othersTotal = others.reduce((sum, item) => sum + item.value, 0);
+      return [...top5, { asset: "Others", value: othersTotal }];
+    }
+    
+    return top5;
   }, [capitalGainsData.realized]);
 
   return (
@@ -279,7 +289,7 @@ const CapitalGainsTab = ({
             <h3 className="text-lg font-semibold text-slate-800">
               Top Realized Contributors
             </h3>
-            <Badge variant="outline">Top 6</Badge>
+            <Badge variant="outline">Top 5 + Others</Badge>
           </div>
           {loading ? (
             <Skeleton className="h-56 w-full" />
@@ -288,89 +298,169 @@ const CapitalGainsTab = ({
               No realized gains to display.
             </p>
           ) : (
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-              <ResponsiveContainer width="100%" height={220}>
-                <RPieChart>
-                  <Pie
-                    data={realizedByAsset}
-                    dataKey="value"
-                    nameKey="asset"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={70}
-                    label={(entry) => {
-                      const totalAbs = realizedByAsset.reduce((sum, e) => sum + Math.abs(e.value), 0);
-                      const pct = totalAbs > 0 ? (Math.abs(entry.value) / totalAbs) * 100 : 0;
-                      if (pct < 8) return null;
-                      return `${entry.asset.slice(0, 6)}${entry.asset.length > 6 ? '...' : ''}`;
-                    }}
-                    labelLine={{ strokeWidth: 1 }}
-                  >
-                    {realizedByAsset.map((entry, idx) => {
-                      const colors = [
-                        "#3b82f6",
-                        "#10b981",
-                        "#f97316",
-                        "#a855f7",
-                        "#14b8a6",
-                        "#ef4444",
-                      ];
-                      return (
-                        <Cell
-                          key={entry.asset}
-                          fill={colors[idx % colors.length]}
-                        />
-                      );
-                    })}
-                  </Pie>
-                  <RechartsTooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload || payload.length === 0) return null;
-                      const data = payload[0].payload;
-                      
-                      return (
-                        <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
-                          <p className="font-semibold text-sm">{data.asset}</p>
-                          <p className="text-xs text-slate-600">
-                            {new Intl.NumberFormat("en-US", {
-                              style: "currency",
-                              currency,
-                            }).format(data.value)}
-                          </p>
-                          <p className={`text-xs ${data.value >= 0 ? "text-green-600" : "text-red-600"}`}>
-                            {data.value >= 0 ? "Gain" : "Loss"}
-                          </p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: '11px' }} />
-                </RPieChart>
-              </ResponsiveContainer>
-              <ul className="flex-1 text-sm space-y-1">
-                {realizedByAsset.map((entry) => (
-                  <li
-                    key={entry.asset}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="font-medium text-slate-700">
-                      {entry.asset}
-                    </span>
-                    <span
-                      className={
-                        entry.value >= 0 ? "text-green-600" : "text-red-600"
-                      }
+            (() => {
+              // Get all assets with gains for the "Others" tooltip
+              const allAssetMap = new Map<string, number>();
+              capitalGainsData.realized.forEach((entry) => {
+                if (!entry.asset) return;
+                allAssetMap.set(entry.asset, (allAssetMap.get(entry.asset) ?? 0) + entry.gain);
+              });
+              const allAssets = Array.from(allAssetMap.entries())
+                .map(([asset, value]) => ({ asset, value }))
+                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+              
+              const othersDetails = allAssets.slice(5);
+              const hasOthers = othersDetails.length > 0;
+
+              return (
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <RPieChart>
+                    <Pie
+                      data={realizedByAsset}
+                      dataKey="value"
+                      nameKey="asset"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={70}
+                      label={(entry) => {
+                        const totalAbs = realizedByAsset.reduce((sum, e) => sum + Math.abs(e.value), 0);
+                        const pct = totalAbs > 0 ? (Math.abs(entry.value) / totalAbs) * 100 : 0;
+                        if (pct < 8) return null;
+                        return `${entry.asset.slice(0, 6)}${entry.asset.length > 6 ? '...' : ''}`;
+                      }}
+                      labelLine={{ strokeWidth: 1 }}
+                      activeShape={{
+                        outerRadius: 77,
+                        stroke: '#1e293b',
+                        strokeWidth: 2,
+                      }}
                     >
-                      <CurrencyDisplay
-                        amount={entry.value}
-                        currency={currency}
-                        showSign={false}
+                        {realizedByAsset.map((entry, idx) => {
+                          const colors = [
+                            "#3b82f6",
+                            "#10b981",
+                            "#f97316",
+                            "#a855f7",
+                            "#14b8a6",
+                            "#94a3b8",
+                          ];
+                          return (
+                            <Cell
+                              key={entry.asset}
+                              fill={entry.asset === "Others" ? "#94a3b8" : colors[idx % colors.length]}
+                            />
+                          );
+                        })}
+                      </Pie>
+                      <RechartsTooltip
+                        content={({ active, payload }) => {
+                          if (!active || !payload || payload.length === 0) return null;
+                          const data = payload[0].payload;
+                          
+                          if (data.asset === "Others" && hasOthers) {
+                            const totalAbs = realizedByAsset.reduce((sum, e) => sum + Math.abs(e.value), 0);
+                            const pct = totalAbs > 0 ? (Math.abs(data.value) / totalAbs) * 100 : 0;
+                            
+                            return (
+                              <div className="bg-white p-4 rounded-xl shadow-2xl border-2 border-slate-300 max-w-sm animate-in fade-in duration-200">
+                                {/* Header */}
+                                <div className="border-b-2 border-slate-200 pb-3 mb-3">
+                                  <div className="flex items-center justify-between">
+                                    <p className="font-bold text-base text-slate-800">Others</p>
+                                    <span className="px-2 py-1 bg-slate-100 rounded-md text-xs font-semibold text-slate-700">
+                                      {pct.toFixed(1)}%
+                                    </span>
+                                  </div>
+                                  <p className={`text-sm font-semibold mt-1 ${data.value >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                    {new Intl.NumberFormat("en-US", {
+                                      style: "currency",
+                                      currency,
+                                    }).format(data.value)}
+                                  </p>
+                                  <p className="text-xs text-slate-500 mt-1">{othersDetails.length} assets grouped</p>
+                                </div>
+                                
+                                {/* Details list with scroll */}
+                                <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                  {othersDetails.map((item, idx) => (
+                                    <div 
+                                      key={idx} 
+                                      className="flex justify-between items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors"
+                                    >
+                                      <span className="text-sm font-medium text-slate-700 truncate flex-1">
+                                        {item.asset}
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                          item.value >= 0 
+                                            ? "text-green-700 bg-green-50" 
+                                            : "text-red-700 bg-red-50"
+                                        }`}>
+                                          {item.value >= 0 ? "Gain" : "Loss"}
+                                        </span>
+                                        <span className={`text-xs font-semibold min-w-[80px] text-right ${
+                                          item.value >= 0 ? "text-green-600" : "text-red-600"
+                                        }`}>
+                                          {new Intl.NumberFormat("en-US", {
+                                            style: "currency",
+                                            currency,
+                                            signDisplay: "never",
+                                          }).format(Math.abs(item.value))}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <div className="bg-white p-3 rounded-lg shadow-xl border-2 border-slate-300">
+                              <p className="font-bold text-sm text-slate-800">{data.asset}</p>
+                              <p className={`text-sm font-semibold mt-1 ${data.value >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                {new Intl.NumberFormat("en-US", {
+                                  style: "currency",
+                                  currency,
+                                }).format(data.value)}
+                              </p>
+                              <p className={`text-xs mt-1 ${data.value >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                {data.value >= 0 ? "Gain" : "Loss"}
+                              </p>
+                            </div>
+                          );
+                        }}
                       />
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                      <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    </RPieChart>
+                  </ResponsiveContainer>
+                  <ul className="flex-1 text-sm space-y-1">
+                    {realizedByAsset.map((entry) => (
+                      <li
+                        key={entry.asset}
+                        className="flex items-center justify-between"
+                      >
+                        <span className="font-medium text-slate-700">
+                          {entry.asset}
+                        </span>
+                        <span
+                          className={
+                            entry.value >= 0 ? "text-green-600" : "text-red-600"
+                          }
+                        >
+                          <CurrencyDisplay
+                            amount={entry.value}
+                            currency={currency}
+                            showSign={false}
+                          />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })()
           )}
         </Card>
       </div>

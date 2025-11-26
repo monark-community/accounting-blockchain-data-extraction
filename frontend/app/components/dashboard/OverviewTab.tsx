@@ -702,45 +702,120 @@ const OverviewTab = ({
               No priced tokens to display.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <RPieChart>
-                <Pie
-                  data={chainExposureData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={75}
-                  label={(entry) => {
-                    if (entry.pct < 5) return null;
-                    return `${entry.name.slice(0, 10)}${entry.name.length > 10 ? '...' : ''}`;
-                  }}
-                  labelLine={{ strokeWidth: 1 }}
-                >
-                  {chainExposureData.map((entry, idx) => (
-                    <Cell
-                      key={entry.chain}
-                      fill={getChainColor(entry.chain, idx)}
+            (() => {
+              // Group small chains into "Others" (best practice: threshold 5%, max 6 items)
+              const sorted = [...chainExposureData].sort((a, b) => b.value - a.value);
+              const mainChains: ChainExposureSlice[] = [];
+              const othersChains: ChainExposureSlice[] = [];
+              
+              sorted.forEach((item) => {
+                if (item.pct >= 5 || mainChains.length < 6) {
+                  mainChains.push(item);
+                } else {
+                  othersChains.push(item);
+                }
+              });
+
+              const hasOthers = othersChains.length > 0;
+              const othersTotal = othersChains.reduce((sum, item) => sum + item.value, 0);
+              const othersPct = othersChains.reduce((sum, item) => sum + item.pct, 0);
+
+              const finalChainData = hasOthers
+                ? [...mainChains, { 
+                    chain: "others", 
+                    name: "Others", 
+                    value: othersTotal, 
+                    pct: othersPct 
+                  }]
+                : mainChains;
+
+              return (
+                <ResponsiveContainer width="100%" height={280}>
+                  <RPieChart>
+                  <Pie
+                    data={finalChainData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={75}
+                    label={(entry) => {
+                      if (entry.pct < 5) return null;
+                      return `${entry.name.slice(0, 10)}${entry.name.length > 10 ? '...' : ''}`;
+                    }}
+                    labelLine={{ strokeWidth: 1 }}
+                    activeShape={{
+                      outerRadius: 82,
+                      stroke: '#1e293b',
+                      strokeWidth: 2,
+                    }}
+                  >
+                      {finalChainData.map((entry, idx) => (
+                        <Cell
+                          key={entry.chain}
+                          fill={entry.chain === "others" ? OTHER_CHAIN_COLOR : getChainColor(entry.chain, idx)}
+                        />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload || payload.length === 0) return null;
+                        const data = payload[0].payload as ChainExposureSlice;
+                        
+                        if (data.chain === "others" && hasOthers) {
+                          return (
+                            <div className="bg-white p-4 rounded-xl shadow-2xl border-2 border-slate-300 max-w-sm animate-in fade-in duration-200">
+                              {/* Header */}
+                              <div className="border-b-2 border-slate-200 pb-3 mb-3">
+                                <div className="flex items-center justify-between">
+                                  <p className="font-bold text-base text-slate-800">Others</p>
+                                  <span className="px-2 py-1 bg-slate-100 rounded-md text-xs font-semibold text-slate-700">
+                                    {fmtPct(othersPct)}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-semibold text-slate-600 mt-1">{fmtUSD(othersTotal)}</p>
+                                <p className="text-xs text-slate-500 mt-1">{othersChains.length} chains grouped</p>
+                              </div>
+                              
+                              {/* Details list with scroll */}
+                              <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                                {othersChains.map((item, idx) => (
+                                  <div 
+                                    key={idx} 
+                                    className="flex justify-between items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors"
+                                  >
+                                    <span className="text-sm font-medium text-slate-700 truncate flex-1">
+                                      {item.name}
+                                    </span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                        {fmtPct(item.pct)}
+                                      </span>
+                                      <span className="text-xs text-slate-500 min-w-[70px] text-right">
+                                        {fmtUSD(item.value)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div className="bg-white p-3 rounded-lg shadow-xl border-2 border-slate-300">
+                            <p className="font-bold text-sm text-slate-800">{data.name}</p>
+                            <p className="text-sm font-semibold text-slate-600 mt-1">{fmtUSD(data.value)}</p>
+                            <p className="text-xs text-slate-500 mt-1">{fmtPct(data.pct)}</p>
+                          </div>
+                        );
+                      }}
                     />
-                  ))}
-                </Pie>
-                <RechartsTooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload || payload.length === 0) return null;
-                    const data = payload[0].payload as ChainExposureSlice;
-                    
-                    return (
-                      <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
-                        <p className="font-semibold text-sm">{data.name}</p>
-                        <p className="text-xs text-slate-600">{fmtUSD(data.value)}</p>
-                        <p className="text-xs text-slate-500">{fmtPct(data.pct)}</p>
-                      </div>
-                    );
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: '12px' }} />
-              </RPieChart>
-            </ResponsiveContainer>
+                    <Legend wrapperStyle={{ fontSize: '12px' }} />
+                  </RPieChart>
+                </ResponsiveContainer>
+              );
+            })()
           )}
         </Card>
 

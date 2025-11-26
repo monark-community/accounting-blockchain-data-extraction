@@ -145,16 +145,20 @@ interface GraphsTabProps {
 }
 
 // Helper function to group small holdings into "Others"
-const groupSmallHoldings = (
-  data: AllocationRow[],
-  threshold: number = 3
-): { mainData: AllocationRow[]; othersData: AllocationRow[] } => {
+// Following data visualization best practices: keep only items >= 5% or top 5-7 items
+const groupSmallHoldings = <T extends { pct: number }>(
+  data: T[],
+  threshold: number = 5,
+  maxItems: number = 6
+): { mainData: T[]; othersData: T[] } => {
+  // Sort from largest to smallest (best practice)
   const sorted = [...data].sort((a, b) => b.pct - a.pct);
-  const mainData: AllocationRow[] = [];
-  const othersData: AllocationRow[] = [];
+  const mainData: T[] = [];
+  const othersData: T[] = [];
 
   sorted.forEach((item) => {
-    if (item.pct >= threshold || mainData.length < 5) {
+    // Keep items if they're >= threshold OR we haven't reached maxItems yet
+    if (item.pct >= threshold || mainData.length < maxItems) {
       mainData.push(item);
     } else {
       othersData.push(item);
@@ -255,7 +259,7 @@ const GraphsTab = ({
           <div className="text-sm text-slate-500">No assets to display.</div>
         ) : (
           (() => {
-            const { mainData, othersData } = groupSmallHoldings(allocationData, 3);
+            const { mainData, othersData } = groupSmallHoldings(allocationData, 5, 6);
             const hasOthers = othersData.length > 0;
             const othersTotal = othersData.reduce((sum, item) => sum + item.usd, 0);
             const othersPct = othersData.reduce((sum, item) => sum + item.pct, 0);
@@ -279,6 +283,11 @@ const GraphsTab = ({
                       return `${entry.name.slice(0, 8)}${entry.name.length > 8 ? '...' : ''}`;
                     }}
                     labelLine={{ strokeWidth: 1 }}
+                    activeShape={{
+                      outerRadius: 82,
+                      stroke: '#1e293b',
+                      strokeWidth: 2,
+                    }}
                   >
                     {chartData.map((entry, index) => {
                       const colors = [
@@ -307,14 +316,37 @@ const GraphsTab = ({
                       
                       if (data.name === "Others" && hasOthers) {
                         return (
-                          <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200 max-w-xs">
-                            <p className="font-semibold text-sm mb-2">Others ({fmtPct(othersPct)})</p>
-                            <p className="text-xs text-slate-600 mb-2">{fmtUSD(othersTotal)}</p>
-                            <div className="space-y-1 max-h-40 overflow-y-auto">
+                          <div className="bg-white p-4 rounded-xl shadow-2xl border-2 border-slate-300 max-w-sm animate-in fade-in duration-200">
+                            {/* Header */}
+                            <div className="border-b-2 border-slate-200 pb-3 mb-3">
+                              <div className="flex items-center justify-between">
+                                <p className="font-bold text-base text-slate-800">Others</p>
+                                <span className="px-2 py-1 bg-slate-100 rounded-md text-xs font-semibold text-slate-700">
+                                  {fmtPct(othersPct)}
+                                </span>
+                              </div>
+                              <p className="text-sm font-semibold text-slate-600 mt-1">{fmtUSD(othersTotal)}</p>
+                              <p className="text-xs text-slate-500 mt-1">{othersData.length} assets grouped</p>
+                            </div>
+                            
+                            {/* Details list with scroll */}
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
                               {othersData.map((item, idx) => (
-                                <div key={idx} className="flex justify-between text-xs gap-2">
-                                  <span className="text-slate-700">{item.name}</span>
-                                  <span className="text-slate-500">{fmtPct(item.pct)}</span>
+                                <div 
+                                  key={idx} 
+                                  className="flex justify-between items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors"
+                                >
+                                  <span className="text-sm font-medium text-slate-700 truncate flex-1">
+                                    {item.name}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                      {fmtPct(item.pct)}
+                                    </span>
+                                    <span className="text-xs text-slate-500 min-w-[70px] text-right">
+                                      {fmtUSD(item.usd)}
+                                    </span>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -323,10 +355,10 @@ const GraphsTab = ({
                       }
                       
                       return (
-                        <div className="bg-white p-2 rounded-lg shadow-lg border border-slate-200">
-                          <p className="font-semibold text-sm">{data.name}</p>
-                          <p className="text-xs text-slate-600">{fmtUSD(data.usd)}</p>
-                          <p className="text-xs text-slate-500">{fmtPct(data.pct)}</p>
+                        <div className="bg-white p-3 rounded-lg shadow-xl border-2 border-slate-300">
+                          <p className="font-bold text-sm text-slate-800">{data.name}</p>
+                          <p className="text-sm font-semibold text-slate-600 mt-1">{fmtUSD(data.usd)}</p>
+                          <p className="text-xs text-slate-500 mt-1">{fmtPct(data.pct)}</p>
                         </div>
                       );
                     }}
@@ -439,15 +471,36 @@ const GraphsTab = ({
               categoryMap.set(cat, (categoryMap.get(cat) ?? 0) + (h.valueUsd || 0));
             }
 
-            const accountingData = Array.from(categoryMap.entries()).map(
+            const accountingDataRaw = Array.from(categoryMap.entries()).map(
               ([name, value]) => ({
                 name,
                 value,
+                pct: ((value / (ov.kpis.totalValueUsd || 1)) * 100),
                 percentage:
                   ((value / (ov.kpis.totalValueUsd || 1)) * 100).toFixed(1) +
                   "%",
               })
             );
+
+            // Group small categories into "Others" (best practice: threshold 5%)
+            const { mainData: mainCategories, othersData: othersCategories } = groupSmallHoldings(
+              accountingDataRaw,
+              5,
+              6
+            );
+
+            const hasOthers = othersCategories.length > 0;
+            const othersTotal = othersCategories.reduce((sum, item) => sum + item.value, 0);
+            const othersPct = othersCategories.reduce((sum, item) => sum + item.pct, 0);
+
+            const accountingData = hasOthers
+              ? [...mainCategories, { 
+                  name: "Others", 
+                  value: othersTotal, 
+                  pct: othersPct,
+                  percentage: othersPct.toFixed(1) + "%" 
+                }]
+              : mainCategories;
 
             return accountingData.length === 0 ? (
               <div className="text-sm text-slate-500">
@@ -464,11 +517,15 @@ const GraphsTab = ({
                     cy="50%"
                     outerRadius={75}
                     label={(entry) => {
-                      const pctNum = parseFloat(entry.percentage);
-                      if (pctNum < 5) return null;
+                      if (entry.pct < 5) return null;
                       return `${entry.name.slice(0, 10)}${entry.name.length > 10 ? '...' : ''}`;
                     }}
                     labelLine={{ strokeWidth: 1 }}
+                    activeShape={{
+                      outerRadius: 82,
+                      stroke: '#1e293b',
+                      strokeWidth: 2,
+                    }}
                   >
                     {accountingData.map((entry, index) => {
                       const colors = [
@@ -478,11 +535,12 @@ const GraphsTab = ({
                         "#8b5cf6",
                         "#ec4899",
                         "#06b6d4",
+                        "#94a3b8",
                       ];
                       return (
                         <Cell
                           key={`acc-cell-${index}`}
-                          fill={colors[index % colors.length]}
+                          fill={entry.name === "Others" ? "#94a3b8" : colors[index % colors.length]}
                         />
                       );
                     })}
@@ -492,11 +550,51 @@ const GraphsTab = ({
                       if (!active || !payload || payload.length === 0) return null;
                       const data = payload[0].payload;
                       
+                      if (data.name === "Others" && hasOthers) {
+                        return (
+                          <div className="bg-white p-4 rounded-xl shadow-2xl border-2 border-slate-300 max-w-sm animate-in fade-in duration-200">
+                            {/* Header */}
+                            <div className="border-b-2 border-slate-200 pb-3 mb-3">
+                              <div className="flex items-center justify-between">
+                                <p className="font-bold text-base text-slate-800">Others</p>
+                                <span className="px-2 py-1 bg-slate-100 rounded-md text-xs font-semibold text-slate-700">
+                                  {data.percentage}
+                                </span>
+                              </div>
+                              <p className="text-sm font-semibold text-slate-600 mt-1">{fmtUSD(othersTotal)}</p>
+                              <p className="text-xs text-slate-500 mt-1">{othersCategories.length} categories grouped</p>
+                            </div>
+                            
+                            {/* Details list with scroll */}
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                              {othersCategories.map((item, idx) => (
+                                <div 
+                                  key={idx} 
+                                  className="flex justify-between items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors"
+                                >
+                                  <span className="text-sm font-medium text-slate-700 truncate flex-1">
+                                    {item.name}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                      {item.percentage}
+                                    </span>
+                                    <span className="text-xs text-slate-500 min-w-[70px] text-right">
+                                      {fmtUSD(item.value)}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      }
+                      
                       return (
-                        <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
-                          <p className="font-semibold text-sm">{data.name}</p>
-                          <p className="text-xs text-slate-600">{fmtUSD(data.value)}</p>
-                          <p className="text-xs text-slate-500">{data.percentage}</p>
+                        <div className="bg-white p-3 rounded-lg shadow-xl border-2 border-slate-300">
+                          <p className="font-bold text-sm text-slate-800">{data.name}</p>
+                          <p className="text-sm font-semibold text-slate-600 mt-1">{fmtUSD(data.value)}</p>
+                          <p className="text-xs text-slate-500 mt-1">{data.percentage}</p>
                         </div>
                       );
                     }}
