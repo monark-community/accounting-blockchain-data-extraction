@@ -11,13 +11,11 @@ export function getWeb3AuthConfig() {
     );
   }
 
-  const clientId =
-    process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID ||
-    "BIx-z-wuZBd1kin7X-dhH0Y0-lhePnm_1e4JnpzWQWB1NgBgigLUifarfWCMEChxeI0DwTRuusaVjncM2-_4EMg";
+  const clientId = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID;
 
-  if (!process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID) {
-    console.warn(
-      "⚠️ NEXT_PUBLIC_WEB3AUTH_CLIENT_ID not set. Using placeholder. Auth won't work properly."
+  if (!clientId) {
+    throw new Error(
+      "NEXT_PUBLIC_WEB3AUTH_CLIENT_ID is required. Please set it in your environment variables."
     );
   }
 
@@ -28,11 +26,9 @@ export function getWeb3AuthConfig() {
   const chainConfig = {
     chainNamespace: "eip155" as const,
     chainId: "0x1", // Ethereum mainnet
-    rpcTarget: `https://rpc.ankr.com/eth${
-      process.env.NEXT_PUBLIC_ANKR_API_KEY
-        ? `/${process.env.NEXT_PUBLIC_ANKR_API_KEY}`
-        : "/359d37c2dbd7ba5a4efe63395d64587af0264b2aef5659b0411cfc662aa26d9e"
-    }`,
+    rpcTarget: process.env.NEXT_PUBLIC_ANKR_API_KEY
+      ? `https://rpc.ankr.com/eth/${process.env.NEXT_PUBLIC_ANKR_API_KEY}`
+      : "https://rpc.ankr.com/eth",
     displayName: "Ethereum Mainnet",
     blockExplorer: "https://etherscan.io",
     ticker: "ETH",

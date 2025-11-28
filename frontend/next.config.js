@@ -25,8 +25,12 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
-    // Use backend URL from environment, fallback to Render production URL
-    const base = process.env.API_BASE || "https://ledgerlift-backend.onrender.com";
+    // Use backend URL from environment
+    const base = process.env.API_BASE;
+    
+    if (!base) {
+      throw new Error("API_BASE environment variable is required. Please set it in your environment variables.");
+    }
     
     if (process.env.NODE_ENV === 'development') {
       console.log("[Next.js] API_BASE configured:", base);
