@@ -66,7 +66,7 @@ export default function FinancialRatiosPanel({
   const loadedTxCount = cache.loadedRowsAll.length;
   const coveragePct =
     totalCount && totalCount > 0
-      ? Math.min(1, (loadedTxCount || 0) / totalCount)
+      ? Math.min(1, (totalCount || 0)  / loadedTxCount)
       : null;
   const coveragePctDisplay =
     coveragePct != null ? Math.round(coveragePct * 100) : null;
@@ -269,8 +269,8 @@ export default function FinancialRatiosPanel({
             </p>
             {totalCount && (
               <p className="text-xs text-slate-500">
-                {loadedTxCount.toLocaleString()}{" "}
-                / {totalCount.toLocaleString()}
+                {totalCount.toLocaleString()}{" "}
+                / {loadedTxCount.toLocaleString()}
               </p>
             )}
           </div>

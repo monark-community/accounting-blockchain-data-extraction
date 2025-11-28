@@ -64,7 +64,7 @@ export default function AllTransactionsTab({
   const coveragePct = useMemo(() => {
     if (!totalCount || totalCount <= 0) return null;
     if (!loadedTxCount || loadedTxCount <= 0) return 0;
-    return Math.min(1, loadedTxCount / totalCount);
+    return Math.min(1, totalCount / loadedTxCount);
   }, [totalCount, loadedTxCount]);
 
   // Search state
@@ -605,8 +605,8 @@ export default function AllTransactionsTab({
               </p>
               {totalCount && (
                 <p className="text-xs text-slate-500">
-                  {loadedTxCount.toLocaleString()} /{" "}
-                  {totalCount.toLocaleString()}
+                  {totalCount.toLocaleString()} /{" "}
+                  {loadedTxCount.toLocaleString()}
                 </p>
               )}
             </div>

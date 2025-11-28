@@ -44,7 +44,7 @@ export function CapitalGainsSnapshot({
 }: CapitalGainsSnapshotProps) {
   const coveragePct =
     totalCount && totalCount > 0
-      ? Math.min(1, loadedTransactionsCount / totalCount)
+      ? Math.min(1, totalCount / loadedTransactionsCount)
       : null;
   const hasRealizedData = capitalGainsSummary.realized.length > 0;
   const coveragePctDisplay =
@@ -71,8 +71,8 @@ export function CapitalGainsSnapshot({
             </p>
             {totalCount && (
               <p className="text-xs text-slate-500">
-                {loadedTransactionsCount.toLocaleString()} /{" "}
-                {totalCount.toLocaleString()}
+                {totalCount.toLocaleString()} /{" "}
+                {loadedTransactionsCount.toLocaleString()}
               </p>
             )}
           </div>
