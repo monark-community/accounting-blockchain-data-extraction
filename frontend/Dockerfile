@@ -40,8 +40,8 @@ FROM deps AS builder
 COPY . .
 
 # Next.js requires NEXT_PUBLIC_* variables to be available at build time
-# This works both with docker-compose (via ARG) and Render.com (via environment variables)
-# On Render.com: environment variables from dashboard are available in build context
+# This works both with docker-compose (via ARG) and Render.com (via .env.build file)
+# On Render.com: .env.build file is committed in the repo
 # On local: docker-compose passes variables as ARG from .env at root
 ARG NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=""
 ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=""
@@ -52,7 +52,6 @@ ARG NEXT_PUBLIC_DASHBOARD_MULTI_LIMIT=""
 ARG API_BASE=""
 
 # Convert ARG to ENV (for docker-compose local builds)
-# On Render.com, ARG will be empty, so we'll use environment variables from build context
 ENV NEXT_PUBLIC_WEB3AUTH_CLIENT_ID=${NEXT_PUBLIC_WEB3AUTH_CLIENT_ID}
 ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID}
 ENV NEXT_PUBLIC_ANKR_API_KEY=${NEXT_PUBLIC_ANKR_API_KEY}
@@ -64,13 +63,14 @@ ENV API_BASE=${API_BASE}
 ENV CI=true
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy and use the load-env script to handle environment variables
-COPY load-env.sh /tmp/load-env.sh
-RUN chmod +x /tmp/load-env.sh
-
-# Build: Use load-env.sh to load variables, then run npm build
-# This works both locally (with .env.build) and on Render.com (with environment variables)
-RUN /tmp/load-env.sh npm run build
+# Load .env.build if it exists (for Render.com), then run build
+# Priority: .env.build file > ENV from ARG
+RUN if [ -f .env.build ]; then \
+      set -a && \
+      . .env.build && \
+      set +a; \
+    fi && \
+    npm run build
 
 # ---------- Prod runtime: Node.js serving Next.js ----------
 FROM node:20-alpine AS prod
