@@ -15,8 +15,21 @@ export function useWallets() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch wallets on mount
+  // Check if we're in view-only mode (address in URL params)
+  const isViewOnlyMode = () => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.has('address');
+  };
+
+  // Fetch wallets on mount (skip if in view-only mode)
   useEffect(() => {
+    if (isViewOnlyMode()) {
+      // In view-only mode, don't fetch wallets - just set loading to false
+      setLoading(false);
+      setWallets([]);
+      return;
+    }
     fetchWallets();
   }, []);
 
