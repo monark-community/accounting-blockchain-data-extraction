@@ -380,20 +380,7 @@ export default function Auth() {
 
           <CardFooter className="justify-center text-xs text-blue-200/80 pt-6">
             <p className="text-center">
-              By continuing, you agree to our{" "}
-              <Link
-                href="/terms"
-                className="underline hover:text-white transition-colors"
-              >
-                Terms
-              </Link>
-              {" and "}
-              <Link
-                href="/privacy"
-                className="underline hover:text-white transition-colors"
-              >
-                Privacy Policy
-              </Link>
+              By continuing, you agree to our Terms and Privacy Policy
             </p>
           </CardFooter>
         </Card>
