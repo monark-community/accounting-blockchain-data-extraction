@@ -53,6 +53,7 @@ interface WalletContextType {
   connectError: Error | null;
   isPending: boolean;
   isLoggingOut: boolean;
+  isSessionReady: boolean;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => Promise<void>;
   addWallet: (wallet: Omit<Wallet, "id">) => void;
@@ -93,6 +94,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [userName, setUserName] = useState<string>("");
   const [sessionWallet, setSessionWallet] = useState<string | null>(null);
+  const [isSessionReady, setIsSessionReady] = useState(false);
 
   // Web3Auth integration
   const web3auth = useWeb3Auth();
@@ -307,17 +309,25 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
     const addressForSession = primaryIsConnected ? primaryAddress : "";
     if (!addressForSession) {
       setSessionWallet(null);
+      setIsSessionReady(false);
       return;
     }
-    if (sessionWallet === addressForSession) return;
+    if (sessionWallet === addressForSession) {
+      setIsSessionReady(true);
+      return;
+    }
 
     let cancelled = false;
+    setIsSessionReady(false);
 
     const ensureSession = async () => {
       try {
         const me = await fetch("/api/auth/me", { credentials: "include" });
         if (me.ok) {
-          if (!cancelled) setSessionWallet(addressForSession);
+          if (!cancelled) {
+            setSessionWallet(addressForSession);
+            setIsSessionReady(true);
+          }
           return;
         }
       } catch {
@@ -336,10 +346,16 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         });
         if (resp.ok && !cancelled) {
           setSessionWallet(addressForSession);
+          setIsSessionReady(true);
+        } else if (!cancelled) {
+          setIsSessionReady(false);
         }
       } catch (error) {
         if (process.env.NODE_ENV === "development") {
           console.error("Failed to establish backend session:", error);
+        }
+        if (!cancelled) {
+          setIsSessionReady(false);
         }
       }
     };
@@ -639,6 +655,7 @@ export const WalletProvider = ({ children }: { children: ReactNode }) => {
         connectError,
         isPending,
         isLoggingOut,
+        isSessionReady,
         connectWallet,
         disconnectWallet,
         addWallet,

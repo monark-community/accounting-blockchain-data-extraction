@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useWallet } from '@/contexts/WalletContext';
 
 export interface UserWallet {
   main_wallet_address: string;
@@ -14,6 +15,7 @@ export function useWallets() {
   const [wallets, setWallets] = useState<UserWallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isSessionReady } = useWallet();
 
   // Check if we're in view-only mode (address in URL params)
   const isViewOnlyMode = () => {
@@ -22,18 +24,7 @@ export function useWallets() {
     return params.has('address');
   };
 
-  // Fetch wallets on mount (skip if in view-only mode)
-  useEffect(() => {
-    if (isViewOnlyMode()) {
-      // In view-only mode, don't fetch wallets - just set loading to false
-      setLoading(false);
-      setWallets([]);
-      return;
-    }
-    fetchWallets();
-  }, []);
-
-  const fetchWallets = async () => {
+  const fetchWallets = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/wallets', {
@@ -53,7 +44,25 @@ export function useWallets() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch wallets on mount (skip if in view-only mode or if session is not ready)
+  useEffect(() => {
+    if (isViewOnlyMode()) {
+      // In view-only mode, don't fetch wallets - just set loading to false
+      setLoading(false);
+      setWallets([]);
+      return;
+    }
+
+    // Wait for session to be ready before fetching wallets
+    if (!isSessionReady) {
+      setLoading(true);
+      return;
+    }
+
+    fetchWallets();
+  }, [isSessionReady, fetchWallets]);
 
   const addWallet = async (address: string, name: string, chainId: number = 1) => {
     try {
