@@ -54,15 +54,108 @@ function parsePagination(query: Record<string, any>) {
 }
 
 /**
- * GET /api/transactions/:address
- * Query:
- *  - networks: comma-separated (optional; defaults to all supported)
- *  - from, to: ISO datetime or epoch seconds (optional)
- *  - page, limit: pagination (default 1 / 100)
+ * @openapi
+ * /transactions/{address}:
+ *   get:
+ *     summary: List normalized transaction legs for a wallet
+ *     tags: [Transactions]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: "^0x[0-9a-fA-F]{40}$"
+ *         description: Wallet address (0x...).
+ *       - in: query
+ *         name: networks
+ *         schema:
+ *           type: string
+ *         description: Comma-separated network ids (default = all supported).
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *         description: ISO timestamp or epoch seconds (inclusive lower bound).
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *         description: ISO timestamp or epoch seconds (inclusive upper bound).
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 40
+ *           default: 20
+ *       - in: query
+ *         name: minUsd
+ *         schema:
+ *           type: number
+ *         description: Minimum USD value to include (after pricing).
+ *       - in: query
+ *         name: spamFilter
+ *         schema:
+ *           type: string
+ *           enum: [off, soft, hard]
+ *           default: hard
+ *         description: Apply spam filtering to legs.
+ *       - in: query
+ *         name: class
+ *         schema:
+ *           type: string
+ *         description: Comma-separated classes (income, expense, transfer, swap, etc.).
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *         description: Pagination cursor; pairs with hasNext in the response.
+ *     responses:
+ *       200:
+ *         description: Transaction legs fetched
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     description: Normalized transaction leg
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     gasUsdByTx:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: number
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 hasNext:
+ *                   type: boolean
+ *                 nextCursor:
+ *                   type: string
+ *                   nullable: true
+ *                 warnings:
+ *                   type: object
+ *       400:
+ *         description: Invalid address or parameters
+ *       500:
+ *         description: Server error
  */
 router.get("/:address", async (req, res) => {
   const routeStartHrTime = process.hrtime.bigint();
-  
+
   try {
     const raw = String(req.params.address ?? "");
     const ok = /^0x[0-9a-f]{40}$/i.test(raw); // <-- case-insensitive
@@ -108,7 +201,8 @@ router.get("/:address", async (req, res) => {
       cursor,
     });
 
-    const serviceTime = Number(process.hrtime.bigint() - serviceStartTime) / 1_000_000;
+    const serviceTime =
+      Number(process.hrtime.bigint() - serviceStartTime) / 1_000_000;
 
     const gasMeta = (legsRaw as any)._gasUsdByTx as
       | Record<string, number>
@@ -116,11 +210,10 @@ router.get("/:address", async (req, res) => {
     if (gasMeta) delete (legsRaw as any)._gasUsdByTx;
 
     const filterStartTime = process.hrtime.bigint();
-    
+
     // apply filters from query
     const minUsd = req.query.minUsd ? Number(req.query.minUsd) : 0;
-    const spamFilter =
-      ((req.query.spamFilter as "off" | "soft" | "hard") ??
+    const spamFilter = ((req.query.spamFilter as "off" | "soft" | "hard") ??
       process.env.SPAM_FILTER_MODE ??
       "hard") as any;
     const legs = applyLegFilters(legsRaw, { minUsd, spamFilter });
@@ -146,8 +239,10 @@ router.get("/:address", async (req, res) => {
         ? null
         : encodeCursorFromLeg(pagedLegs[pagedLegs.length - 1]);
 
-    const filterTime = Number(process.hrtime.bigint() - filterStartTime) / 1_000_000;
-    const totalTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
+    const filterTime =
+      Number(process.hrtime.bigint() - filterStartTime) / 1_000_000;
+    const totalTime =
+      Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
 
     res.json({
       data: pagedLegs,
@@ -161,15 +256,24 @@ router.get("/:address", async (req, res) => {
         ...getTokenApiWarnings(),
       },
     });
-    
+
     // Single summary log with key metrics
     console.log(
-      `[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(-4)} | Page ${page} | return-all ${pagedLegs.length}/${legsRaw.length} legs | hasNext=${hasNext ? "yes" : "no"} | Service: ${(serviceTime / 1000).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
+      `[Backend] ✅ ${addr.slice(0, 6)}...${addr.slice(
+        -4
+      )} | Page ${page} | return-all ${pagedLegs.length}/${
+        legsRaw.length
+      } legs | hasNext=${hasNext ? "yes" : "no"} | Service: ${(
+        serviceTime / 1000
+      ).toFixed(1)}s | Total: ${(totalTime / 1000).toFixed(1)}s`
     );
-
   } catch (err: any) {
-    const errorTime = Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
-    console.error(`[Backend] ❌ Error (${(errorTime / 1000).toFixed(1)}s):`, err?.message || String(err));
+    const errorTime =
+      Number(process.hrtime.bigint() - routeStartHrTime) / 1_000_000;
+    console.error(
+      `[Backend] ❌ Error (${(errorTime / 1000).toFixed(1)}s):`,
+      err?.message || String(err)
+    );
     res
       .status(500)
       .json({ error: "Internal error", detail: err?.message ?? String(err) });
@@ -216,8 +320,7 @@ router.get("/summary/:address", async (req, res) => {
     if (gasMeta) delete (legsRaw as any)._gasUsdByTx;
 
     const minUsd = req.query.minUsd ? Number(req.query.minUsd) : 0;
-    const spamFilter =
-      ((req.query.spamFilter as "off" | "soft" | "hard") ??
+    const spamFilter = ((req.query.spamFilter as "off" | "soft" | "hard") ??
       process.env.SPAM_FILTER_MODE ??
       "hard") as any;
 
