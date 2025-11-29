@@ -155,7 +155,7 @@ function parsePagination(query: Record<string, any>) {
  */
 router.get("/:address", async (req, res) => {
   const routeStartHrTime = process.hrtime.bigint();
-
+  
   try {
     const raw = String(req.params.address ?? "");
     const ok = /^0x[0-9a-f]{40}$/i.test(raw); // <-- case-insensitive
@@ -280,6 +280,81 @@ router.get("/:address", async (req, res) => {
   }
 });
 
+/**
+ * @openapi
+ * /transactions/summary/{address}:
+ *   get:
+ *     summary: Aggregate KPIs and totals for a wallet's transactions
+ *     tags: [Transactions]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: "^0x[0-9a-fA-F]{40}$"
+ *         description: Wallet address (0x...).
+ *       - in: query
+ *         name: networks
+ *         schema:
+ *           type: string
+ *         description: Comma-separated network ids (default = all supported).
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *         description: ISO timestamp or epoch seconds (inclusive lower bound).
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *         description: ISO timestamp or epoch seconds (inclusive upper bound).
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 40
+ *           default: 20
+ *       - in: query
+ *         name: minUsd
+ *         schema:
+ *           type: number
+ *           default: 0
+ *         description: Minimum USD value to include.
+ *       - in: query
+ *         name: spamFilter
+ *         schema:
+ *           type: string
+ *           enum: [off, soft, hard]
+ *           default: hard
+ *         description: Apply spam filtering to legs before summarizing.
+ *     responses:
+ *       200:
+ *         description: Summary KPIs and category totals
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   description: Summary payload (KPIs, inflows/outflows, categories)
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *       400:
+ *         description: Invalid address or parameters
+ *       500:
+ *         description: Server error
+ */
 router.get("/summary/:address", async (req, res) => {
   try {
     const raw = String(req.params.address ?? "");
