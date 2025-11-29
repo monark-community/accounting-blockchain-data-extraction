@@ -15,8 +15,30 @@ import { pool } from "../db/pool";
 const router = Router();
 
 /**
- * GET /api/mfa/status-by-address
- * Check if MFA is enabled for a wallet address (no auth required)
+ * @openapi
+ * /mfa/status-by-address:
+ *   get:
+ *     summary: Check if MFA is enabled for a wallet (public)
+ *     tags: [MFA]
+ *     parameters:
+ *       - in: query
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Wallet address (0x...).
+ *     responses:
+ *       200:
+ *         description: MFA status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 enabled:
+ *                   type: boolean
+ *       400:
+ *         description: Missing wallet address
  */
 router.get("/status-by-address", async (req, res) => {
   try {
@@ -43,8 +65,32 @@ router.get("/status-by-address", async (req, res) => {
 });
 
 /**
- * POST /api/mfa/verify-by-address
- * Verify MFA code for a wallet address (no auth required - used during login)
+ * @openapi
+ * /mfa/verify-by-address:
+ *   post:
+ *     summary: Verify an MFA code for a wallet (public, login flow)
+ *     tags: [MFA]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [address, code]
+ *             properties:
+ *               address:
+ *                 type: string
+ *               code:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Code verified
+ *       400:
+ *         description: Invalid input or code
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
  */
 router.post("/verify-by-address", async (req, res) => {
   try {
@@ -85,8 +131,18 @@ router.post("/verify-by-address", async (req, res) => {
 router.use(requireAuth);
 
 /**
- * GET /api/mfa/status
- * Check if MFA is enabled for the current user
+ * @openapi
+ * /mfa/status:
+ *   get:
+ *     summary: Check MFA status for the authenticated user
+ *     tags: [MFA]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: MFA status
+ *       401:
+ *         description: Not authenticated
  */
 router.get("/status", async (req, res) => {
   try {
@@ -99,8 +155,20 @@ router.get("/status", async (req, res) => {
 });
 
 /**
- * POST /api/mfa/setup
- * Generate MFA secret and QR code for setup
+ * @openapi
+ * /mfa/setup:
+ *   post:
+ *     summary: Generate MFA secret, QR code, and backup codes
+ *     tags: [MFA]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Setup payload with secret, QR, and backup codes
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: User not found
  */
 router.post("/setup", async (req, res) => {
   try {
@@ -124,8 +192,30 @@ router.post("/setup", async (req, res) => {
 });
 
 /**
- * POST /api/mfa/verify
- * Verify a TOTP code during setup (before enabling MFA)
+ * @openapi
+ * /mfa/verify:
+ *   post:
+ *     summary: Verify a TOTP code during setup
+ *     tags: [MFA]
+ *     security:
+ *       - cookieAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code]
+ *             properties:
+ *               code:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Code verified
+ *       400:
+ *         description: Invalid code
+ *       401:
+ *         description: Not authenticated
  */
 router.post("/verify", async (req, res) => {
   try {
@@ -149,8 +239,20 @@ router.post("/verify", async (req, res) => {
 });
 
 /**
- * POST /api/mfa/enable
- * Enable MFA for the user (after successful verification)
+ * @openapi
+ * /mfa/enable:
+ *   post:
+ *     summary: Enable MFA after successful verification
+ *     tags: [MFA]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: MFA enabled
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Server error
  */
 router.post("/enable", async (req, res) => {
   try {
@@ -163,8 +265,20 @@ router.post("/enable", async (req, res) => {
 });
 
 /**
- * POST /api/mfa/disable
- * Disable MFA for the user
+ * @openapi
+ * /mfa/disable:
+ *   post:
+ *     summary: Disable MFA
+ *     tags: [MFA]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: MFA disabled
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Server error
  */
 router.post("/disable", async (req, res) => {
   try {
@@ -177,8 +291,18 @@ router.post("/disable", async (req, res) => {
 });
 
 /**
- * GET /api/mfa/backup-codes
- * Get remaining backup codes
+ * @openapi
+ * /mfa/backup-codes:
+ *   get:
+ *     summary: Get remaining backup codes
+ *     tags: [MFA]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Backup codes returned
+ *       401:
+ *         description: Not authenticated
  */
 router.get("/backup-codes", async (req, res) => {
   try {
@@ -191,8 +315,20 @@ router.get("/backup-codes", async (req, res) => {
 });
 
 /**
- * POST /api/mfa/regenerate-backup-codes
- * Generate new backup codes (invalidates old ones)
+ * @openapi
+ * /mfa/regenerate-backup-codes:
+ *   post:
+ *     summary: Regenerate backup codes (invalidates previous set)
+ *     tags: [MFA]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: New backup codes generated
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Server error
  */
 router.post("/regenerate-backup-codes", async (req, res) => {
   try {
