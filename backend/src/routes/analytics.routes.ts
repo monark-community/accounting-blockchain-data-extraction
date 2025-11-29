@@ -13,7 +13,65 @@ function dbg(...args: any[]) {
 const router = Router();
 
 /**
- * GET /api/analytics/historical/:address?networks=mainnet,polygon,...&days=180&useFallback=true
+ * @openapi
+ * /analytics/historical/{address}:
+ *   get:
+ *     summary: Historical portfolio value across networks
+ *     tags: [Analytics]
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *           pattern: "^0x[0-9a-fA-F]{40}$"
+ *         description: Wallet address (0x...).
+ *       - in: query
+ *         name: networks
+ *         schema:
+ *           type: string
+ *         description: Comma-separated network ids (default = all supported).
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           minimum: 7
+ *           maximum: 365
+ *           default: 180
+ *         description: Lookback window for historical data.
+ *       - in: query
+ *         name: useFallback
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Use fallback estimation when primary data is unavailable.
+ *     responses:
+ *       200:
+ *         description: Historical portfolio series
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 address:
+ *                   type: string
+ *                 networks:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 days:
+ *                   type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     description: Historical point with timestamp/value fields
+ *                 isEstimated:
+ *                   type: boolean
+ *                 warnings:
+ *                   type: object
+ *       400:
+ *         description: Invalid parameters or failed fetch
  */
 router.get("/historical/:address", async (req, res) => {
   try {
