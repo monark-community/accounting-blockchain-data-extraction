@@ -9,6 +9,15 @@ export const swaggerSpec = swaggerJsdoc({
       description:
         "On-chain analytics, transactions, wallet aggregation, and reporting endpoints for LedgerLift.",
     },
+    components: {
+      securitySchemes: {
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: process.env.SESSION_NAME || "ll_session",
+        },
+      },
+    },
     servers: [
       {
         url: "/api",

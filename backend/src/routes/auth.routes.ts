@@ -28,8 +28,45 @@ const baseCookieOptions = {
 };
 
 /**
- * POST /api/auth/web3auth-session
- * Create or find user by wallet address and create JWT session
+ * @openapi
+ * /auth/web3auth-session:
+ *   post:
+ *     summary: Create or find user by wallet and set a session cookie
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [address]
+ *             properties:
+ *               address:
+ *                 type: string
+ *                 description: Wallet address (0x...).
+ *               userInfo:
+ *                 type: object
+ *                 additionalProperties: true
+ *                 description: Optional profile info from Web3Auth
+ *     responses:
+ *       200:
+ *         description: Session created and cookie set
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 wallet_address:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                   nullable: true
+ *       400:
+ *         description: Missing wallet address
+ *       500:
+ *         description: Server error
  */
 router.post("/web3auth-session", async (req, res) => {
   try {
@@ -63,8 +100,16 @@ router.post("/web3auth-session", async (req, res) => {
 });
 
 /**
- * POST /api/auth/logout
- * Logout user by clearing JWT cookie
+ * @openapi
+ * /auth/logout:
+ *   post:
+ *     summary: Logout by clearing the session cookie
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Session cleared
+ *       500:
+ *         description: Server error
  */
 router.post("/logout", async (req, res) => {
   res.clearCookie(SESSION_NAME, baseCookieOptions);
@@ -73,8 +118,30 @@ router.post("/logout", async (req, res) => {
 });
 
 /**
- * GET /api/auth/me
- * Get current authenticated user info
+ * @openapi
+ * /auth/me:
+ *   get:
+ *     summary: Get the current authenticated user
+ *     tags: [Auth]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 wallet_address:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                   nullable: true
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: User not found
  */
 router.get("/me", requireAuth, async (req, res) => {
   try {
@@ -96,9 +163,32 @@ router.get("/me", requireAuth, async (req, res) => {
 });
 
 /**
- * PUT /api/auth/name
- * Update user name
- * Requires authentication (requireAuth middleware)
+ * @openapi
+ * /auth/name:
+ *   put:
+ *     summary: Update the authenticated user's name
+ *     tags: [Auth]
+ *     security:
+ *       - cookieAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Name updated
+ *       400:
+ *         description: Invalid name
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: User not found
  */
 router.put("/name", requireAuth, async (req, res) => {
   try {
@@ -129,12 +219,22 @@ router.put("/name", requireAuth, async (req, res) => {
 });
 
 /**
- * DELETE /api/auth/account
- * Delete user account and all related data
- * Requires authentication (requireAuth middleware)
- * Deletes the user from the users table and automatically deletes all related wallets
- * from user_wallets table due to CASCADE constraint
- * Clears the session cookie after successful deletion
+ * @openapi
+ * /auth/account:
+ *   delete:
+ *     summary: Delete the authenticated user's account
+ *     tags: [Auth]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Account deleted
+ *       401:
+ *         description: Not authenticated
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
  */
 router.delete("/account", requireAuth, async (req, res) => {
   try {
