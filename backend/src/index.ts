@@ -11,6 +11,8 @@ import transactionsRouter from "./routes/transactions.routes";
 import analyticsRouter from "./routes/analytics.routes";
 import networksRouter from "./routes/networks.routes";
 import { initializeDatabase } from "./db/init";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "./config/swagger";
 
 const app = express();
 
@@ -32,6 +34,8 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET!));
+
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/health", healthRouter); // → /api/health/ping
 app.use("/api/auth", authRoutes);
