@@ -140,10 +140,6 @@ const WALLET_COLOR_PALETTE = [
   "#84cc16",
 ];
 
-const MAX_MULTI_WALLETS = Number(
-  process.env.NEXT_PUBLIC_DASHBOARD_MULTI_LIMIT ?? 3
-);
-
 const shortAddress = (address?: string | null) =>
   address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "—";
 
@@ -388,7 +384,6 @@ const Dashboard = () => {
     setSelectedWallets((prev) => {
       if (checked) {
         if (prev.includes(walletAddress)) return prev;
-        if (prev.length >= MAX_MULTI_WALLETS) return prev;
         setWalletSelectionDirty(true);
         return [...prev, walletAddress];
       }
@@ -409,9 +404,6 @@ const Dashboard = () => {
     setWalletSelectionDirty(true);
   };
 
-  const walletLimitReached =
-    selectedWallets.length >= MAX_MULTI_WALLETS && !urlAddress;
-
   const handleSelectMainWallet = () => {
     if (urlAddress) return;
     const main = allWallets.find((wallet) => wallet.isMain);
@@ -423,9 +415,7 @@ const Dashboard = () => {
 
   const handleSelectAllWallets = () => {
     if (urlAddress) return;
-    const next = allWallets
-      .slice(0, MAX_MULTI_WALLETS)
-      .map((wallet) => wallet.address);
+    const next = allWallets.map((wallet) => wallet.address);
     setSelectedWallets(next);
     setWalletSelectionDirty(true);
   };
@@ -608,9 +598,8 @@ const Dashboard = () => {
           )
         );
         if (valid.length) {
-          const limited = valid.slice(0, MAX_MULTI_WALLETS);
-          setSelectedWallets(limited);
-          setAppliedWallets(limited);
+          setSelectedWallets(valid);
+          setAppliedWallets(valid);
           setWalletSelectionDirty(false);
         }
       } catch {
@@ -1323,9 +1312,12 @@ const Dashboard = () => {
               <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
                 <Badge variant="secondary" className="bg-slate-100 text-slate-700">
                   {appliedWalletDisplay.length || selectedWallets.length
-                    ? `${appliedWalletDisplay.length || selectedWallets.length}/${
-                        MAX_MULTI_WALLETS
-                      } wallets active`
+                    ? `${appliedWalletDisplay.length || selectedWallets.length} wallet${
+                        (appliedWalletDisplay.length ||
+                          selectedWallets.length) === 1
+                          ? ""
+                          : "s"
+                      } active`
                     : "No wallets applied"}
                 </Badge>
                 <Badge variant="secondary" className="bg-slate-100 text-slate-700">
@@ -1342,7 +1334,7 @@ const Dashboard = () => {
                       Wallets
                     </p>
                     <p className="text-xs text-slate-600">
-                      Aggregate up to {MAX_MULTI_WALLETS} wallets for analytics.
+                      Aggregate any number of wallets for analytics.
                     </p>
                   </div>
                   <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50">
@@ -1381,26 +1373,21 @@ const Dashboard = () => {
                             variant="outline"
                             className="border-2 border-slate-200 bg-white"
                           >
-                            Select wallets ({selectedWallets.length}/
-                            {MAX_MULTI_WALLETS})
+                            Select wallets ({selectedWallets.length})
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="w-72">
                           <DropdownMenuLabel>
-                            Wallets (max {MAX_MULTI_WALLETS})
+                            Wallets
                           </DropdownMenuLabel>
                           {allWallets.map((wallet) => {
                             const checked = selectedWallets.includes(
                               wallet.address
                             );
-                            const disabled =
-                              !checked &&
-                              selectedWallets.length >= MAX_MULTI_WALLETS;
                             return (
                               <DropdownMenuCheckboxItem
                                 key={wallet.address}
                                 checked={checked}
-                                disabled={disabled}
                                 onCheckedChange={(value) =>
                                   handleToggleWallet(wallet.address, !!value)
                                 }
@@ -1448,7 +1435,8 @@ const Dashboard = () => {
 
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
                       <span>
-                        Aggregating {aggregatedWalletCount} / {MAX_MULTI_WALLETS} wallets
+                        Aggregating {aggregatedWalletCount} wallet
+                        {aggregatedWalletCount === 1 ? "" : "s"}
                       </span>
                       {walletSelectionDirty &&
                         selectedWallets.length > 0 &&
@@ -1459,12 +1447,6 @@ const Dashboard = () => {
                           </span>
                         )}
                     </div>
-                    {walletLimitReached && (
-                      <p className="text-xs text-amber-700">
-                        Free tier limited to {MAX_MULTI_WALLETS} wallets. Manage
-                        additional wallets from the Manage Wallets tab.
-                      </p>
-                    )}
                   </div>
                 ) : (
                   <p className="text-sm text-slate-500">
@@ -1735,7 +1717,6 @@ const Dashboard = () => {
             <TransactionsWorkspaceProvider
               address={address}
               walletOptions={appliedWalletDisplay}
-              walletLimit={MAX_MULTI_WALLETS}
               onPricingWarningChange={(flag) =>
                 setPricingWarningFor("transactions", flag)
               }

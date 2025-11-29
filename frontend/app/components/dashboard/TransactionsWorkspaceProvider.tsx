@@ -14,9 +14,7 @@ import { useTransactionFilters } from "@/hooks/useTransactionFilters";
 import { useTransactionCache } from "@/hooks/useTransactionCache";
 import { useTransactionStats } from "@/hooks/useTransactionStats";
 
-const DEFAULT_MULTI_WALLET_LIMIT = Number(
-  process.env.NEXT_PUBLIC_DASHBOARD_MULTI_LIMIT ?? 3
-);
+const DEFAULT_MULTI_WALLET_LIMIT = Infinity;
 
 const WALLET_COLOR_PALETTE = [
   "#6366f1",
