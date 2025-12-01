@@ -1,653 +1,853 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import type { TxType } from "@/lib/types/transactions";
+import type { TxRow } from "@/lib/types/transactions";
+import { CapitalGainsSnapshot } from "./CapitalGainsSnapshot";
+import { TransactionToolbar } from "./TransactionToolbar";
+import { TransactionTable } from "./TransactionTable";
+import FinancialRatiosPanel from "./FinancialRatiosPanel";
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Eye,
-  ExternalLink,
-  RefreshCw,
-  TrendingDown,
-  TrendingUp,
-  Repeat,
-  Fuel,
-} from "lucide-react";
-
-import type { TxRow, TxType } from "@/lib/types/transactions";
-import { fetchTransactions } from "@/lib/api/transactions";
-
-// --- UI helpers
-const fmtUSD = (n: number | null | undefined) =>
-  n == null
-    ? "—"
-    : n.toLocaleString(undefined, {
-        style: "currency",
-        currency: "USD",
-        maximumFractionDigits: 2,
-      });
-const fmtQty = (qty: string, dir: "in" | "out") =>
-  `${dir === "in" ? "+" : "-"}${qty}`;
-const shortAddr = (a?: string | null) =>
-  a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "—";
-const typeColor = (t: TxType) =>
-  ({
-    income: "text-green-600",
-    expense: "text-red-600",
-    swap: "text-blue-600",
-    gas: "text-amber-600",
-  }[t]);
-const typeIcon = (t: TxType) =>
-  t === "income" ? (
-    <TrendingUp className="w-4 h-4" />
-  ) : t === "expense" ? (
-    <TrendingDown className="w-4 h-4" />
-  ) : t === "swap" ? (
-    <Repeat className="w-4 h-4" />
-  ) : t === "gas" ? (
-    <Fuel className="w-4 h-4" />
-  ) : null;
-
-const explorerBase = (network?: string) => {
-  switch ((network || "").toLowerCase()) {
-    case "mainnet":
-    case "ethereum":
-      return "https://etherscan.io";
-    case "sepolia":
-    case "eth-sepolia":
-      return "https://sepolia.etherscan.io";
-    case "base":
-      return "https://basescan.org";
-    case "polygon":
-      return "https://polygonscan.com";
-    case "bsc":
-      return "https://bscscan.com";
-    case "optimism":
-      return "https://optimistic.etherscan.io";
-    case "arbitrum-one":
-      return "https://arbiscan.io";
-    case "avalanche":
-      return "https://snowtrace.io";
-    case "unichain":
-      return "https://uniscan.xyz";
-  }
-};
-const etherscanTxUrl = (hash: string, network?: string) =>
-  `${explorerBase(network)}/tx/${hash}`;
-const networkLabel = (network?: string) => {
-  switch ((network || "").toLowerCase()) {
-    case "mainnet":
-    case "ethereum":
-      return "Ethereum";
-    case "sepolia":
-    case "eth-sepolia":
-      return "Sepolia";
-    case "base":
-      return "Base";
-    case "polygon":
-      return "Polygon";
-    case "bsc":
-      return "BSC";
-    case "optimism":
-      return "Optimism";
-    case "arbitrum-one":
-      return "Arbitrum";
-    case "avalanche":
-      return "Avalanche";
-    case "unichain":
-      return "Unichain";
-    default:
-      return network || "Unknown";
-  }
-};
-
-// Map UI chip → backend class= param
-function uiTypesToClassParam(selected: TxType[] | ["all"]): string | null {
-  if (!Array.isArray(selected) || (selected as any)[0] === "all") return null;
-  const set = new Set<TxType>(selected as TxType[]);
-  const classes: string[] = [];
-  if (set.has("swap")) classes.push("swap_in", "swap_out");
-  if (set.has("income"))
-    classes.push("transfer_in", "nft_transfer_in", "nft_buy", "income");
-  if (set.has("expense"))
-    classes.push("transfer_out", "nft_transfer_out", "nft_sell", "expense");
-  // NOTE: "gas" isn’t a leg row today; we show fees per tx in the row. Leaving out.
-  return classes.length ? classes.join(",") : null;
-}
-
-const PAGE_SIZE = 20;
+  typeIcon,
+  shortAddr,
+  fmtUSD,
+  PAGE_SIZE,
+} from "@/utils/transactionHelpers";
+import { useTransactionsWorkspace } from "./TransactionsWorkspaceProvider";
+import { generateFinancialReport } from "@/utils/financialReport";
+import { Search, X } from "lucide-react";
 
 interface AllTransactionsTabProps {
-  address?: string;
+  totalAssetsUsd: number | null;
+  stableHoldingsUsd: number;
 }
 
-export default function AllTransactionsTab({ address: propAddress }: AllTransactionsTabProps) {
-  // Use prop address if provided, otherwise read from URL
-  const [address, setAddress] = useState<string>(propAddress || "");
-  
-  useEffect(() => {
-    if (propAddress) {
-      setAddress(propAddress);
+export default function AllTransactionsTab({
+  totalAssetsUsd,
+  stableHoldingsUsd,
+}: AllTransactionsTabProps) {
+  const {
+    address,
+    activeWallets,
+    walletOptionList,
+    walletDropdownVisible,
+    walletButtonLabel,
+    walletLimitReached,
+    walletLimit,
+    walletLabelLookup,
+    selectedWallets,
+    toggleWalletSelection,
+    selectAllWallets,
+    resetWalletSelection,
+    exportLabel,
+    filters,
+    cache,
+    stats,
+    totalCount,
+    canPrev,
+    canNext,
+    goPrev,
+    goNext,
+    setRefreshKey,
+  } = useTransactionsWorkspace();
+  const loadedTxCount = cache.loadedRowsAll.length;
+  const coveragePct = useMemo(() => {
+    if (!totalCount || totalCount <= 0) return null;
+    if (!loadedTxCount || loadedTxCount <= 0) return 0;
+    return Math.min(1, totalCount / loadedTxCount);
+  }, [totalCount, loadedTxCount]);
+
+  // Search state
+  const [searchType, setSearchType] = useState<"hash" | "address" | "amount">(
+    "hash"
+  );
+  const [searchValue, setSearchValue] = useState<string>("");
+  const [activeSearchValue, setActiveSearchValue] = useState<string>("");
+  const [activeSearchType, setActiveSearchType] = useState<
+    "hash" | "address" | "amount"
+  >("hash");
+
+  // Helper function to normalize address/hash for comparison
+  const normalizeAddress = (addr: string | null | undefined): string => {
+    if (!addr) return "";
+    return addr.toLowerCase().replace(/^0x/, "");
+  };
+
+  // Helper function to extract search patterns from truncated format (e.g., "0x4809...a413" or "0x4809…a413")
+  const extractSearchPatterns = (search: string): string[] => {
+    const trimmed = search.trim().toLowerCase();
+    const patterns: Set<string> = new Set([trimmed]);
+
+    // Handle truncated format - support both "..." and "…" (Unicode ellipsis)
+    const hasEllipsis = trimmed.includes("...") || trimmed.includes("…");
+
+    if (hasEllipsis) {
+      // Split by either "..." or "…"
+      const parts = trimmed.split(/\.\.\.|…/);
+      if (parts.length === 2) {
+        const start = parts[0].replace(/^0x/, "").trim();
+        const end = parts[1].trim();
+
+        // Add patterns: full with 0x, full without 0x, start only, end only
+        if (start && end) {
+          // Try to reconstruct full hash
+          patterns.add(`0x${start}${end}`);
+          patterns.add(`${start}${end}`);
+        }
+        // Add start pattern (first few chars) - minimum 4 chars for reliable matching
+        if (start && start.length >= 4) {
+          patterns.add(start);
+          patterns.add(`0x${start}`);
+        }
+        // Add end pattern (last few chars) - minimum 4 chars
+        if (end && end.length >= 4) {
+          patterns.add(end);
+          patterns.add(`0x${end}`);
+        }
+        // Also add concatenated without 0x (for partial matching in middle of hash)
+        if (start && end) {
+          patterns.add(start + end);
+        }
+      }
     } else {
-      const urlParams = new URLSearchParams(window.location.search);
-      setAddress(urlParams.get("address") || "");
+      // Normal case: add with and without 0x
+      const without0x = trimmed.replace(/^0x/, "");
+      if (without0x && without0x.length > 0) {
+        patterns.add(without0x);
+      }
+      if (!trimmed.startsWith("0x") && trimmed.length > 0) {
+        patterns.add(`0x${trimmed}`);
+      }
+      // Also add the trimmed value as-is
+      if (trimmed.length > 0) {
+        patterns.add(trimmed);
+      }
     }
-  }, [propAddress]);
 
-  // Server data & pagination
-  const [rows, setRows] = useState<TxRow[]>([]);
-  const [page, setPage] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
+    // Remove empty patterns and ensure minimum length of 2 chars
+    const result = Array.from(patterns).filter((p) => p && p.length >= 2);
 
-  // Simple filter chip state
-  const [selectedTypes, setSelectedTypes] = useState<TxType[] | ["all"]>([
-    "all",
-  ] as any);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[Search] Extracted patterns from", search, ":", result);
+    }
 
-  // Visible columns
-  const visibleColumnsInit = {
-    type: true,
-    date: true,
-    network: true,
-    asset: true,
-    qty: true,
-    usd: true,
-    counterparty: true,
-    tx: true,
-  } as const;
-  const [visibleColumns, setVisibleColumns] = useState<
-    Record<keyof typeof visibleColumnsInit, boolean>
-  >({ ...visibleColumnsInit });
+    return result;
+  };
 
-  // Load current page
-  async function load(p: number) {
-    if (!address) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const classParam = uiTypesToClassParam(selectedTypes);
-      const { rows, hasNext } = await fetchTransactions(address, {
-        // networks: (omitted) → backend default = all supported EVM networks
-        networks: "mainnet",
-        page: p,
-        limit: PAGE_SIZE,
-        minUsd: 0,
-        spamFilter: "soft",
-        ...(classParam ? { class: classParam } : {}),
+  // Filter transactions based on search
+  const filteredRows = useMemo(() => {
+    if (!activeSearchValue.trim()) {
+      return cache.rows;
+    }
+
+    const searchPatterns = extractSearchPatterns(activeSearchValue);
+
+    // Search in all loaded transactions, not just current page
+    // Use loadedRowsAll if available and has data, otherwise fall back to rows
+    let transactionsToSearch: TxRow[] = [];
+
+    if (cache.loadedRowsAll && cache.loadedRowsAll.length > 0) {
+      transactionsToSearch = cache.loadedRowsAll;
+    } else if (cache.rows && cache.rows.length > 0) {
+      transactionsToSearch = cache.rows;
+    }
+
+    if (!transactionsToSearch || transactionsToSearch.length === 0) {
+      return [];
+    }
+
+    // Debug: log search info
+    if (process.env.NODE_ENV === "development") {
+      console.log("[Search] Searching for:", {
+        type: activeSearchType,
+        value: activeSearchValue,
+        patterns: searchPatterns,
+        totalTransactions: transactionsToSearch.length,
+        sampleHash: transactionsToSearch[0]?.hash,
       });
-      setRows(rows);
-      setHasNext(hasNext);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load transactions");
-      setRows([]);
-      setHasNext(false);
-    } finally {
-      setLoading(false);
     }
-  }
 
-  // Initial/refresh
-  useEffect(() => {
-    setPage(1);
-    load(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, refreshKey]);
+    const filtered = transactionsToSearch.filter((tx: TxRow) => {
+      if (!tx) return false;
 
-  // When server-side class filter changes (chips), go back to page 1
-  useEffect(() => {
-    if (!address) return;
-    setPage(1);
-    load(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(selectedTypes)]);
+      // Normalize search value once for all cases
+      const searchValueLower = activeSearchValue.trim().toLowerCase();
 
-  const canPrev = page > 1;
-  const canNext = hasNext;
-  const goPrev = () => {
-    const p = Math.max(1, page - 1);
-    setPage(p);
-    load(p);
-  };
-  const goNext = () => {
-    const p = page + 1;
-    setPage(p);
-    load(p);
-  };
+      switch (activeSearchType) {
+        case "hash":
+          if (!tx.hash) return false;
+          const txHashLower = tx.hash.toLowerCase();
+          const txHashWithout0x = txHashLower.replace(/^0x/, "");
 
-  // Export helpers (unchanged from your file)
-  const nowStamp = () => {
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(
-      d.getHours()
-    )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  };
-  const shortForFile = (a: string) =>
-    a ? `${a.slice(0, 6)}_${a.slice(-4)}` : "wallet";
-  type Scope = "visible" | "loaded";
-  function mapTxForCsv(tx: TxRow) {
-    return {
-      date_iso: tx.ts,
-      type: tx.type,
-      direction: tx.direction,
-      asset: tx.asset?.symbol ?? "",
-      contract: tx.asset?.contract ?? "",
-      decimals: tx.asset?.decimals ?? "",
-      qty: tx.qty ?? "",
-      price_usd_at_ts: tx.priceUsdAtTs ?? "",
-      usd_at_ts: tx.usdAtTs ?? "",
-      network: tx.network ?? "",
-      tx_hash: tx.hash ?? "",
-      counterparty: tx.counterparty?.address ?? "",
-      counterparty_label: tx.counterparty?.label ?? "",
-    };
-  }
-  function toCsv(rows: ReturnType<typeof mapTxForCsv>[]) {
-    const headers = Object.keys(rows[0] ?? { date_iso: "", type: "" });
-    const escape = (v: any) => {
-      const s = String(v ?? "");
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines = [
-      headers.join(","),
-      ...rows.map((r) => headers.map((h) => escape((r as any)[h])).join(",")),
-    ].join("\n");
-    return new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), lines], {
-      type: "text/csv;charset=utf-8",
+          // For truncated format (e.g., "0x4809...a413"), check if hash starts with start part AND ends with end part
+          if (
+            searchValueLower.includes("...") ||
+            searchValueLower.includes("…")
+          ) {
+            const parts = searchValueLower.split(/\.\.\.|…/);
+            if (parts.length === 2) {
+              const startPart = parts[0].replace(/^0x/, "").trim();
+              const endPart = parts[1].trim();
+              // Hash must start with start part AND end with end part - EXACT match
+              if (startPart && endPart) {
+                const hashStarts = txHashWithout0x.startsWith(startPart);
+                const hashEnds = txHashWithout0x.endsWith(endPart);
+                const match = hashStarts && hashEnds;
+
+                if (process.env.NODE_ENV === "development" && match) {
+                  console.log("[Search] Hash match (truncated):", {
+                    searchValue: activeSearchValue,
+                    startPart,
+                    endPart,
+                    txHash: txHashLower,
+                    match,
+                  });
+                }
+                return match;
+              }
+            }
+          }
+
+          // For full hash or partial hash (without ellipsis), check exact match or start/end match
+          const searchWithout0x = searchValueLower.replace(/^0x/, "");
+
+          // If it's a full hash (64+ chars), require exact match
+          if (searchWithout0x.length >= 64) {
+            const exactMatch =
+              txHashWithout0x === searchWithout0x ||
+              txHashLower === searchValueLower;
+            if (process.env.NODE_ENV === "development" && exactMatch) {
+              console.log("[Search] Hash match (exact):", {
+                searchValue: activeSearchValue,
+                txHash: txHashLower,
+                match: exactMatch,
+              });
+            }
+            return exactMatch;
+          }
+
+          // For partial hash, check if hash starts OR ends with the pattern (not contains!)
+          const startsWith =
+            txHashWithout0x.startsWith(searchWithout0x) ||
+            txHashLower.startsWith(searchValueLower);
+          const endsWith =
+            txHashWithout0x.endsWith(searchWithout0x) ||
+            txHashLower.endsWith(searchValueLower);
+          const hashMatch = startsWith || endsWith;
+
+          if (process.env.NODE_ENV === "development" && hashMatch) {
+            console.log("[Search] Hash match (partial):", {
+              searchValue: activeSearchValue,
+              txHash: txHashLower,
+              startsWith,
+              endsWith,
+              match: hashMatch,
+            });
+          }
+
+          return hashMatch;
+
+        case "address":
+          const addressesToCheck: string[] = [];
+
+          if (tx.counterparty?.address) {
+            addressesToCheck.push(tx.counterparty.address.toLowerCase());
+            addressesToCheck.push(normalizeAddress(tx.counterparty.address));
+          }
+
+          if (tx.walletAddress) {
+            addressesToCheck.push(tx.walletAddress.toLowerCase());
+            addressesToCheck.push(normalizeAddress(tx.walletAddress));
+          }
+
+          if (tx.asset?.contract) {
+            addressesToCheck.push(tx.asset.contract.toLowerCase());
+            addressesToCheck.push(normalizeAddress(tx.asset.contract));
+          }
+
+          // Check each address
+          const addressMatch = addressesToCheck.some((addr) => {
+            if (!addr) return false;
+            const addrWithout0x = addr.replace(/^0x/, "");
+
+            // For truncated format (e.g., "0x7f58...33ec"), check start AND end - EXACT match
+            if (
+              searchValueLower.includes("...") ||
+              searchValueLower.includes("…")
+            ) {
+              const parts = searchValueLower.split(/\.\.\.|…/);
+              if (parts.length === 2) {
+                const startPart = parts[0].replace(/^0x/, "").trim();
+                const endPart = parts[1].trim();
+                if (startPart && endPart) {
+                  return (
+                    addrWithout0x.startsWith(startPart) &&
+                    addrWithout0x.endsWith(endPart)
+                  );
+                }
+              }
+            }
+
+            // For full address (42 chars with 0x, or 40 without), require exact match
+            const searchWithout0x = searchValueLower.replace(/^0x/, "");
+            if (searchWithout0x.length >= 40) {
+              return (
+                addrWithout0x === searchWithout0x || addr === searchValueLower
+              );
+            }
+
+            // For partial address, check if address starts OR ends with the pattern (not contains!)
+            return (
+              addrWithout0x.startsWith(searchWithout0x) ||
+              addr.startsWith(searchValueLower) ||
+              addrWithout0x.endsWith(searchWithout0x) ||
+              addr.endsWith(searchValueLower)
+            );
+          });
+
+          if (process.env.NODE_ENV === "development" && addressMatch) {
+            console.log("[Search] Address match found:", {
+              searchValue: activeSearchValue,
+              addresses: addressesToCheck,
+            });
+          }
+
+          return addressMatch;
+
+        case "amount":
+          // Clean the search value: replace comma with dot, remove spaces and currency symbols
+          let cleanedSearch = activeSearchValue.trim();
+          // Replace comma with dot for decimal separator
+          cleanedSearch = cleanedSearch.replace(/,/g, ".");
+          // Remove currency symbols and spaces
+          cleanedSearch = cleanedSearch.replace(/[$€£¥\s]/g, "");
+          // Keep only digits and dots
+          cleanedSearch = cleanedSearch.replace(/[^\d.]/g, "");
+
+          const searchAmount = parseFloat(cleanedSearch);
+          if (isNaN(searchAmount) || searchAmount < 0) {
+            if (process.env.NODE_ENV === "development") {
+              console.log("[Search] Invalid amount:", {
+                searchValue: activeSearchValue,
+                cleanedSearch,
+                searchAmount,
+              });
+            }
+            return false;
+          }
+
+          // For exact amount search, allow small difference for floating point precision
+          // Use 0.005 tolerance (half a cent) to account for rounding
+          // Check both usdAtTs and fee.usdAtTs
+          const usdMatch =
+            tx.usdAtTs != null && Math.abs(tx.usdAtTs - searchAmount) < 0.005;
+          const feeMatch =
+            tx.fee?.usdAtTs != null &&
+            Math.abs(tx.fee.usdAtTs - searchAmount) < 0.005;
+
+          if (process.env.NODE_ENV === "development") {
+            if (usdMatch || feeMatch) {
+              console.log("[Search] Amount match found:", {
+                searchValue: activeSearchValue,
+                cleanedSearch,
+                searchAmount,
+                txUsdAtTs: tx.usdAtTs,
+                feeUsdAtTs: tx.fee?.usdAtTs,
+                usdDiff:
+                  tx.usdAtTs != null
+                    ? Math.abs(tx.usdAtTs - searchAmount)
+                    : null,
+                feeDiff:
+                  tx.fee?.usdAtTs != null
+                    ? Math.abs(tx.fee.usdAtTs - searchAmount)
+                    : null,
+                usdMatch,
+                feeMatch,
+              });
+            }
+            // Log first few transactions for debugging
+            if (transactionsToSearch.indexOf(tx) < 3) {
+              console.log("[Search] Checking transaction:", {
+                txUsdAtTs: tx.usdAtTs,
+                feeUsdAtTs: tx.fee?.usdAtTs,
+                searchAmount,
+                usdMatch,
+                feeMatch,
+              });
+            }
+          }
+
+          return usdMatch || feeMatch;
+
+        default:
+          return true;
+      }
     });
-  }
-  function downloadBlob(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-  function exportCsv(
-    address: string,
-    rows: TxRow[],
-    scope: Scope,
-    typeLabel: string
-  ) {
-    if (!rows?.length) return;
-    const blob = toCsv(rows.map(mapTxForCsv));
-    downloadBlob(
-      blob,
-      `ledgerlift_${shortForFile(
-        address
-      )}_${typeLabel}_${nowStamp()}_${scope}.csv`
-    );
-  }
-  function exportJson(
-    address: string,
-    rows: TxRow[],
-    scope: Scope,
-    typeLabel: string
-  ) {
-    if (!rows?.length) return;
-    const blob = new Blob([JSON.stringify(rows, null, 2)], {
-      type: "application/json",
-    });
-    downloadBlob(
-      blob,
-      `ledgerlift_${shortForFile(
-        address
-      )}_${typeLabel}_${nowStamp()}_${scope}.json`
-    );
-  }
 
-  // Filters UI helpers
-  const toggleType = (t: TxType | "all", checked: boolean) => {
-    if (t === "all") {
-      return setSelectedTypes(checked ? (["all"] as any) : ([] as any));
+    if (process.env.NODE_ENV === "development") {
+      console.log("[Search] Results:", {
+        found: filtered.length,
+        searched: transactionsToSearch.length,
+      });
     }
-    setSelectedTypes((prev: any) => {
-      const arr: TxType[] =
-        Array.isArray(prev) && prev[0] !== "all" ? prev : [];
-      const next = checked ? [...arr, t] : arr.filter((x) => x !== t);
-      return next.length ? next : (["all"] as any);
-    });
+
+    return filtered;
+  }, [cache.rows, cache.loadedRowsAll, activeSearchType, activeSearchValue]);
+
+  // Handle search button click
+  const handleSearch = () => {
+    setActiveSearchValue(searchValue);
+    setActiveSearchType(searchType);
   };
-  const visibleRows = rows;
-  const typeLabelForExport =
-    (selectedTypes as any)[0] === "all"
-      ? "all"
-      : (selectedTypes as TxType[]).join("-");
+
+  // Handle Enter key in search input
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
+  // Check if there are no transactions at all in the wallet (after loading is complete and no error)
+  // This is different from "no transactions match current filter" (which would have loadedRowsAll.length > 0)
+  const hasNoTransactions =
+    cache.loadedRowsAll.length === 0 &&
+    !cache.loading &&
+    !cache.error &&
+    activeWallets.length > 0;
+
+  const pageStart = (cache.page - 1) * PAGE_SIZE + 1;
+  const pageEnd = pageStart + filteredRows.length - 1;
+  const lowCoverage = coveragePct != null && coveragePct < 0.5;
+
+  useEffect(() => {
+    if (cache.error) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[AllTransactionsTab] Error:", {
+          address: address
+            ? `${address.slice(0, 6)}...${address.slice(-4)}`
+            : "none",
+          error: cache.error.slice(0, 100),
+        });
+      }
+    }
+  }, [cache.error, address]);
 
   return (
     <div className="space-y-6">
+      <div
+        className={`grid gap-6 ${
+          activeWallets.length ? "lg:grid-cols-2" : "lg:grid-cols-1"
+        }`}
+      >
+        {activeWallets.length > 0 && (
+          <CapitalGainsSnapshot
+            address={exportLabel}
+            loadedTransactionsCount={loadedTxCount}
+            totalCount={totalCount}
+            dateRangeLabel={filters.dateRange.label}
+            capitalGainsSummary={stats.capitalGainsSummary}
+            incomeBreakdown={stats.incomeBreakdown}
+            counterpartyBreakdown={stats.counterpartyBreakdown}
+            gasVsProceeds={stats.gasVsProceeds}
+            stableBufferStats={stats.stableBufferStats}
+            costBasisBuckets={stats.costBasisBuckets}
+            washSaleSignals={stats.washSaleSignals}
+            unmatchedSales={stats.capitalGainsSummary.unmatchedSales}
+          />
+        )}
+        <FinancialRatiosPanel
+          totalAssetsUsd={totalAssetsUsd}
+          stableHoldingsUsd={stableHoldingsUsd}
+          stats={stats}
+          cache={cache}
+          filters={filters}
+          totalCount={totalCount}
+          hasActiveWallets={activeWallets.length > 0}
+        />
+      </div>
+
       <Card className="bg-white shadow-sm">
-        <div className="p-6 border-b">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-slate-800">
-              All Transactions {address ? "" : "(load an address)"}
-            </h3>
-            <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center text-xs text-slate-600 mr-2">
-                {/* Page label: we don’t have total; show page window only */}
-                <span className="font-medium">Page {page}</span>
-              </div>
+        <div className="p-6 space-y-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3 className="text-xl font-bold text-slate-800">
+                All Transactions{" "}
+                <span className="text-sm font-normal text-slate-500">
+                  {filters.dateRange.label}
+                </span>
+              </h3>
+              <p className="text-sm text-slate-500">
+                Review every ledger entry, refine filters, then export or run
+                ratios using the controls on the right.
+              </p>
+              {walletOptionList.length > 0 && activeWallets.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {activeWallets.map((walletAddress) => {
+                    const meta =
+                      walletLabelLookup[walletAddress.toLowerCase()] || null;
+                    return (
+                      <span
+                        key={walletAddress}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                      >
+                        <span
+                          className="inline-block w-2 h-2 rounded-full"
+                          style={{ backgroundColor: meta?.color || "#94a3b8" }}
+                        />
+                        {meta?.label || shortAddr(walletAddress)}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <TransactionToolbar
+              exportLabel={exportLabel}
+              loading={cache.loading}
+              page={cache.page}
+              rows={cache.rows}
+              loadedRowsAll={cache.loadedRowsAll}
+              filterIsAll={filters.filterIsAll}
+              loadIndicatorLabel={cache.loadIndicatorLabel}
+              isOverloaded={cache.isOverloaded}
+              datePreset={filters.datePreset}
+              dateRangeLabel={filters.dateRange.label}
+              currentYear={filters.currentYear}
+              setDatePreset={filters.setDatePreset}
+              networks={filters.networks}
+              networksButtonLabel={filters.networksButtonLabel}
+              toggleNetworkSelection={filters.toggleNetworkSelection}
+              selectAllNetworks={filters.selectAllNetworks}
+              resetToDefaultNetworks={filters.resetToDefaultNetworks}
+              visibleColumns={filters.visibleColumns}
+              visibleColumnsInit={filters.visibleColumnsInit}
+              setVisibleColumns={filters.setVisibleColumns}
+              typeLabelForExport={filters.typeLabelForExport}
+              canPrev={canPrev}
+              canNext={canNext}
+              goPrev={goPrev}
+              goNext={goNext}
+              refresh={cache.refresh}
+              setRefreshKey={setRefreshKey}
+              walletOptions={
+                walletDropdownVisible ? walletOptionList : undefined
+              }
+              selectedWallets={selectedWallets}
+              walletButtonLabel={walletButtonLabel}
+              toggleWalletSelection={
+                walletDropdownVisible ? toggleWalletSelection : undefined
+              }
+              selectAllWallets={
+                walletDropdownVisible ? selectAllWallets : undefined
+              }
+              resetWalletSelection={
+                walletDropdownVisible ? resetWalletSelection : undefined
+              }
+              walletLimitReached={
+                walletDropdownVisible ? walletLimitReached : undefined
+              }
+              walletLimit={walletDropdownVisible ? walletLimit : undefined}
+              hasNoTransactions={hasNoTransactions}
+              stats={stats}
+              totalAssetsUsd={totalAssetsUsd}
+              stableHoldingsUsd={stableHoldingsUsd}
+              totalCount={totalCount}
+              onExportReport={(format) => {
+                generateFinancialReport(
+                  {
+                    transactions: cache.loadedRowsAll,
+                    stats,
+                    dateRangeLabel: filters.dateRange.label,
+                    exportLabel,
+                    totalAssetsUsd,
+                    stableHoldingsUsd,
+                    totalCount,
+                    loadedTxCount,
+                    activeWallets,
+                    walletLabelLookup,
+                  },
+                  format
+                );
+              }}
+            />
+          </div>
 
-              {/* Columns & Export */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Eye className="w-4 h-4 mr-2" /> Columns
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  {(
-                    Object.keys(visibleColumns) as Array<
-                      keyof typeof visibleColumnsInit
-                    >
-                  ).map((key) => (
-                    <DropdownMenuCheckboxItem
-                      key={key}
-                      checked={visibleColumns[key]}
-                      onCheckedChange={(checked) =>
-                        setVisibleColumns((prev) => ({
-                          ...prev,
-                          [key]: !!checked,
-                        }))
-                      }
-                    >
-                      {String(key).charAt(0).toUpperCase() +
-                        String(key).slice(1)}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    Export
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <button
-                    className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                    onClick={() =>
-                      exportCsv(
-                        address,
-                        visibleRows,
-                        "visible",
-                        typeLabelForExport
-                      )
-                    }
-                  >
-                    CSV (visible)
-                  </button>
-                  <div className="h-px bg-slate-200 my-1" />
-                  <button
-                    className="w-full text-left px-2 py-1.5 hover:bg-slate-50"
-                    onClick={() =>
-                      exportJson(
-                        address,
-                        visibleRows,
-                        "visible",
-                        typeLabelForExport
-                      )
-                    }
-                  >
-                    JSON (visible)
-                  </button>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <div className="hidden sm:flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (canPrev) {
-                      goPrev();
-                    }
-                  }}
-                  disabled={!canPrev}
-                >
-                  Prev
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    if (canNext) {
-                      goNext();
-                    }
-                  }}
-                  disabled={!canNext}
-                >
-                  Next
-                </Button>
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setRefreshKey((k) => k + 1)}
-                disabled={loading}
-              >
-                <RefreshCw
-                  className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`}
-                />{" "}
-                Refresh
-              </Button>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-xs uppercase text-slate-500 tracking-wide">
+                Loaded transactions
+              </p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {loadedTxCount.toLocaleString()}
+              </p>
+              <p className="text-xs text-slate-500">
+                Page {cache.page} · {filters.networksButtonLabel}
+              </p>
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-xs uppercase text-slate-500 tracking-wide">
+                Coverage vs estimate
+              </p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {coveragePct != null
+                  ? `${Math.round(coveragePct * 100)}%`
+                  : "—"}
+              </p>
+              {totalCount && (
+                <p className="text-xs text-slate-500">
+                  {totalCount.toLocaleString()} /{" "}
+                  {loadedTxCount.toLocaleString()}
+                </p>
+              )}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+              <p className="text-xs uppercase text-slate-500 tracking-wide">
+                Current selection value
+              </p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {totalAssetsUsd != null ? fmtUSD(totalAssetsUsd) : "—"}
+              </p>
+              <p className="text-xs text-slate-500">
+                Based on latest overview snapshot
+              </p>
             </div>
           </div>
 
-          {/* Filter chips (server-side class filter) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="type-all"
-                checked={(selectedTypes as any)[0] === "all"}
-                onCheckedChange={(c) => toggleType("all", !!c)}
-              />
-              <Label htmlFor="type-all" className="text-sm font-normal">
-                All Types
-              </Label>
-            </div>
-            {["income", "expense", "swap", "gas"].map((t) => (
-              <div key={t} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`type-${t}`}
-                  checked={
-                    Array.isArray(selectedTypes) &&
-                    (selectedTypes as any)[0] !== "all"
-                      ? (selectedTypes as TxType[]).includes(t as TxType)
-                      : false
+          {filters.datePreset === "custom" && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="text-xs text-slate-600 font-medium flex flex-col gap-1">
+                <span>From</span>
+                <input
+                  type="date"
+                  value={filters.customFrom}
+                  onChange={(event) =>
+                    filters.setCustomFrom(event.currentTarget.value)
                   }
-                  onCheckedChange={(c) => toggleType(t as TxType, !!c)}
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
                 />
-                <Label
-                  htmlFor={`type-${t}`}
-                  className="text-sm font-normal capitalize flex items-center gap-1"
+              </label>
+              <label className="text-xs text-slate-600 font-medium flex flex-col gap-1">
+                <span>To</span>
+                <input
+                  type="date"
+                  value={filters.customTo}
+                  onChange={(event) =>
+                    filters.setCustomTo(event.currentTarget.value)
+                  }
+                  className="rounded border border-slate-200 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-200"
+                />
+              </label>
+            </div>
+          )}
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm font-semibold text-slate-800">
+                Search transactions
+              </p>
+              {activeSearchValue && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchValue("");
+                    setActiveSearchValue("");
+                  }}
+                  className="text-xs text-slate-500 underline flex items-center gap-1 hover:text-slate-700"
                 >
-                  {typeIcon(t as TxType)} {t}
+                  <X className="w-3 h-3" />
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 min-w-[200px]">
+                <Select
+                  value={searchType}
+                  onValueChange={(value: "hash" | "address" | "amount") =>
+                    setSearchType(value)
+                  }
+                >
+                  <SelectTrigger className="h-10 bg-white border-slate-200">
+                    <SelectValue placeholder="Select a field" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hash">Transaction hash</SelectItem>
+                    <SelectItem value="address">Destination address</SelectItem>
+                    <SelectItem value="amount">Exact amount (USD)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  type="text"
+                  placeholder={
+                    searchType === "hash"
+                      ? "Ex: 0x4809...a413 or full hash"
+                      : searchType === "address"
+                      ? "Ex: 0x7f58...33ec or full address"
+                      : "Enter the exact amount in USD..."
+                  }
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  className="pl-10 bg-white border-slate-200 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
+                />
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Tip: use ellipsis for partials (e.g., 0x123…89ab) or enter
+                  exact USD amount.
+                </p>
+              </div>
+              <Button
+                onClick={handleSearch}
+                className="h-10 bg-slate-800 hover:bg-slate-900 text-white"
+                disabled={!searchValue.trim()}
+              >
+                <Search className="w-4 h-4 mr-2" />
+                Search
+              </Button>
+            </div>
+            {activeSearchValue && (
+              <p className="text-xs text-slate-500">
+                {filteredRows.length} transaction
+                {filteredRows.length !== 1 ? "s" : ""} found
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm font-semibold text-slate-800">
+                Transaction types
+              </p>
+              {!filters.filterIsAll && (
+                <button
+                  type="button"
+                  className="text-xs text-slate-500 underline"
+                  onClick={() => filters.toggleType("all", true)}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <Checkbox
+                  id="type-all"
+                  checked={(filters.selectedTypes as any)[0] === "all"}
+                  onCheckedChange={(c) => filters.toggleType("all", !!c)}
+                  disabled={
+                    cache.loading ||
+                    filters.isOnlyAllSelected ||
+                    hasNoTransactions
+                  }
+                />
+                <Label htmlFor="type-all" className="text-sm font-medium">
+                  All types
                 </Label>
               </div>
-            ))}
+              {["income", "expense", "swap", "gas"].map((t) => (
+                <div
+                  key={t}
+                  className="flex items-center space-x-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                >
+                  <Checkbox
+                    id={`type-${t}`}
+                    checked={
+                      Array.isArray(filters.selectedTypes) &&
+                      (filters.selectedTypes as any)[0] !== "all"
+                        ? (filters.selectedTypes as TxType[]).includes(
+                            t as TxType
+                          )
+                        : false
+                    }
+                    onCheckedChange={(c) =>
+                      filters.toggleType(t as TxType, !!c)
+                    }
+                    disabled={cache.loading || hasNoTransactions}
+                  />
+                  <Label
+                    htmlFor={`type-${t}`}
+                    className="text-sm font-medium capitalize flex items-center gap-1"
+                  >
+                    {typeIcon(t as TxType)} {t}
+                  </Label>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Status */}
-        {!address && (
-          <div className="p-6 text-sm text-slate-500">
-            Enter an address on the Overview tab to load transactions.
+        {lowCoverage && (
+          <div className="px-6 py-3 bg-amber-50 border-t border-b border-amber-200 text-sm text-amber-700 flex items-center justify-between gap-3">
+            <span>
+              Only {Math.round((coveragePct || 0) * 100)}% of estimated history
+              loaded. Exports and ratios reflect loaded pages.
+            </span>
+            <span className="text-xs text-amber-600">
+              Load more pages to improve coverage.
+            </span>
           </div>
-        )}
-        {address && loading && rows.length === 0 && (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {visibleColumns.type && <TableHead>Type</TableHead>}
-                  {visibleColumns.date && <TableHead>Date</TableHead>}
-                  {visibleColumns.network && <TableHead>Network</TableHead>}
-                  {visibleColumns.asset && <TableHead>Asset</TableHead>}
-                  {visibleColumns.qty && <TableHead>Qty</TableHead>}
-                  {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
-                  {visibleColumns.counterparty && (
-                    <TableHead>Counterparty</TableHead>
-                  )}
-                  {visibleColumns.tx && <TableHead>Tx</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[...Array(6)].map((_, i) => (
-                  <TableRow key={i}>
-                    {Object.keys(visibleColumns).map((k) =>
-                      visibleColumns[k as keyof typeof visibleColumns] ? (
-                        <TableCell key={k}>
-                          <Skeleton className="h-4 w-28" />
-                        </TableCell>
-                      ) : null
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-        {address && error && (
-          <div className="p-6 text-sm text-red-600">{error}</div>
         )}
 
-        {/* Table */}
-        {address && rows.length > 0 && (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {visibleColumns.type && <TableHead>Type</TableHead>}
-                  {visibleColumns.date && <TableHead>Date</TableHead>}
-                  {visibleColumns.network && <TableHead>Network</TableHead>}
-                  {visibleColumns.asset && <TableHead>Asset</TableHead>}
-                  {visibleColumns.qty && <TableHead>Qty</TableHead>}
-                  {visibleColumns.usd && <TableHead>USD @ time</TableHead>}
-                  {visibleColumns.counterparty && (
-                    <TableHead>Counterparty</TableHead>
-                  )}
-                  {visibleColumns.tx && <TableHead>Tx</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((tx, idx) => (
-                  <TableRow key={`${tx.hash}-${idx}`}>
-                    {visibleColumns.type && (
-                      <TableCell>
-                        <div
-                          className={`flex items-center gap-2 ${typeColor(
-                            tx.type
-                          )}`}
-                        >
-                          {typeIcon(tx.type)}
-                          <span className="capitalize text-xs font-medium">
-                            {tx.type}
-                          </span>
-                        </div>
-                      </TableCell>
-                    )}
-                    {visibleColumns.date && (
-                      <TableCell className="font-medium">
-                        {new Date(tx.ts).toLocaleString()}
-                      </TableCell>
-                    )}
-                    {visibleColumns.network && (
-                      <TableCell className="font-mono">
-                        {networkLabel(tx.network)}
-                      </TableCell>
-                    )}
-                    {visibleColumns.asset && (
-                      <TableCell className="font-mono">
-                        {tx.asset?.symbol ||
-                          (tx.asset?.contract
-                            ? shortAddr(tx.asset.contract)
-                            : "—")}
-                      </TableCell>
-                    )}
-                    {visibleColumns.qty && (
-                      <TableCell
-                        className={`font-mono ${
-                          tx.direction === "in"
-                            ? "text-green-600"
-                            : "text-red-600"
-                        }`}
-                      >
-                        {fmtQty(tx.qty, tx.direction)}
-                      </TableCell>
-                    )}
-                    {visibleColumns.usd && (
-                      <TableCell className="font-mono">
-                        {fmtUSD(tx.usdAtTs)}
-                      </TableCell>
-                    )}
-                    {visibleColumns.counterparty && (
-                      <TableCell className="font-mono">
-                        {tx.counterparty?.label ||
-                          shortAddr(tx.counterparty?.address || undefined)}
-                      </TableCell>
-                    )}
-                    {visibleColumns.tx && (
-                      <TableCell>
-                        <a
-                          className="inline-flex items-center gap-1 text-xs font-mono underline text-slate-700 hover:text-slate-900"
-                          href={etherscanTxUrl(tx.hash, tx.network)}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {shortAddr(tx.hash)}{" "}
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-
-            {/* Pager footer (mobile) */}
-            <div className="flex sm:hidden justify-end gap-2 p-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goPrev}
-                disabled={!canPrev}
-              >
-                Prev
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={goNext}
-                disabled={!canNext}
-              >
-                Next
-              </Button>
-            </div>
+        <div className="border-t border-slate-100">
+          <TransactionTable
+            address={activeWallets.length ? exportLabel : null}
+            rows={filteredRows}
+            page={cache.page}
+            loading={cache.loading}
+            error={cache.error}
+            visibleColumns={filters.visibleColumns}
+            visibleColumnsInit={filters.visibleColumnsInit}
+            canPrev={canPrev}
+            canNext={canNext}
+            goPrev={goPrev}
+            goNext={goNext}
+            walletLabels={walletLabelLookup}
+            loadedRowsAll={cache.loadedRowsAll}
+          />
+        </div>
+        <div className="flex flex-col items-center gap-2 px-6 py-4 border-t border-slate-100 bg-white">
+          <p className="text-xs text-slate-600">
+            {filteredRows.length > 0
+              ? `Page ${
+                  cache.page
+                } • ${pageStart.toLocaleString()}–${pageEnd.toLocaleString()} of ${
+                  totalCount
+                    ? `${totalCount.toLocaleString()} total`
+                    : `${loadedTxCount.toLocaleString()} loaded`
+                } `
+              : `Page ${cache.page} • No rows on this page${
+                  totalCount ? ` (out of ${totalCount.toLocaleString()})` : ""
+                }`}
+          </p>
+          <div className="flex justify-center gap-3">
+            <Button
+              variant="outline"
+              onClick={goPrev}
+              disabled={!canPrev || cache.loading}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              onClick={goNext}
+              disabled={!canNext || cache.loading}
+            >
+              Next
+            </Button>
           </div>
-        )}
+        </div>
       </Card>
     </div>
   );

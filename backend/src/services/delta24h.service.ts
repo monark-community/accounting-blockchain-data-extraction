@@ -13,6 +13,13 @@ const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL ?? "https://token-api.thegraph.com/v1";
 const TOKEN_API_JWT = process.env.GRAPH_TOKEN_API_JWT!;
 
+const LOGS_DEBUG = (process.env.LOGS_DEBUG ?? "false") === "true";
+const logDebug = (...args: any[]) => {
+  if (LOGS_DEBUG) {
+    console.log("[delta24h]", ...args);
+  }
+};
+
 // The Token API uses the "0xeeee..." sentinel for native; normalize to NATIVE_SENTINEL/null upstream.
 const EEEE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
@@ -134,17 +141,17 @@ export async function getDelta24hValueByContract(
     if (key === NATIVE_SENTINEL) {
       priceNow = nativeNow ?? 0;
       price24 = price24Map.get(`${network}:__native__`) ?? 0;
-      // console.log("[Δ24h native]", network, {
-      //   priceNow,
-      //   price24,
-      // });
+      logDebug(network, {
+        priceNow,
+        price24,
+      });
     } else {
       priceNow = priceNowMap.get(`${network}:${key}`) ?? 0;
       price24 = price24Map.get(`${network}:${key}`) ?? 0;
-      // console.log("[Δ24h erc20]", network, key, {
-      //   priceNow,
-      //   price24,
-      // });
+      logDebug(network, key, {
+        priceNow,
+        price24,
+      });
     }
 
     const valueNow = qtyNow * (priceNow || 0);
@@ -169,7 +176,7 @@ export async function getDelta24hValueByContract(
     out.set(`${network}:${key}`, { deltaUsd, deltaPct });
   }
 
-  console.log("[Δ24h]", network, {
+  logDebug(network, {
     pairs: pairs.length,
     priceNowErc20: priceNowMap.size,
     price24Map: Array.from(price24Map.keys()).slice(0, 3), // peek

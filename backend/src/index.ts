@@ -8,13 +8,34 @@ import cookieParser from "cookie-parser";
 import healthRouter from "./routes/health.routes";
 import holdingsRouter from "./routes/holdings.routes";
 import transactionsRouter from "./routes/transactions.routes";
+import analyticsRouter from "./routes/analytics.routes";
+import networksRouter from "./routes/networks.routes";
+import { initializeDatabase } from "./db/init";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "./config/swagger";
+
 const app = express();
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true,
-}));
+
+// Required so secure cookies work behind Render's proxy/HTTPS terminator
+app.set("trust proxy", 1);
+
+// Increase timeout for long-running requests (multi-network requests without cap can take longer)
+app.use((req, res, next) => {
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000);
+  next();
+});
+
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use(cookieParser(process.env.SESSION_SECRET!));
+
+app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/health", healthRouter); // → /api/health/ping
 app.use("/api/auth", authRoutes);
@@ -22,8 +43,23 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/mfa", mfaRoutes);
 app.use("/api/holdings", holdingsRouter); // → /api/holdings/:address
 app.use("/api/transactions", transactionsRouter); // → /api/transactions/:address
+app.use("/api/analytics", analyticsRouter); // → /api/analytics/historical/:address
+app.use("/api/networks", networksRouter); // → /api/networks/activity/:address
 
 const PORT = process.env.PORT ?? "8080";
-app.listen(PORT, () => {
-  console.log(`[backend] listening on :${PORT}`);
-});
+
+// Initialize database schema on startup
+initializeDatabase()
+  .then(() => {
+    // Start server after database initialization
+    app.listen(PORT, () => {
+      console.log(`[backend] listening on :${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("[backend] Failed to initialize database, starting server anyway:", error);
+    // Start server anyway - initialization errors might be non-critical
+    app.listen(PORT, () => {
+      console.log(`[backend] listening on :${PORT}`);
+    });
+  });

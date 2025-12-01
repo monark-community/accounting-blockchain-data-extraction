@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useWallet } from '@/contexts/WalletContext';
 
 export interface UserWallet {
   main_wallet_address: string;
@@ -14,13 +15,37 @@ export function useWallets() {
   const [wallets, setWallets] = useState<UserWallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isSessionReady } = useWallet();
 
-  // Fetch wallets on mount
-  useEffect(() => {
-    fetchWallets();
-  }, []);
+  // Check if we're in view-only mode (address in URL params)
+  const isViewOnlyMode = () => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.has('address');
+  };
 
-  const fetchWallets = async () => {
+  // Verify that the session cookie is actually available
+  const verifySessionAvailable = async (maxRetries = 5, delay = 100): Promise<boolean> => {
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          return true; // Session cookie is available
+        }
+      } catch {
+        // Ignore errors, will retry
+      }
+      // Wait before retrying
+      if (i < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    return false; // Session not available after retries
+  };
+
+  const fetchWallets = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/wallets', {
@@ -40,7 +65,37 @@ export function useWallets() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch wallets on mount (skip if in view-only mode or if session is not ready)
+  useEffect(() => {
+    if (isViewOnlyMode()) {
+      // In view-only mode, don't fetch wallets - just set loading to false
+      setLoading(false);
+      setWallets([]);
+      return;
+    }
+
+    // Wait for session to be ready before fetching wallets
+    if (!isSessionReady) {
+      setLoading(true);
+      return;
+    }
+
+    // Verify that the cookie is actually available before fetching wallets
+    const loadWallets = async () => {
+      const sessionAvailable = await verifySessionAvailable();
+      if (sessionAvailable) {
+        await fetchWallets();
+      } else {
+        // If session is not available after retries, set error
+        setError('Session not available. Please try again.');
+        setLoading(false);
+      }
+    };
+
+    loadWallets();
+  }, [isSessionReady, fetchWallets]);
 
   const addWallet = async (address: string, name: string, chainId: number = 1) => {
     try {

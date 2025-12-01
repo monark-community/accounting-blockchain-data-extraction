@@ -1,0 +1,188 @@
+# Render.com configuration for LedgerLift
+# This file describes the full application infrastructure
+
+services:
+  # ========================================
+  # Backend API service
+  # ========================================
+  - type: web
+    name: ledgerlift-backend
+    region: frankfurt
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+    envVars:
+      # === Node.js configuration ===
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "8080"
+
+      # === Database ===
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ledgerlift-db
+          property: connectionString
+
+      # === Session & security ===
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_NAME
+        value: ll_session
+      - key: SESSION_TTL_SECONDS
+        value: "604800"
+
+      # === Alchemy ===
+      - key: ALCHEMY_API_KEY
+        value: ""
+      - key: ALCHEMY_NETWORK
+        value: eth-mainnet
+
+      # === Frontend URL ===
+      - key: FRONTEND_URL
+        value: https://ledgerlift-frontend.onrender.com
+
+      # === API keys (set manually in Render dashboard) ===
+      - key: ANKR_API_KEY
+        value: ""
+      - key: ALCHEMY_API_KEY
+        value: ""
+      - key: GRAPH_TOKEN_API_JWT
+        value: ""
+      - key: GRAPH_TOKEN_API_KEY
+        value: ""
+
+      # === Pinax ===
+      - key: PINAX_BASE_URL
+        value: https://api.pinax.cloud/v1
+      - key: PINAX_API_KEY
+        value: ""
+      - key: PINAX_JWT
+        value: ""
+
+      # === API configuration & URLs ===
+      - key: TOKEN_API_BASE_URL
+        value: https://token-api.thegraph.com/v1
+      - key: PINAX_RPC_URL
+        value: ""
+      - key: RPC_URL_MAINNET
+        value: ""
+      - key: RPC_URL_BSC
+        value: ""
+      - key: RPC_URL_POLYGON
+        value: ""
+      - key: RPC_URL_OPTIMISM
+        value: ""
+      - key: RPC_URL_BASE
+        value: ""
+      - key: RPC_URL_ARBITRUM_ONE
+        value: ""
+      - key: RPC_URL_AVALANCHE
+        value: ""
+      - key: RPC_URL_UNICHAIN
+        value: ""
+
+      # === Debug parameters ===
+      - key: LOGS_DEBUG
+        value: "false"
+      - key: DEBUG_TOKEN_API
+        value: "false"
+
+      # === Filters & limits ===
+      - key: SPAM_FILTER_MODE
+        value: hard
+      - key: ENABLE_SPAM_FILTER
+        value: "true"
+      - key: TX_DEFAULT_LIMIT
+        value: "10"
+      - key: TX_MAX_LIMIT
+        value: "40"
+      - key: TX_DEFAULT_MIN_USD
+        value: "0"
+      - key: TX_RETURN_CAP
+        value: "150"
+      - key: TX_FETCH_WINDOW_CAP
+        value: "80"
+
+      # === Performance & concurrency ===
+      - key: PRICING_BATCH_SIZE
+        value: "50"
+      - key: NETWORK_FETCH_CONCURRENCY
+        value: "4"
+      - key: NETWORK_ACTIVITY_CONCURRENCY
+        value: "2"
+      - key: NETWORK_ACTIVITY_PAGE_LIMIT
+        value: "5"
+      - key: LLAMA_RPM
+        value: "30"
+      - key: HTTP_TIMEOUT_MS
+        value: "15000"
+      - key: TOKEN_API_LIMIT_MAX
+        value: "10"
+      - key: TOKEN_API_RATE_LIMIT_COOLDOWN_MS
+        value: "300000"
+
+      # === Feature flags ===
+      - key: ENABLE_ALCHEMY
+        value: "true"
+      - key: ENABLE_DEXSCREENER
+        value: "true"
+      - key: ENABLE_DEFI_LLAMA
+        value: "true"
+      - key: DEFI_LLAMA_RATE_LIMIT_COOLDOWN_MS
+        value: "300000"
+
+  # ========================================
+  # Frontend service
+  # ========================================
+  - type: web
+    name: ledgerlift-frontend
+    region: frankfurt
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    plan: free
+    autoDeploy: true
+
+    envVars:
+      # === Node.js configuration ===
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+
+      # === Backend API URL ===
+      - key: API_BASE
+        value: https://ledgerlift-backend.onrender.com
+
+      # === Public API keys (set manually) ===
+      - key: NEXT_PUBLIC_WEB3AUTH_CLIENT_ID
+        value: ""
+      - key: NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+        value: ""
+      - key: NEXT_PUBLIC_ANKR_API_KEY
+        value: ""
+
+      # === Default configuration ===
+      - key: NEXT_PUBLIC_DEFAULT_NETWORKS
+        value: mainnet,polygon,arbitrum-one,optimism,base
+      - key: NEXT_PUBLIC_DASHBOARD_DEFAULT_NETWORKS
+        value: mainnet,polygon
+      - key: NEXT_PUBLIC_DASHBOARD_MULTI_LIMIT
+        value: "3"
+
+# ========================================
+# PostgreSQL database
+# ========================================
+databases:
+  - name: ledgerlift-db
+    databaseName: ledgerlift
+    user: ledgerlift
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: 16
+    ipAllowList: []

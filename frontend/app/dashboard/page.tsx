@@ -1,63 +1,319 @@
 "use client";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  BarChart3,
-  PieChart,
-  DollarSign,
-  Crown,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWallet } from "@/contexts/WalletContext";
-import { CurrencyDisplay } from "@/components/ui/currency-display";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  PieChart as RPieChart,
-  Pie,
-  Cell,
-  Legend,
-  Treemap,
-} from "recharts";
 import Navbar from "@/components/Navbar";
 import IncomeTab from "@/components/dashboard/IncomeTab";
 import ExpensesTab from "@/components/dashboard/ExpensesTab";
 import CapitalGainsTab from "@/components/dashboard/CapitalGainsTab";
 import AllTransactionsTab from "@/components/dashboard/AllTransactionsTab";
+import OverviewTab from "@/components/dashboard/OverviewTab";
+import GraphsTab from "@/components/dashboard/GraphsTab";
+import { TransactionsWorkspaceProvider } from "@/components/dashboard/TransactionsWorkspaceProvider";
 import {
-  type CapitalGainEntry,
   type AccountingMethod,
 } from "@/utils/capitalGains";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useMemo } from "react";
-import { Tooltip } from "recharts";
 import { useWallets } from "@/hooks/use-wallets";
-import { OverviewResponse, PricedHolding } from "@/lib/portfolioTypes";
+import { OverviewResponse } from "@/lib/types/portfolio";
 import {
-  fmtUSD,
-  fmtPct,
-  chainBadgeClass,
   CHAIN_LABEL,
   computeHHI,
   isStable,
+  classifyRiskBucket,
+  type RiskBucketId,
 } from "@/lib/portfolioUtils";
+import {
+  fetchHistoricalData,
+  type HistoricalPoint,
+  type HistoricalResponse,
+} from "@/lib/api/analytics";
+import type { TxRow } from "@/lib/types/transactions";
+import { Crown } from "lucide-react";
+import {
+  NETWORK_OPTIONS,
+  NETWORK_IDS,
+  networkLabel,
+  normalizeNetworkList,
+  normalizeNetworkListFromString,
+  serializeNetworks,
+} from "@/lib/networks";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
+import { Plus, X, Sparkles } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+const DASHBOARD_NETWORK_STORAGE_KEY = "dashboard.networks";
+const DASHBOARD_NETWORK_HINTS_KEY = "dashboard.networkSuggestions";
+const HISTORICAL_FALLBACK_PREFERENCE_KEY = "dashboard.historicalUseFallback";
+const DASHBOARD_WALLET_SELECTION_KEY = "dashboard.selectedWallets";
+const RAW_DEFAULT_DASHBOARD_NETWORKS =
+  process.env.NEXT_PUBLIC_DASHBOARD_DEFAULT_NETWORKS ??
+  process.env.NEXT_PUBLIC_DEFAULT_NETWORKS ??
+  "mainnet";
+
+const DASHBOARD_DEFAULT_NETWORKS = normalizeNetworkListFromString(
+  RAW_DEFAULT_DASHBOARD_NETWORKS
+);
+
+const isTokenApiRateLimit = (message?: string | null) => {
+  if (!message) return false;
+  const lower = message.toLowerCase();
+  return (
+    lower.includes("tokenapi") &&
+    (lower.includes("rate limited") ||
+      lower.includes("too_many_requests") ||
+      lower.includes("429"))
+  );
+};
+
+type NetworkSuggestion = {
+  network: string;
+  lastActivityTs: number | null;
+  direction: "in" | "out" | "unknown";
+  walletAddress: string;
+  walletLabel: string;
+};
+
+const RISK_BUCKET_META: Record<
+  RiskBucketId,
+  {
+    label: string;
+    description: string;
+    criteria: string;
+    accent: string;
+    barColor: string;
+  }
+> = {
+  stable: {
+    label: "Stablecoins",
+    description: "Capital parked in USD-pegged assets.",
+    criteria: "Symbols matching USDT, USDC, DAI, FRAX, LUSD, PYUSD, etc.",
+    accent: "bg-emerald-100 text-emerald-800",
+    barColor: "#10b981",
+  },
+  bluechip: {
+    label: "Blue Chip",
+    description: "ETH, BTC, and liquid staking derivatives.",
+    criteria: "ETH/WETH, BTC/WBTC, and LSDs like stETH, rETH, cbETH.",
+    accent: "bg-blue-100 text-blue-800",
+    barColor: "#3b82f6",
+  },
+  longtail: {
+    label: "Long Tail",
+    description: "Higher-beta tokens and niche assets.",
+    criteria: "All other ERC20 / token holdings outside the above buckets.",
+    accent: "bg-amber-100 text-amber-800",
+    barColor: "#f97316",
+  },
+};
+
+const CHAIN_STACK_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f97316",
+  "#a855f7",
+  "#06b6d4",
+  "#e11d48",
+  "#facc15",
+  "#0ea5e9",
+];
+
+const WALLET_COLOR_PALETTE = [
+  "#6366f1",
+  "#f97316",
+  "#0ea5e9",
+  "#14b8a6",
+  "#ec4899",
+  "#84cc16",
+];
+
+const shortAddress = (address?: string | null) =>
+  address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "—";
+
+type WalletStat = {
+  address: string;
+  totalValueUsd: number;
+  delta24hUsd: number;
+};
+
+type OverviewMergeResult = {
+  overview: OverviewResponse;
+  walletStats: WalletStat[];
+};
+
+type OverviewEntry = {
+  address: string;
+  overview: OverviewResponse;
+};
+
+type HoldingWithWallet = OverviewResponse["holdings"][number] & {
+  walletAddress?: string;
+};
+
+function mergeOverviewResponses(entries: OverviewEntry[]): OverviewMergeResult {
+  if (!entries.length) {
+    const empty: OverviewResponse = {
+      address: "",
+      asOf: new Date().toISOString(),
+      currency: "USD",
+      kpis: { totalValueUsd: 0, delta24hUsd: 0, delta24hPct: 0 },
+      holdings: [],
+      allocation: [],
+      topHoldings: [],
+    };
+    return { overview: empty, walletStats: [] };
+  }
+
+  if (entries.length === 1) {
+    const only = entries[0];
+    const holdings = only.overview.holdings.map((holding) => ({
+      ...holding,
+      walletAddress: only.address,
+    })) as HoldingWithWallet[];
+    const singleOverview: OverviewResponse = {
+      ...only.overview,
+      holdings,
+    };
+    return {
+      overview: singleOverview,
+      walletStats: [
+        {
+          address: only.address,
+          totalValueUsd: only.overview.kpis.totalValueUsd ?? 0,
+          delta24hUsd: only.overview.kpis.delta24hUsd ?? 0,
+        },
+      ],
+    };
+  }
+
+  let totalValue = 0;
+  let delta24h = 0;
+  const holdings: HoldingWithWallet[] = [];
+  const allocationMap = new Map<
+    string,
+    {
+      symbol: string;
+      chain: OverviewResponse["holdings"][number]["chain"];
+      valueUsd: number;
+    }
+  >();
+
+  const walletStats: WalletStat[] = [];
+
+  for (const entry of entries) {
+    const value = entry.overview.kpis.totalValueUsd ?? 0;
+    const delta = entry.overview.kpis.delta24hUsd ?? 0;
+    totalValue += value;
+    delta24h += delta;
+    walletStats.push({
+      address: entry.address,
+      totalValueUsd: value,
+      delta24hUsd: delta,
+    });
+
+    for (const holding of entry.overview.holdings) {
+      const enriched: HoldingWithWallet = {
+        ...holding,
+        walletAddress: entry.address,
+      };
+      holdings.push(enriched);
+      const key = `${holding.symbol}-${holding.chain}-${
+        holding.contract ?? ""
+      }`;
+      const existing = allocationMap.get(key);
+      if (existing) {
+        existing.valueUsd += holding.valueUsd ?? 0;
+      } else {
+        allocationMap.set(key, {
+          symbol: holding.symbol,
+          chain: holding.chain,
+          valueUsd: holding.valueUsd ?? 0,
+        });
+      }
+    }
+  }
+
+  const allocation = Array.from(allocationMap.values())
+    .filter((item) => item.valueUsd > 0)
+    .sort((a, b) => b.valueUsd - a.valueUsd)
+    .map((item) => ({
+      symbol: item.symbol,
+      valueUsd: item.valueUsd,
+      weightPct: totalValue > 0 ? (item.valueUsd / totalValue) * 100 : 0,
+      chain: item.chain,
+    }));
+
+  const topHoldings = allocation.slice(0, 5).map((item) => ({
+    symbol: item.symbol,
+    valueUsd: item.valueUsd,
+    weightPct: item.weightPct,
+    chain: item.chain,
+  }));
+
+  const previousTotal = totalValue - delta24h;
+  const delta24hPct =
+    previousTotal !== 0 ? (delta24h / previousTotal) * 100 : 0;
+
+  const merged: OverviewResponse = {
+    address: entries.map((entry) => entry.address).join(","),
+    asOf: new Date().toISOString(),
+    currency: "USD",
+    kpis: {
+      totalValueUsd: totalValue,
+      delta24hUsd: delta24h,
+      delta24hPct,
+    },
+    holdings,
+    allocation,
+    topHoldings,
+  };
+
+  return { overview: merged, walletStats };
+}
+
+function mergeHistoricalResponses(
+  responses: HistoricalResponse[]
+): HistoricalPoint[] {
+  const map = new Map<number, HistoricalPoint>();
+
+  for (const response of responses) {
+    for (const point of response.data ?? []) {
+      const existing = map.get(point.timestamp);
+      if (existing) {
+        existing.totalValueUsd += point.totalValueUsd;
+        for (const [chain, usd] of Object.entries(point.byChain ?? {})) {
+          existing.byChain[chain] = (existing.byChain[chain] ?? 0) + usd;
+        }
+        for (const [asset, usd] of Object.entries(point.byAsset ?? {})) {
+          existing.byAsset[asset] = (existing.byAsset[asset] ?? 0) + usd;
+        }
+      } else {
+        map.set(point.timestamp, {
+          date: point.date,
+          timestamp: point.timestamp,
+          totalValueUsd: point.totalValueUsd,
+          byChain: { ...(point.byChain ?? {}) },
+          byAsset: { ...(point.byAsset ?? {}) },
+        });
+      }
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.timestamp - b.timestamp);
+}
 
 const Dashboard = () => {
   const {
@@ -79,9 +335,103 @@ const Dashboard = () => {
   const [loadingOv, setLoadingOv] = useState(false);
   const [errorOv, setErrorOv] = useState<string | null>(null);
   const [showChange, setShowChange] = useState(false);
-  const [selectedWallet, setSelectedWallet] = useState<string>("");
+  const [selectedWallets, setSelectedWallets] = useState<string[]>([]);
+  const [appliedWallets, setAppliedWallets] = useState<string[]>([]);
+  const pricingWarningSourcesRef = useRef<Set<string>>(new Set());
+  const [pricingWarningActive, setPricingWarningActive] = useState(false);
+  const setPricingWarningFor = useCallback((source: string, flag: boolean) => {
+    setPricingWarningActive((prev) => {
+      const nextSet = new Set(pricingWarningSourcesRef.current);
+      if (flag) {
+        nextSet.add(source);
+      } else {
+        nextSet.delete(source);
+      }
+      pricingWarningSourcesRef.current = nextSet;
+      const next = nextSet.size > 0;
+      return next === prev ? prev : next;
+    });
+  }, []);
+
+  const tokenApiWarningSourcesRef = useRef<Set<string>>(new Set());
+  const [tokenApiWarningActive, setTokenApiWarningActive] = useState(false);
+  const setTokenApiWarningFor = useCallback((source: string, flag: boolean) => {
+    setTokenApiWarningActive((prev) => {
+      const nextSet = new Set(tokenApiWarningSourcesRef.current);
+      if (flag) {
+        nextSet.add(source);
+      } else {
+        nextSet.delete(source);
+      }
+      tokenApiWarningSourcesRef.current = nextSet;
+      const next = nextSet.size > 0;
+      return next === prev ? prev : next;
+    });
+  }, []);
+  const [walletSelectionDirty, setWalletSelectionDirty] = useState(false);
   const [minUsdFilter, setMinUsdFilter] = useState(5);
   const [hideStables, setHideStables] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [historicalData, setHistoricalData] = useState<HistoricalPoint[]>([]);
+  const [loadingHistorical, setLoadingHistorical] = useState(false);
+  const [isHistoricalEstimated, setIsHistoricalEstimated] = useState(false);
+  const [walletLabelMode, setWalletLabelMode] = useState<"name" | "address">(
+    "name"
+  );
+  const [walletStats, setWalletStats] = useState<WalletStat[]>([]);
+  const [loadedFromStorage, setLoadedFromStorage] = useState(false);
+  const handleToggleWallet = (walletAddress: string, checked: boolean) => {
+    setSelectedWallets((prev) => {
+      if (checked) {
+        if (prev.includes(walletAddress)) return prev;
+        setWalletSelectionDirty(true);
+        return [...prev, walletAddress];
+      }
+      const next = prev.filter((addr) => addr !== walletAddress);
+      setWalletSelectionDirty(true);
+      return next;
+    });
+  };
+
+  const handleApplyWallets = () => {
+    if (!selectedWallets.length) return;
+    setAppliedWallets(selectedWallets);
+    setWalletSelectionDirty(false);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedWallets([]);
+    setWalletSelectionDirty(true);
+  };
+
+  const handleSelectMainWallet = () => {
+    if (urlAddress) return;
+    const main = allWallets.find((wallet) => wallet.isMain);
+    if (main) {
+      setSelectedWallets([main.address]);
+      setWalletSelectionDirty(true);
+    }
+  };
+
+  const handleSelectAllWallets = () => {
+    if (urlAddress) return;
+    const next = allWallets.map((wallet) => wallet.address);
+    setSelectedWallets(next);
+    setWalletSelectionDirty(true);
+  };
+  const [useFallbackEstimation, setUseFallbackEstimation] = useState(false);
+  const overviewReady = !!ov && !loadingOv;
+
+  // Callback to handle historical fallback preference change
+  const handleFallbackPreferenceChange = (useFallback: boolean) => {
+    setUseFallbackEstimation(useFallback);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        HISTORICAL_FALLBACK_PREFERENCE_KEY,
+        String(useFallback)
+      );
+    }
+  };
 
   // Get address from URL params on client side to avoid hydration issues
   // Read ?address=... exactly once after mount
@@ -91,56 +441,83 @@ const Dashboard = () => {
     setUrlReady(true);
   }, []);
 
-  // Use URL address if available, otherwise use selected wallet, otherwise use connected wallet address
-  const address = useMemo(
-    () =>
-      urlAddress ? urlAddress : selectedWallet || (isConnected && userWallet ? userWallet : ""),
-    [urlAddress, selectedWallet, isConnected, userWallet]
-  );
+  useEffect(() => {
+    setMounted(true);
+    // Load historical fallback preference from localStorage
+    if (typeof window !== "undefined") {
+      const storedPref = window.localStorage.getItem(
+        HISTORICAL_FALLBACK_PREFERENCE_KEY
+      );
+      if (storedPref !== null) {
+        setUseFallbackEstimation(storedPref === "true");
+      }
+    }
+  }, []);
 
-  // Get all wallets from backend (main wallet from users table + secondary wallets from user_wallets table)
+  // Get all wallets from backend (main wallet + linked wallets)
   const allWallets = useMemo(() => {
-    // userWallets already contains:
-    // 1. Main wallet (from users table) with up-to-date name
-    // 2. Secondary wallets (from user_wallets table)
-    // Just identify which is the main wallet
-    return userWallets.map(w => ({
+    return userWallets.map((w) => ({
       ...w,
-      isMain: w.address.toLowerCase() === userWallet?.toLowerCase()
+      isMain: w.address.toLowerCase() === userWallet?.toLowerCase(),
     }));
   }, [userWallet, userWallets]);
 
-  // Calculate width based on longest wallet name
-  const maxWalletWidth = useMemo(() => {
-    if (allWallets.length === 0) return 280;
-    const longestName = allWallets.reduce((longest, wallet) => 
-      wallet.name.length > longest.length ? wallet.name : longest, 
-      allWallets[0].name
-    );
-    // Account for: checkmark space (32px) + crown icon (16px) + gap (8px) + name + address format "(0x...10...8)" (~28 chars) + padding (40px left + 16px right) + arrow (32px)
-    const checkmarkSpace = 32; // space for checkmark in dropdown
-    const iconSpace = 16 + 8; // crown + gap
-    const addressChars = 28; // "(0x12345678...12345678)"
-    const padding = 40 + 16; // left (pl-10) + right (pr-4) padding
-    const arrowSpace = 32;
-    // Rough estimation: ~8px per character for font-medium, ~6px for monospace
-    const estimatedWidth = checkmarkSpace + iconSpace + (longestName.length * 8) + (addressChars * 6) + padding + arrowSpace;
-    return Math.max(280, estimatedWidth);
+  // Use URL address if available, otherwise use connected wallet address
+  const walletMetaMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { address: string; name: string; isMain: boolean; color: string }
+    >();
+    allWallets.forEach((wallet, idx) => {
+      map.set(wallet.address.toLowerCase(), {
+        address: wallet.address,
+        name: wallet.name,
+        isMain: wallet.isMain,
+        color: WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length],
+      });
+    });
+    return map;
   }, [allWallets]);
+
+  const activeWallets = useMemo(() => {
+    if (urlAddress) {
+      return urlAddress ? [urlAddress] : [];
+    }
+    if (appliedWallets.length) {
+      return appliedWallets;
+    }
+    if (selectedWallets.length) {
+      return selectedWallets;
+    }
+    if (isConnected && userWallet) {
+      return [userWallet];
+    }
+    return [];
+  }, [urlAddress, appliedWallets, selectedWallets, isConnected, userWallet]);
+
+  const address = activeWallets[0] ?? "";
+  const isMultiWalletView = activeWallets.length > 1;
 
   // Auto-select first wallet (main wallet) when wallets are loaded
   useEffect(() => {
-    if (allWallets.length > 0 && !selectedWallet && !urlAddress) {
-      setSelectedWallet(allWallets[0].address);
+    if (urlAddress) return;
+    if (allWallets.length > 0 && selectedWallets.length === 0) {
+      const first = [allWallets[0].address];
+      setSelectedWallets(first);
+      setAppliedWallets(first);
+      setWalletSelectionDirty(false);
     }
-  }, [allWallets, selectedWallet, urlAddress]);
+  }, [allWallets, selectedWallets.length, urlAddress]);
 
-  // Reset selectedWallet when user disconnects
+  // Reset selections when user disconnects
   useEffect(() => {
-    if (!isConnected) {
-      setSelectedWallet("");
+    if (!isConnected && !urlAddress) {
+      setSelectedWallets([]);
+      setAppliedWallets([]);
+      setWalletStats([]);
+      setWalletSelectionDirty(false);
     }
-  }, [isConnected]);
+  }, [isConnected, urlAddress]);
 
   // Redirect to home ONLY after URL is parsed and truly no address is available
   useEffect(() => {
@@ -150,30 +527,465 @@ const Dashboard = () => {
     }
   }, [urlReady, address, isConnected, router]);
 
-  const [networks, setNetworks] = useState<string>(
-    "mainnet,polygon,base,optimism,arbitrum-one,bsc,avalanche,unichain"
+  const [networks, setNetworks] = useState<string[]>(() => {
+    if (typeof window === "undefined") {
+      return [...DASHBOARD_DEFAULT_NETWORKS];
+    }
+    const sp = new URLSearchParams(window.location.search);
+    const urlNetworks = sp.get("networks");
+    if (urlNetworks) {
+      return normalizeNetworkListFromString(urlNetworks);
+    }
+    const stored = window.localStorage.getItem(DASHBOARD_NETWORK_STORAGE_KEY);
+    if (stored) {
+      return normalizeNetworkListFromString(stored);
+    }
+    return [...DASHBOARD_DEFAULT_NETWORKS];
+  });
+
+  const networksParam = useMemo(() => serializeNetworks(networks), [networks]);
+
+  const sameNetworks = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((value, idx) => value === b[idx]);
+
+  const [networkSuggestions, setNetworkSuggestions] = useState<
+    NetworkSuggestion[]
+  >([]);
+  const [loadingNetworkHints, setLoadingNetworkHints] = useState(false);
+  const [enableNetworkSuggestions, setEnableNetworkSuggestions] =
+    useState<boolean>(() => {
+      if (typeof window === "undefined") return true;
+      const stored = window.localStorage.getItem(DASHBOARD_NETWORK_HINTS_KEY);
+      return stored === "false" ? false : true;
+    });
+
+  useEffect(() => {
+    if (!urlReady) return;
+    const sp = new URLSearchParams(window.location.search);
+    const urlNetworks = sp.get("networks");
+    if (!urlNetworks) return;
+    const normalized = normalizeNetworkListFromString(urlNetworks);
+    setNetworks((prev) => (sameNetworks(prev, normalized) ? prev : normalized));
+  }, [urlReady]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      DASHBOARD_NETWORK_STORAGE_KEY,
+      serializeNetworks(networks)
+    );
+  }, [networks]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      DASHBOARD_NETWORK_HINTS_KEY,
+      enableNetworkSuggestions ? "true" : "false"
+    );
+  }, [enableNetworkSuggestions]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || urlAddress || loadedFromStorage)
+      return;
+    if (!allWallets.length) return;
+    const stored = window.localStorage.getItem(DASHBOARD_WALLET_SELECTION_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as string[];
+        const valid = parsed.filter((addr) =>
+          allWallets.some(
+            (wallet) => wallet.address.toLowerCase() === addr.toLowerCase()
+          )
+        );
+        if (valid.length) {
+          setSelectedWallets(valid);
+          setAppliedWallets(valid);
+          setWalletSelectionDirty(false);
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    setLoadedFromStorage(true);
+  }, [allWallets, urlAddress, loadedFromStorage]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || urlAddress) return;
+    if (!appliedWallets.length) {
+      window.localStorage.removeItem(DASHBOARD_WALLET_SELECTION_KEY);
+      return;
+    }
+    window.localStorage.setItem(
+      DASHBOARD_WALLET_SELECTION_KEY,
+      JSON.stringify(appliedWallets)
+    );
+  }, [appliedWallets, urlAddress]);
+
+  useEffect(() => {
+    if (!enableNetworkSuggestions) {
+      setNetworkSuggestions([]);
+      setLoadingNetworkHints(false);
+      return;
+    }
+    const targets = activeWallets.filter(Boolean);
+    if (!targets.length) {
+      setNetworkSuggestions([]);
+      return;
+    }
+    const remaining = NETWORK_IDS.filter((id) => !networks.includes(id));
+    if (!remaining.length) {
+      setNetworkSuggestions([]);
+      return;
+    }
+    const controller = new AbortController();
+    setLoadingNetworkHints(true);
+    const query = serializeNetworks(remaining);
+    const fetches = targets.map((walletAddr) => {
+      const meta = walletMetaMap.get(walletAddr.toLowerCase());
+      const walletLabel =
+        walletLabelMode === "address" || urlAddress
+          ? shortAddress(walletAddr)
+          : meta?.name ?? shortAddress(walletAddr);
+      return fetch(
+        `/api/networks/activity/${encodeURIComponent(
+          walletAddr
+        )}?networks=${encodeURIComponent(query)}&_ts=${Date.now()}`,
+        { signal: controller.signal }
+      )
+        .then(async (res) => {
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(text || "Failed to load network activity");
+          }
+          return res.json();
+        })
+        .then((payload) => {
+          const list = Array.isArray(payload?.suggestions)
+            ? payload.suggestions
+            : Array.isArray(payload?.summaries)
+            ? payload.summaries
+            : [];
+          return list.map((item: any) => ({
+            network: item?.network,
+            lastActivityTs:
+              typeof item?.lastActivityTs === "number"
+                ? item.lastActivityTs
+                : null,
+            direction:
+              item?.direction === "in" || item?.direction === "out"
+                ? item.direction
+                : "unknown",
+            walletAddress: walletAddr,
+            walletLabel,
+          })) as NetworkSuggestion[];
+        })
+        .catch((err) => {
+          if (err?.name === "AbortError") return [];
+          if (process.env.NODE_ENV === 'development') {
+            console.error(
+              `[Dashboard] Failed to load network suggestions for ${walletAddr}:`,
+              err
+            );
+          }
+          return [];
+        });
+    });
+
+    Promise.all(fetches)
+      .then((results) => {
+        const merged = results.flat();
+        // Deduplicate per wallet+network in case API echoes duplicates
+        const seen = new Set<string>();
+        const filtered = merged.filter((item) => {
+          const key = `${item.walletAddress}-${item.network}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return !!item.network;
+        });
+        setNetworkSuggestions(filtered);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoadingNetworkHints(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [
+    activeWallets,
+    networks,
+    enableNetworkSuggestions,
+    walletLabelMode,
+    walletMetaMap,
+    urlAddress,
+  ]);
+
+  const fetchOverviewSnapshot = useCallback(
+    async (targetAddress: string) => {
+      const url = `/api/holdings/${encodeURIComponent(
+        targetAddress
+      )}?networks=${encodeURIComponent(
+        networksParam
+      )}&withDelta24h=true&minUsd=0&includeZero=true&spamFilter=hard&_ts=${Date.now()}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) {
+        let message = "Failed to load overview";
+        try {
+          const detail = await res.json();
+          message =
+            detail?.error ??
+            detail?.message ??
+            (typeof detail === "string" ? detail : JSON.stringify(detail));
+        } catch {
+          message = await res.text();
+        }
+        setTokenApiWarningFor("overview", isTokenApiRateLimit(message));
+        throw new Error(message || "Failed to load overview");
+      }
+      const data = (await res.json()) as OverviewResponse;
+      setTokenApiWarningFor(
+        `overview:${targetAddress}`,
+        !!data?.warnings?.tokenApiRateLimited
+      );
+      setPricingWarningFor(
+        `overview:${targetAddress}`,
+        !!data?.warnings?.defiLlamaRateLimited
+      );
+      return data;
+    },
+    [networksParam, setTokenApiWarningFor, setPricingWarningFor]
   );
 
   useEffect(() => {
-    if (!address) return;
+    if (!activeWallets.length) return;
+    let cancelled = false;
     setLoadingOv(true);
     setErrorOv(null);
 
-    const url = `/api/holdings/${encodeURIComponent(
-      address
-    )}?networks=${encodeURIComponent(
-      networks
-    )}&withDelta24h=true&minUsd=0&includeZero=true&spamFilter=hard&_ts=${Date.now()}`;
-
-    fetch(url, { cache: "no-store" })
-      .then(async (r) => (r.ok ? r.json() : Promise.reject(await r.json())))
-      .then((data: OverviewResponse) => {
-        // console.log("[FE] holdings overview kpis =", data.kpis); // sanity log
-        setOv(data);
+    Promise.all(
+      activeWallets.map((walletAddress) =>
+        fetchOverviewSnapshot(walletAddress).then((overview) => ({
+          address: walletAddress,
+          overview,
+        }))
+      )
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        const merged = mergeOverviewResponses(entries);
+        setOv(merged.overview);
+        setWalletStats(merged.walletStats);
+        setTokenApiWarningFor("overview", false);
+        const warn = entries.some(
+          (entry) => entry.overview.warnings?.defiLlamaRateLimited
+        );
+        setPricingWarningFor("overview", warn);
       })
-      .catch((e) => setErrorOv(e?.error ?? "Failed to load overview"))
-      .finally(() => setLoadingOv(false));
-  }, [address, networks, userWallet, isConnected]);
+      .catch((e) => {
+        if (cancelled) return;
+        if (process.env.NODE_ENV === 'development') {
+          console.error("[Dashboard] Failed to load overview:", e);
+        }
+        setOv(null);
+        setWalletStats([]);
+        setErrorOv(
+          typeof e?.message === "string"
+            ? e.message
+            : e?.error ?? "Failed to load overview"
+        );
+        setTokenApiWarningFor("overview", isTokenApiRateLimit(e?.message));
+        setPricingWarningFor("overview", false);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingOv(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWallets, fetchOverviewSnapshot, setPricingWarningFor]);
+
+  const addNetwork = (networkId: string) =>
+    setNetworks((prev) => {
+      if (prev.includes(networkId)) return prev;
+      return normalizeNetworkList([...prev, networkId]);
+    });
+
+  const removeNetwork = (networkId: string) =>
+    setNetworks((prev) => {
+      if (prev.length <= 1) return prev;
+      const next = prev.filter((id) => id !== networkId);
+      return next.length ? next : prev;
+    });
+
+  const toggleNetwork = (networkId: string, checked: boolean) =>
+    setNetworks((prev) => {
+      if (checked) {
+        if (prev.includes(networkId)) return prev;
+        return normalizeNetworkList([...prev, networkId]);
+      }
+      if (prev.length <= 1) return prev;
+      return prev.filter((id) => id !== networkId);
+    });
+
+  const resetNetworks = () => setNetworks([...DASHBOARD_DEFAULT_NETWORKS]);
+  const selectAllNetworks = () => setNetworks([...NETWORK_IDS]);
+
+  // Fetch historical data for 6-month graph
+  useEffect(() => {
+    if (!activeWallets.length || !overviewReady) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(
+          "[Dashboard] Historical data fetch postponed until overview is ready"
+        );
+      }
+      return;
+    }
+    let cancelled = false;
+    setLoadingHistorical(true);
+    Promise.all(
+      activeWallets.map((walletAddress) =>
+        fetchHistoricalData(walletAddress, {
+          networks: networksParam,
+          days: 180,
+          useFallback: useFallbackEstimation,
+        })
+      )
+    )
+      .then((responses) => {
+        if (cancelled) return;
+        const merged = mergeHistoricalResponses(responses);
+        setHistoricalData(merged);
+        setIsHistoricalEstimated(responses.some((resp) => resp.isEstimated));
+        const priceWarn = responses.some(
+          (resp) => resp.warnings?.defiLlamaRateLimited
+        );
+        const tokenWarn = responses.some(
+          (resp) => resp.warnings?.tokenApiRateLimited
+        );
+        setPricingWarningFor("historical", priceWarn);
+        setTokenApiWarningFor("historical", tokenWarn);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        if (process.env.NODE_ENV === 'development') {
+          console.error("[Dashboard] Failed to load historical data:", e);
+        }
+        setTokenApiWarningFor("historical", isTokenApiRateLimit(e?.message));
+        setPricingWarningFor("historical", false);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingHistorical(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeWallets,
+    networksParam,
+    overviewReady,
+    useFallbackEstimation,
+    setPricingWarningFor,
+    setTokenApiWarningFor,
+  ]);
+
+  // Capital gains are now calculated from the transaction cache via useTransactionStats
+  // No need for separate API requests - the data is already available in AllTransactionsTab
+  // The CapitalGainsSnapshot component uses stats.capitalGainsSummary which comes from the cache
+
+  const historicalChartData = useMemo(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(
+        `[Dashboard] Processing historical data: ${historicalData.length} points`
+      );
+    }
+    if (historicalData.length === 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log("[Dashboard] No historical data to process");
+      }
+      return [];
+    }
+    const processed = historicalData
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map((point) => ({
+        date: new Date(point.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+        value: point.totalValueUsd,
+        timestamp: point.timestamp,
+      }));
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Dashboard] Processed chart data: ${processed.length} points`);
+    }
+    return processed;
+  }, [historicalData]);
+
+  const netFlowData = useMemo(() => {
+    if (historicalData.length < 2) return [];
+    const sorted = [...historicalData].sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
+    const flows: Array<{ date: string; delta: number }> = [];
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = sorted[i - 1];
+      const current = sorted[i];
+      const delta = current.totalValueUsd - prev.totalValueUsd;
+      flows.push({
+        date: new Date(current.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+        delta,
+      });
+    }
+    return flows;
+  }, [historicalData]);
+
+  const chainHistory = useMemo(() => {
+    if (historicalData.length === 0) {
+      return {
+        data: [] as Record<string, number | string>[],
+        series: [] as Array<{ key: string; label: string; color: string }>,
+      };
+    }
+    const sorted = [...historicalData].sort(
+      (a, b) => a.timestamp - b.timestamp
+    );
+    const chainSet = new Set<string>();
+    for (const point of sorted) {
+      Object.keys(point.byChain ?? {}).forEach((chain) => chainSet.add(chain));
+    }
+    const seriesKeys = Array.from(chainSet);
+    if (!seriesKeys.length) {
+      return { data: [], series: [] };
+    }
+    const data = sorted.map((point) => {
+      const row: Record<string, number | string> = {
+        date: new Date(point.date).toLocaleDateString("fr-FR", {
+          month: "short",
+          day: "numeric",
+        }),
+      };
+      const total = point.totalValueUsd || 0;
+      seriesKeys.forEach((chain) => {
+        const usd = point.byChain?.[chain] ?? 0;
+        row[chain] = total > 0 ? (usd / total) * 100 : 0;
+      });
+      return row;
+    });
+    const series = seriesKeys.map((chain, idx) => ({
+      key: chain,
+      label: CHAIN_LABEL[chain] ?? chain,
+      color: CHAIN_STACK_COLORS[idx % CHAIN_STACK_COLORS.length],
+    }));
+    return { data, series };
+  }, [historicalData]);
 
   const allocationData = useMemo(() => {
     if (!ov) return [];
@@ -225,8 +1037,8 @@ const Dashboard = () => {
     for (const h of ov.holdings) {
       byChain.set(h.chain, (byChain.get(h.chain) ?? 0) + (h.valueUsd || 0));
     }
-    const total = [...byChain.values()].reduce((s, v) => s + v, 0) || 1;
-    return [...byChain.entries()]
+    const total = Array.from(byChain.values()).reduce((s, v) => s + v, 0) || 1;
+    return Array.from(byChain.entries())
       .map(([chain, usd]) => ({
         chain,
         label: CHAIN_LABEL[chain] ?? chain,
@@ -281,6 +1093,93 @@ const Dashboard = () => {
     return { stable, nonStable: Math.max(total - stable, 0) };
   }, [ov]);
 
+  const riskBuckets = useMemo(() => {
+    const totals: Record<RiskBucketId, number> = {
+      stable: 0,
+      bluechip: 0,
+      longtail: 0,
+    };
+    const counts: Record<RiskBucketId, number> = {
+      stable: 0,
+      bluechip: 0,
+      longtail: 0,
+    };
+    for (const holding of ov?.holdings ?? []) {
+      const bucket = classifyRiskBucket(holding.symbol);
+      const value = holding.valueUsd || 0;
+      totals[bucket] += value;
+      if (value > 0) counts[bucket] += 1;
+    }
+    const totalValue = ov?.kpis.totalValueUsd || 0;
+    return (
+      Object.entries(RISK_BUCKET_META) as Array<
+        [RiskBucketId, (typeof RISK_BUCKET_META)[RiskBucketId]]
+      >
+    ).map(([id, meta]) => ({
+      id,
+      label: meta.label,
+      description: meta.description,
+      criteria: meta.criteria,
+      accent: meta.accent,
+      barColor: meta.barColor,
+      usd: totals[id],
+      pct: totalValue > 0 ? (totals[id] / totalValue) * 100 : 0,
+      assetCount: counts[id],
+    }));
+  }, [ov]);
+  const stableBucketUsd =
+    riskBuckets.find((bucket) => bucket.id === "stable")?.usd ?? 0;
+
+  const appliedWalletDisplay = useMemo(() => {
+    const list = urlAddress
+      ? [urlAddress]
+      : appliedWallets.length
+      ? appliedWallets
+      : [];
+    return list.map((addr, idx) => {
+      const meta = walletMetaMap.get(addr.toLowerCase());
+      const label =
+        walletLabelMode === "address" || urlAddress
+          ? shortAddress(addr)
+          : meta?.name ?? shortAddress(addr);
+      const color =
+        meta?.color ?? WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length];
+      return { address: addr, label, color };
+    });
+  }, [urlAddress, appliedWallets, walletLabelMode, walletMetaMap]);
+
+  const walletDisplayItems = useMemo(() => {
+    if (!walletStats.length) return [];
+    return walletStats.map((stat, idx) => {
+      const meta = walletMetaMap.get(stat.address.toLowerCase());
+      const label =
+        walletLabelMode === "address" || !meta
+          ? shortAddress(stat.address)
+          : meta.name;
+      const color =
+        meta?.color ?? WALLET_COLOR_PALETTE[idx % WALLET_COLOR_PALETTE.length];
+      return { ...stat, label, color };
+    });
+  }, [walletStats, walletLabelMode, walletMetaMap]);
+
+  const walletLabelLookup = useMemo(() => {
+    const lookup: Record<string, { label: string; color: string }> = {};
+    walletDisplayItems.forEach((item) => {
+      lookup[item.address.toLowerCase()] = {
+        label: item.label,
+        color: item.color,
+      };
+    });
+    return lookup;
+  }, [walletDisplayItems]);
+
+  const appliedWalletSummary = appliedWalletDisplay
+    .map((wallet) => wallet.label)
+    .join(" + ");
+  const aggregatedWalletCount = urlAddress
+    ? 1
+    : appliedWalletDisplay.length || selectedWallets.length || 0;
+
   const effectiveN = (weightsPct: number[]) => {
     const w = weightsPct.map((p) => p / 100);
     const sumSq = w.reduce((s, x) => s + x * x, 0) || 1;
@@ -316,16 +1215,6 @@ const Dashboard = () => {
     return [...map.values()].sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
   }, [ov]);
 
-  const treemapData = useMemo(() => {
-    if (!ov) return [];
-    return (ov.holdings ?? [])
-      .filter((h) => (h.valueUsd || 0) > 0)
-      .map((h) => ({
-        name: `${CHAIN_LABEL[h.chain] ?? h.chain} / ${h.symbol || "(unknown)"}`,
-        size: h.valueUsd || 0,
-      }));
-  }, [ov]);
-
   const filteredHoldings = useMemo(() => {
     return (ov?.holdings ?? [])
       .filter((h) => (h.valueUsd ?? 0) >= minUsdFilter)
@@ -351,13 +1240,47 @@ const Dashboard = () => {
     return { volProxy, bluechipShare, chainSpread };
   }, [ov, chainBreakdown]);
 
+  const formatLastActivity = (timestamp: number | null) => {
+    if (!timestamp) return "No recent activity";
+    const diffSeconds = Math.max(0, Math.floor(Date.now() / 1000) - timestamp);
+    if (diffSeconds < 60) return "Just now";
+    if (diffSeconds < 3600) {
+      const mins = Math.floor(diffSeconds / 60);
+      return `${mins} min${mins === 1 ? "" : "s"} ago`;
+    }
+    if (diffSeconds < 86400) {
+      const hours = Math.floor(diffSeconds / 3600);
+      return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    }
+    const days = Math.floor(diffSeconds / 86400);
+    if (days < 30) {
+      return `${days} day${days === 1 ? "" : "s"} ago`;
+    }
+    const months = Math.floor(days / 30);
+    return `${months} mo${months === 1 ? "" : "s"} ago`;
+  };
+
+  const suggestionCandidates = useMemo(
+    () =>
+      networkSuggestions
+        .filter(
+          (hint) =>
+            hint.network &&
+            !networks.includes(hint.network) &&
+            typeof hint.lastActivityTs === "number"
+        )
+        .sort((a, b) => (b.lastActivityTs ?? 0) - (a.lastActivityTs ?? 0))
+        .slice(0, 3),
+    [networkSuggestions, networks]
+  );
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar />
 
       <main className="container mx-auto px-4 pt-24 pb-12">
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h1 className="text-3xl font-bold text-slate-800 mb-2">
                 Portfolio Dashboard
@@ -366,766 +1289,446 @@ const Dashboard = () => {
                 Track your crypto assets and tax obligations
               </p>
             </div>
-            {isConnected && allWallets.length > 1 && (
-              <div className="relative inline-block">
-                <Select value={selectedWallet} onValueChange={setSelectedWallet}>
-                  <SelectTrigger 
-                    className="h-12 pl-10 pr-4 border-2 border-slate-200 rounded-xl bg-white shadow-md hover:border-blue-400 focus:ring-2 focus:ring-blue-500 transition-all duration-200 text-slate-800 font-medium"
-                    style={{ width: `${maxWalletWidth}px` }}
-                  >
-                    <div className="flex items-center gap-2">
-                      {(() => {
-                        const selected = allWallets.find(w => w.address === selectedWallet);
-                        if (!selected) return null;
-                        return (
-                          <>
-                            {selected.isMain && (
-                              <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                            )}
-                            <span className="font-medium">{selected.name}</span>
-                            <span className="text-slate-500 font-mono text-sm">
-                              ({selected.address.slice(0, 10)}...{selected.address.slice(-8)})
-                            </span>
-                          </>
-                        );
-                      })()}
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-2 shadow-lg w-[var(--radix-select-trigger-width)]">
-                    {allWallets.map((wallet) => (
-                      <SelectItem 
-                        key={wallet.address} 
-                        value={wallet.address}
-                        className="py-3 pl-10 pr-4 text-slate-800 font-medium cursor-pointer hover:bg-blue-50 focus:bg-blue-50"
-                      >
-                        <div className="flex items-center gap-2">
-                          {wallet.isMain && (
-                            <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                          )}
-                          <span className="font-medium">{wallet.name}</span>
-                          <span className="text-slate-500 font-mono text-sm">
-                            ({wallet.address.slice(0, 10)}...{wallet.address.slice(-8)})
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {urlAddress ? (
+              <div className="text-sm text-slate-500 border border-slate-200 rounded-full px-4 py-2 bg-white shadow-sm">
+                Viewing shared address {shortAddress(urlAddress)}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
+        <Card className="mb-8 shadow-sm border border-slate-200 bg-white/90 backdrop-blur">
+          <div className="flex flex-col gap-6 p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">
+                  Portfolio Manager
+                </h2>
+                <p className="text-sm text-slate-600">
+                  Choose which wallets and chains feed your dashboard visuals and
+                  KPIs.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+                <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                  {appliedWalletDisplay.length || selectedWallets.length
+                    ? `${appliedWalletDisplay.length || selectedWallets.length} wallet${
+                        (appliedWalletDisplay.length ||
+                          selectedWallets.length) === 1
+                          ? ""
+                          : "s"
+                      } active`
+                    : "No wallets applied"}
+                </Badge>
+                <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                  {networks.length} chains selected
+                </Badge>
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      Wallets
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Aggregate any number of wallets for analytics.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-amber-200 text-amber-700 bg-amber-50">
+                    {aggregatedWalletCount} in view
+                  </Badge>
+                </div>
+
+                {isConnected && allWallets.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {appliedWalletDisplay.length ? (
+                        appliedWalletDisplay.map((wallet) => (
+                          <Badge
+                            key={wallet.address}
+                            variant="secondary"
+                            className="flex items-center gap-2 rounded-full bg-slate-50 text-slate-700 border border-slate-200 shadow-sm"
+                          >
+                            <span
+                              className="inline-block w-2 h-2 rounded-full"
+                              style={{ backgroundColor: wallet.color }}
+                            />
+                            {wallet.label}
+                          </Badge>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-500">
+                          No wallets applied. Pick a set below.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="border-2 border-slate-200 bg-white"
+                          >
+                            Select wallets ({selectedWallets.length})
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-72">
+                          <DropdownMenuLabel>
+                            Wallets
+                          </DropdownMenuLabel>
+                          {allWallets.map((wallet) => {
+                            const checked = selectedWallets.includes(
+                              wallet.address
+                            );
+                            return (
+                              <DropdownMenuCheckboxItem
+                                key={wallet.address}
+                                checked={checked}
+                                onCheckedChange={(value) =>
+                                  handleToggleWallet(wallet.address, !!value)
+                                }
+                              >
+                                <div className="flex items-center gap-2">
+                                  {wallet.isMain && (
+                                    <Crown className="w-3.5 h-3.5 text-amber-500" />
+                                  )}
+                                  <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-slate-800">
+                                      {wallet.name}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-mono">
+                                      {shortAddress(wallet.address)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </DropdownMenuCheckboxItem>
+                            );
+                          })}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            disabled={!selectedWallets.length}
+                            onSelect={(event) => {
+                              event.preventDefault();
+                              handleClearSelection();
+                            }}
+                          >
+                            Clear selection
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button
+                        onClick={handleApplyWallets}
+                        disabled={!selectedWallets.length || !walletSelectionDirty}
+                      >
+                        Apply selection
+                        {walletSelectionDirty && selectedWallets.length ? (
+                          <span className="ml-2 text-xs text-amber-200">
+                            pending
+                          </span>
+                        ) : null}
+                      </Button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                      <span>
+                        Aggregating {aggregatedWalletCount} wallet
+                        {aggregatedWalletCount === 1 ? "" : "s"}
+                      </span>
+                      {walletSelectionDirty &&
+                        selectedWallets.length > 0 &&
+                        !urlAddress && (
+                          <span className="inline-flex items-center gap-1 text-amber-700">
+                            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                            Apply to refresh data
+                          </span>
+                        )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    Connect a wallet to start aggregating balances.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">
+                      Chains
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Only selected chains are fetched for balances and charts.
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="border-slate-200 text-slate-700 bg-slate-50">
+                    {networks.length} active
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 mb-4">
+                  <div className="flex items-center gap-2 text-sm text-slate-700">
+                    <Switch
+                      checked={enableNetworkSuggestions}
+                      onCheckedChange={setEnableNetworkSuggestions}
+                      id="suggestion-switch"
+                    />
+                    <label htmlFor="suggestion-switch" className="cursor-pointer">
+                      Smart suggestions
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={resetNetworks}
+                      disabled={sameNetworks(networks, DASHBOARD_DEFAULT_NETWORKS)}
+                    >
+                      Reset
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm" className="gap-2">
+                          <Plus className="h-4 w-4" />
+                          Manage chains
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent className="w-60">
+                        <DropdownMenuLabel>Select chains</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {NETWORK_OPTIONS.map((net) => (
+                          <DropdownMenuCheckboxItem
+                            key={net.id}
+                            checked={networks.includes(net.id)}
+                            onCheckedChange={(checked) =>
+                              toggleNetwork(net.id, Boolean(checked))
+                            }
+                          >
+                            {net.label}
+                          </DropdownMenuCheckboxItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            selectAllNetworks();
+                          }}
+                        >
+                          Select all
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            resetNetworks();
+                          }}
+                        >
+                          Reset to default
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {networks.map((networkId) => (
+                    <Badge
+                      key={networkId}
+                      variant="secondary"
+                      className="flex items-center gap-2 rounded-full px-3 py-1 text-sm"
+                    >
+                      {networkLabel(networkId)}
+                      {networks.length > 1 && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${networkLabel(networkId)}`}
+                          className="text-slate-500 hover:text-slate-700 transition-colors"
+                          onClick={() => removeNetwork(networkId)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+
+                {!enableNetworkSuggestions ? (
+                  <p className="text-xs text-slate-500">Suggestions disabled.</p>
+                ) : loadingNetworkHints ? (
+                  <p className="text-xs text-slate-500">
+                    Scanning other chains for recent activity…
+                  </p>
+                ) : suggestionCandidates.length > 0 ? (
+                  <div className="space-y-3 rounded-lg border border-blue-200 bg-blue-50/70 p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-blue-900">
+                      <Sparkles className="h-4 w-4" />
+                      Recently active chains
+                    </div>
+                    <div className="space-y-3">
+                      {suggestionCandidates.map((hint) => (
+                        <div
+                          key={`${hint.network}-${hint.walletAddress}`}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white p-3 shadow-sm"
+                        >
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium text-slate-900">
+                              {networkLabel(hint.network)}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              Last tx {formatLastActivity(hint.lastActivityTs)}
+                              {hint.direction !== "unknown"
+                                ? ` • ${
+                                    hint.direction === "in"
+                                      ? "Inbound"
+                                      : "Outbound"
+                                  }`
+                                : ""}
+                            </p>
+                            <div className="flex items-center gap-2 text-xs text-slate-600">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-400" />
+                                From {hint.walletLabel}
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addNetwork(hint.network)}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {pricingWarningActive && (
+          <Alert className="border-amber-200 bg-amber-50">
+            <AlertTitle>Price data temporarily limited</AlertTitle>
+            <AlertDescription>
+              DeFiLlama rate limits prevented fresh USD prices. 24h changes,
+              charts, and transaction values may appear as zero until pricing
+              resumes.
+            </AlertDescription>
+          </Alert>
+        )}
+        {tokenApiWarningActive && (
+          <Alert variant="destructive" className="border-rose-200 bg-rose-50">
+            <AlertTitle>Token API rate limit reached</AlertTitle>
+            <AlertDescription>
+              The upstream balance API temporarily blocked requests (429). Some
+              holdings or transactions may be missing data until the limit
+              resets. Please try again in a few minutes.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="all-transactions">All Transactions</TabsTrigger>
+          <TabsList className="flex w-full gap-2">
+            <TabsTrigger className="flex-1" value="overview">
+              Overview
+            </TabsTrigger>
+            <TabsTrigger className="flex-1" value="graphs">
+              Graphs
+            </TabsTrigger>
+            {/* <TabsTrigger className="flex-1" value="capital-gains">
+              Capital Gains
+            </TabsTrigger> */}
+            <TabsTrigger className="flex-1" value="all-transactions">
+              All Transactions
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            {/* Portfolio Summary Cards */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-slate-600 text-sm font-medium">
-                      Total Portfolio Value
-                    </p>
-                    {loadingOv ? (
-                      <div className="mt-2">
-                        <Skeleton className="h-8 w-32" />
-                      </div>
-                    ) : (
-                      <CurrencyDisplay
-                        amount={ov?.kpis.totalValueUsd ?? 0}
-                        currency={userPreferences.currency}
-                        variant="large"
-                        showSign={false}
-                      />
-                    )}
-                  </div>
-                  <Wallet className="w-12 h-12 text-blue-500" />
-                </div>
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-slate-600 text-sm font-medium">
-                      24h Change
-                    </p>
-                    {loadingOv ? (
-                      <div className="mt-2">
-                        <Skeleton className="h-8 w-24" />
-                      </div>
-                    ) : (
-                      <CurrencyDisplay
-                        amount={ov?.kpis.delta24hUsd ?? 0}
-                        currency={userPreferences.currency}
-                        variant="large"
-                      />
-                    )}
-                  </div>
-                  {loadingOv ? (
-                    <Skeleton className="w-12 h-12 rounded-full" />
-                  ) : ov?.kpis.delta24hUsd >= 0 ? (
-                    <TrendingUp className="w-12 h-12 text-green-500" />
-                  ) : (
-                    <TrendingDown className="w-12 h-12 text-red-500" />
-                  )}
-                </div>
-                {quality && (
-                  <div className="flex flex-wrap gap-2">
-                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
-                      Vol (24h proxy): {quality.volProxy.toFixed(2)}%
-                    </span>
-                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
-                      Blue-chip: {quality.bluechipShare.toFixed(1)}%
-                    </span>
-                    <span className="text-xs px-2 py-1 rounded bg-slate-100">
-                      Chains ≥2%: {quality.chainSpread}
-                    </span>
-                  </div>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-slate-600 text-sm font-medium">
-                      Diversification (HHI)
-                    </p>
-                    {loadingOv ? (
-                      <div className="mt-2">
-                        <Skeleton className="h-8 w-28" />
-                      </div>
-                    ) : (
-                      <div className="mt-2">
-                        <p className="text-xl font-semibold text-slate-800">
-                          {concentration.hhi.toFixed(1)}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {concentration.label}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <BarChart3 className="w-12 h-12 text-purple-500" />
-                </div>
-                {!loadingOv && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    Eff. assets: {concentrationExtras.effN.toFixed(1)} • Top-1:{" "}
-                    {concentrationExtras.top1.toFixed(1)}% • Top-3:{" "}
-                    {concentrationExtras.top3.toFixed(1)}%
-                  </p>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-slate-600 text-sm font-medium">
-                      Stablecoin Share
-                    </p>
-                    {loadingOv ? (
-                      <div className="mt-2">
-                        <Skeleton className="h-8 w-24" />
-                      </div>
-                    ) : (
-                      <div className="mt-2">
-                        <p className="text-xl font-semibold text-slate-800">
-                          {concentration.stableSharePct.toFixed(1)}%
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Of total portfolio
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  <DollarSign className="w-12 h-12 text-orange-500" />
-                </div>
-              </Card>
-            </div>
-
-            {/* Charts */}
-            <div className="grid lg:grid-cols-2 gap-6">
-              <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  Asset Allocation
-                </h3>
-
-                {loadingOv ? (
-                  <div className="space-y-4">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-[300px] w-full" />
-                  </div>
-                ) : !ov ? (
-                  <div className="text-sm text-slate-500">
-                    Load an address to see allocation.
-                  </div>
-                ) : ov && allocationData.length === 0 ? (
-                  <div className="text-sm text-slate-500">
-                    No priced tokens to display.
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={allocationData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <Tooltip
-                        formatter={(
-                          value: unknown,
-                          _name: string,
-                          entry: { payload?: { pct: number; usd: number } }
-                        ) => {
-                          if (entry?.payload) {
-                            const row = entry.payload;
-                            return [
-                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
-                              "Allocation",
-                            ];
-                          }
-                          return [value, "Allocation"];
-                        }}
-                        labelFormatter={(label) => String(label)}
-                      />
-                      <Bar dataKey="pct" fill="#3b82f6" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  Stable vs. Risk Assets
-                </h3>
-                {loadingOv || !ov ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <RPieChart>
-                      <Pie
-                        data={[
-                          { name: "Stablecoins", value: stableVsRisk.stable },
-                          {
-                            name: "Non-stables",
-                            value: stableVsRisk.nonStable,
-                          },
-                        ]}
-                        dataKey="value"
-                        nameKey="name"
-                        outerRadius={110}
-                        label={(e) =>
-                          `${e.name} (${fmtPct(
-                            (e.value / (ov?.kpis.totalValueUsd || 1)) * 100
-                          )})`
-                        }
-                      >
-                        <Cell /> <Cell />
-                      </Pie>
-                      <Legend />
-                    </RPieChart>
-                  </ResponsiveContainer>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-semibold text-slate-800">
-                    Allocation by Chain
-                  </h3>
-                </div>
-
-                {loadingOv ? (
-                  <div className="space-y-4">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-[300px] w-full" />
-                  </div>
-                ) : !ov ? (
-                  <div className="text-sm text-slate-500">
-                    Load an address to see allocation by chain.
-                  </div>
-                ) : chainBreakdown.length === 0 ? (
-                  <div className="text-sm text-slate-500">
-                    No priced tokens to display.
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={chainBreakdown}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                      <Tooltip
-                        formatter={(
-                          value: unknown,
-                          _name: string,
-                          entry: { payload?: { pct: number; usd: number } }
-                        ) => {
-                          if (entry?.payload) {
-                            const row = entry.payload;
-                            return [
-                              `${fmtPct(row.pct)} • ${fmtUSD(row.usd)}`,
-                              "Allocation",
-                            ];
-                          }
-                          return [value, "Allocation"];
-                        }}
-                        labelFormatter={(label) => String(label)}
-                      />
-                      <Bar dataKey="pct" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  24h P&L by Chain
-                </h3>
-                {loadingOv || !ov ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : pnlByChain.length === 0 ? (
-                  <div className="text-sm text-slate-500">No 24h data.</div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={pnlByChain}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="label" />
-                      <YAxis tickFormatter={(v) => fmtUSD(v)} />
-                      <Tooltip
-                        formatter={(v: any, _n: any, e: any) => [
-                          fmtUSD(v),
-                          "24h Δ",
-                        ]}
-                      />
-                      <Bar dataKey="pnl" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-                {!loadingOv && !!ov && (
-                  <p className="text-xs text-slate-500 mt-2">
-                    Weighted move:{" "}
-                    {fmtUSD(pnlByChain.reduce((s, r) => s + r.pnl, 0))} over
-                    24h.
-                  </p>
-                )}
-              </Card>
-
-              <Card className="p-6 bg-white shadow-sm lg:col-span-2">
-                <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                  Performance Heatmap
-                </h3>
-                {loadingOv ? (
-                  <Skeleton className="h-[300px] w-full" />
-                ) : !ov ? (
-                  <div className="text-sm text-slate-500">
-                    Load an address to see performance metrics.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-6 gap-2">
-                      {ov.holdings
-                        .filter((h) => (h.valueUsd || 0) > minUsdFilter)
-                        .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
-                        .slice(0, 12)
-                        .map((h) => (
-                          <div
-                            key={h.contract || h.symbol}
-                            className={`p-4 rounded-lg ${
-                              !h.delta24hPct
-                                ? "bg-slate-100"
-                                : h.delta24hPct > 5
-                                ? "bg-green-500"
-                                : h.delta24hPct > 2
-                                ? "bg-green-300"
-                                : h.delta24hPct > 0
-                                ? "bg-green-100"
-                                : h.delta24hPct > -2
-                                ? "bg-red-100"
-                                : h.delta24hPct > -5
-                                ? "bg-red-300"
-                                : "bg-red-500"
-                            }`}
-                          >
-                            <div className="text-center">
-                              <p className="font-medium text-sm mb-1">
-                                {h.symbol}
-                              </p>
-                              <p
-                                className={`text-xs ${
-                                  !h.delta24hPct
-                                    ? "text-slate-600"
-                                    : h.delta24hPct > 0
-                                    ? "text-green-800"
-                                    : "text-red-800"
-                                }`}
-                              >
-                                {h.delta24hPct?.toFixed(1)}%
-                              </p>
-                              <p className="text-xs text-slate-600 mt-1">
-                                {fmtUSD(h.valueUsd || 0)}
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-
-                    <div className="flex justify-center gap-4 text-xs text-slate-600">
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-red-500 rounded"></span>
-                        <span>{"< -5%"}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-red-300 rounded"></span>
-                        <span>-5% to -2%</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-red-100 rounded"></span>
-                        <span>-2% to 0%</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-100 rounded"></span>
-                        <span>0% to 2%</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-300 rounded"></span>
-                        <span>2% to 5%</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 bg-green-500 rounded"></span>
-                        <span>{"> 5%"}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </Card>
-            </div>
-
-            {/* Asset Breakdown */}
-            <Card className="p-6 bg-white shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-slate-800">
-                  Top Holdings
-                </h3>
-                <button
-                  onClick={() => setShowChange((v) => !v)}
-                  className="text-sm px-3 py-1 rounded-md border border-slate-200 hover:bg-slate-100"
-                >
-                  {showChange ? "Show Value" : "Show 24h Change"}
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {loadingOv && (
-                  <>
-                    {/* Loading skeletons for top holdings */}
-                    {[...Array(3)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Skeleton className="w-10 h-10 rounded-full" />
-                          <div>
-                            <Skeleton className="h-4 w-16 mb-2" />
-                            <Skeleton className="h-3 w-20" />
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <Skeleton className="h-4 w-20 mb-1" />
-                          <Skeleton className="h-3 w-12" />
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-                {errorOv && (
-                  <div className="text-sm text-red-500">{errorOv}</div>
-                )}
-
-                {!loadingOv &&
-                  ov &&
-                  topHoldingsLive.map((h, index) => {
-                    const delta = h.delta24hUsd ?? null;
-                    const pct = h.delta24hPct ?? null;
-                    const color =
-                      delta == null
-                        ? "text-slate-600"
-                        : delta >= 0
-                        ? "text-green-600"
-                        : "text-red-600";
-                    return (
-                      <div
-                        key={`${h.contract ?? 'native'}-${h.symbol ?? 'unknown'}-${index}`}
-                        className="flex items-center justify-between p-4 bg-slate-50 rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                            {(h.symbol || "TOK").slice(0, 3).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-medium text-slate-800 flex items-center gap-2">
-                              {h.symbol || "(unknown)"}
-                              <span
-                                className={`px-2 py-0.5 text-xs rounded ${
-                                  chainBadgeClass[(h as any).chain] ||
-                                  "bg-slate-100 text-slate-700"
-                                }`}
-                              >
-                                {CHAIN_LABEL[(h as any).chain] ??
-                                  (h as any).chain}
-                              </span>
-                            </p>
-                            <p className="text-sm text-slate-500">
-                              {ov?.kpis?.totalValueUsd
-                                ? `${(
-                                    (h.valueUsd / ov.kpis.totalValueUsd) *
-                                    100
-                                  ).toFixed(1)}% of portfolio`
-                                : "—"}
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Right-side value */}
-                        {!showChange ? (
-                          <CurrencyDisplay
-                            amount={h.valueUsd ?? 0}
-                            currency="USD"
-                            showSign={false}
-                          />
-                        ) : (
-                          <div className="text-right">
-                            <div className={`font-semibold ${color}`}>
-                              <CurrencyDisplay
-                                amount={delta ?? 0}
-                                currency="USD"
-                                showSign
-                              />
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {pct == null
-                                ? "—"
-                                : `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                {!loadingOv &&
-                  !errorOv &&
-                  ov &&
-                  topHoldingsLive.length === 0 && (
-                    <div className="text-sm text-slate-500">
-                      No holdings with USD value.
-                    </div>
-                  )}
-              </div>
-            </Card>
-
-            <Card className="p-6 bg-white shadow-sm mt-6">
-              <h3 className="text-lg font-semibold text-slate-800 mb-4">
-                Top Movers (24h)
-              </h3>
-
-              {loadingOv ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-6 w-full" />
-                  <Skeleton className="h-6 w-full" />
-                </div>
-              ) : !ov ? (
-                <div className="text-sm text-slate-500">
-                  Load an address to see movers.
-                </div>
-              ) : movers.gainers.length + movers.losers.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No 24h change data available.
-                </div>
-              ) : (
-                <div className="grid md:grid-cols-2 gap-6">
-                  {/* Gainers */}
-                  <div>
-                    <p className="text-sm font-medium text-green-700 mb-2">
-                      Top Gainers
-                    </p>
-                    {movers.gainers.map((h, i) => (
-                      <div
-                        key={`g-${i}`}
-                        className="flex items-center justify-between py-2 border-b border-slate-100"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-0.5 text-xs rounded ${
-                              chainBadgeClass[h.chain] ||
-                              "bg-slate-100 text-slate-700"
-                            }`}
-                          >
-                            {CHAIN_LABEL[h.chain] ?? h.chain}
-                          </span>
-                          <span className="font-medium text-slate-800">
-                            {h.symbol || "(unknown)"}
-                          </span>
-                        </div>
-                        <div className="text-right text-green-700 font-semibold">
-                          {fmtUSD(h.delta24hUsd ?? 0)}{" "}
-                          <span className="text-xs text-green-700">
-                            ({h.delta24hPct?.toFixed(2) ?? "0.00"}%)
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Losers */}
-                  <div>
-                    <p className="text-sm font-medium text-red-700 mb-2">
-                      Top Losers
-                    </p>
-                    {movers.losers.map((h, i) => (
-                      <div
-                        key={`l-${i}`}
-                        className="flex items-center justify-between py-2 border-b border-slate-100"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-0.5 text-xs rounded ${
-                              chainBadgeClass[h.chain] ||
-                              "bg-slate-100 text-slate-700"
-                            }`}
-                          >
-                            {CHAIN_LABEL[h.chain] ?? h.chain}
-                          </span>
-                          <span className="font-medium text-slate-800">
-                            {h.symbol || "(unknown)"}
-                          </span>
-                        </div>
-                        <div className="text-right text-red-700 font-semibold">
-                          {fmtUSD(h.delta24hUsd ?? 0)}{" "}
-                          <span className="text-xs text-red-700">
-                            ({h.delta24hPct?.toFixed(2) ?? "0.00"}%)
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </Card>
-
-            <Card className="p-6 bg-white shadow-sm mt-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-slate-800">
-                  All Holdings
-                </h3>
-                <div className="flex items-center gap-3">
-                  <label className="text-sm">
-                    Min value (USD):
-                    <input
-                      type="number"
-                      className="ml-2 px-2 py-1 border rounded w-24"
-                      value={minUsdFilter}
-                      onChange={(e) =>
-                        setMinUsdFilter(parseFloat(e.target.value || "0"))
-                      }
-                    />
-                  </label>
-                  <label className="text-sm flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={hideStables}
-                      onChange={(e) => setHideStables(e.target.checked)}
-                    />
-                    Hide stables
-                  </label>
-                </div>
-              </div>
-
-              {loadingOv ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-6 w-full" />
-                  <Skeleton className="h-6 w-full" />
-                  <Skeleton className="h-6 w-full" />
-                </div>
-              ) : !filteredHoldings || filteredHoldings.length === 0 ? (
-                <div className="text-sm text-slate-500">
-                  No holdings to display.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-slate-500">
-                        <th className="px-2 py-2">Asset</th>
-                        <th className="px-2 py-2">Chain</th>
-                        <th className="px-2 py-2 text-right">Qty</th>
-                        <th className="px-2 py-2 text-right">Price</th>
-                        <th className="px-2 py-2 text-right">Value</th>
-                        <th className="px-2 py-2 text-right">24h Δ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredHoldings
-                        .slice()
-                        .sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0))
-                        .map((h, i) => (
-                          <tr
-                            key={`${h.contract ?? h.symbol ?? i}`}
-                            className="border-t"
-                          >
-                            <td className="px-2 py-2 font-medium text-slate-800">
-                              {h.symbol || "(unknown)"}
-                            </td>
-                            <td className="px-2 py-2">
-                              <span
-                                className={`px-2 py-0.5 text-xs rounded ${
-                                  chainBadgeClass[(h as any).chain] ||
-                                  "bg-slate-100 text-slate-700"
-                                }`}
-                              >
-                                {CHAIN_LABEL[(h as any).chain] ??
-                                  (h as any).chain}
-                              </span>
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              {parseFloat(h.qty).toLocaleString()}
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              {fmtUSD(h.priceUsd || 0)}
-                            </td>
-                            <td className="px-2 py-2 text-right">
-                              {fmtUSD(h.valueUsd || 0)}
-                            </td>
-                            <td
-                              className={`px-2 py-2 text-right ${
-                                (h.delta24hUsd ?? 0) >= 0
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {h.delta24hUsd == null
-                                ? "—"
-                                : `${h.delta24hUsd >= 0 ? "+" : ""}${fmtUSD(
-                                    Math.abs(h.delta24hUsd)
-                                  )}`}
-                              {h.delta24hPct == null
-                                ? ""
-                                : ` (${h.delta24hPct.toFixed(2)}%)`}
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
+            <OverviewTab
+              loadingOv={loadingOv}
+              ov={ov}
+              userCurrency={userPreferences.currency}
+              mounted={mounted}
+              quality={quality}
+              concentration={concentration}
+              concentrationExtras={concentrationExtras}
+              topHoldingsLive={topHoldingsLive}
+              errorOv={errorOv}
+              showChange={showChange}
+              setShowChange={setShowChange}
+              movers={movers}
+              minUsdFilter={minUsdFilter}
+              setMinUsdFilter={setMinUsdFilter}
+              hideStables={hideStables}
+              setHideStables={setHideStables}
+              filteredHoldings={filteredHoldings}
+              riskBuckets={riskBuckets}
+              walletBreakdown={walletDisplayItems}
+              walletLabels={walletLabelLookup}
+              isMultiWalletView={isMultiWalletView}
+            />
           </TabsContent>
 
-          <TabsContent value="all-transactions">
-            <AllTransactionsTab address={address} />
+          <TabsContent value="graphs" className="space-y-6">
+            <GraphsTab
+              address={address}
+              networks={networksParam}
+              loadingHistorical={loadingHistorical}
+              historicalChartData={historicalChartData}
+              historicalData={historicalData}
+              isHistoricalEstimated={isHistoricalEstimated}
+              useFallbackEstimation={useFallbackEstimation}
+              onFallbackPreferenceChange={handleFallbackPreferenceChange}
+              loadingOv={loadingOv}
+              ov={ov}
+              chainBreakdown={chainBreakdown}
+              pnlByChain={pnlByChain}
+              allocationData={allocationData}
+              stableVsRisk={stableVsRisk}
+              movers={movers}
+              netFlowData={netFlowData}
+              chainHistory={chainHistory}
+              walletBreakdown={walletDisplayItems}
+              walletSummary={appliedWalletSummary}
+            />
+          </TabsContent>
+
+          {/* <TabsContent value="capital-gains" className="space-y-6">
+            <CapitalGainsTab
+              loading={false}
+              capitalGainsData={{
+                realized: [],
+                unrealized: [],
+                totalRealizedGains: 0,
+                totalUnrealizedGains: 0,
+                shortTermGains: 0,
+                longTermGains: 0,
+              }}
+              accountingMethod={accountingMethod}
+              setAccountingMethod={setAccountingMethod}
+              currency={userPreferences.currency}
+            />
+          </TabsContent> */}
+          <TabsContent value="all-transactions" forceMount>
+            <TransactionsWorkspaceProvider
+              address={address}
+              walletOptions={appliedWalletDisplay}
+              onPricingWarningChange={(flag) =>
+                setPricingWarningFor("transactions", flag)
+              }
+              onTokenApiWarningChange={(flag) =>
+                setTokenApiWarningFor("transactions", flag)
+              }
+            >
+              <AllTransactionsTab
+                totalAssetsUsd={ov?.kpis.totalValueUsd ?? null}
+                stableHoldingsUsd={stableBucketUsd}
+              />
+            </TransactionsWorkspaceProvider>
           </TabsContent>
         </Tabs>
       </main>

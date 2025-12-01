@@ -25,9 +25,18 @@ export interface CapitalGainEntry {
 
 export type AccountingMethod = 'FIFO' | 'LIFO' | 'SPECIFIC_ID';
 
+export interface UnmatchedSale {
+  asset: string;
+  quantity: number;
+  salePrice: number;
+  saleDate: string;
+  transactionId: string;
+}
+
 export class CapitalGainsCalculator {
   private costBasis: Map<string, CostBasisEntry[]> = new Map();
   private accountingMethod: AccountingMethod = 'FIFO';
+  private unmatchedSales: UnmatchedSale[] = [];
 
   constructor(accountingMethod: AccountingMethod = 'FIFO') {
     this.accountingMethod = accountingMethod;
@@ -89,6 +98,16 @@ export class CapitalGainsCalculator {
       remainingQuantity -= quantityToSell;
     }
 
+    if (remainingQuantity > 0) {
+      this.unmatchedSales.push({
+        asset,
+        quantity: remainingQuantity,
+        salePrice,
+        saleDate,
+        transactionId,
+      });
+    }
+
     // Remove entries with zero quantity
     this.costBasis.set(asset, assetEntries.filter(entry => entry.quantity > 0));
 
@@ -146,6 +165,20 @@ export class CapitalGainsCalculator {
     }
 
     return unrealizedGains;
+  }
+
+  getOpenLots(): CostBasisEntry[] {
+    const lots: CostBasisEntry[] = [];
+    for (const entries of this.costBasis.values()) {
+      entries.forEach((entry) =>
+        lots.push({ ...entry })
+      );
+    }
+    return lots;
+  }
+
+  getUnmatchedSales(): UnmatchedSale[] {
+    return this.unmatchedSales.map((sale) => ({ ...sale }));
   }
 }
 

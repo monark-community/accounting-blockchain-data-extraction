@@ -6,6 +6,7 @@ export interface TxRow {
   blockNumber: number;
   hash: string;
   network: string; // e.g. "mainnet"
+  walletAddress?: string;
   direction: Direction;
   type: TxType; // UI bucket (transfer_in -> income, transfer_out -> expense)
   asset: {
@@ -13,6 +14,7 @@ export interface TxRow {
     contract: string | null;
     decimals: number | null;
   };
+  swapLabel?: string | null;
   qty: string; // decimal string
   priceUsdAtTs: number | null;
   usdAtTs: number | null;
@@ -50,4 +52,12 @@ export interface TxListResponse {
   meta: { gasUsdByTx: Record<string, number> };
   page: number;
   limit: number;
+  hasNext?: boolean;
+  nextCursor?: string | null;
+  warnings?: {
+    defiLlamaRateLimited?: boolean;
+    defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
+  };
 }

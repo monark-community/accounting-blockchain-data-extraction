@@ -85,13 +85,16 @@ export function normalizeFungibleTransfer(
 
   // Prefer provided human `value`; fallback to base conversion.
   const amountRaw = row.amount ?? null;
+  const amountFromRaw = toNumberFromBase(
+    amountRaw,
+    row.decimals ?? (isNative ? 18 : undefined)
+  );
   const amount =
-    typeof row.value === "number" && row.value >= 0
+    amountRaw != null
+      ? amountFromRaw
+      : typeof row.value === "number" && row.value >= 0
       ? row.value
-      : toNumberFromBase(
-          amountRaw,
-          row.decimals ?? (isNative ? 18 : undefined)
-        );
+      : 0;
 
   return {
     txHash,

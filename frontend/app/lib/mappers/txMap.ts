@@ -47,9 +47,11 @@ export function mapLegToTxRow(
 ): TxRow {
   const tsIso = new Date(leg.timestamp * 1000).toISOString();
   const type = mapClassToUiType(leg.class, leg.direction);
+  const isGas = type === "gas";
 
   // We don't know the native qty spent for gas here—only USD is given by meta.
   const gasUsd = gasUsdByTx?.[leg.txHash] ?? null;
+  const legAny = leg as any;
 
   return {
     ts: tsIso,
@@ -63,11 +65,14 @@ export function mapLegToTxRow(
       contract: (leg.asset?.contract as string) ?? null,
       decimals: leg.asset?.decimals ?? null,
     },
+    swapLabel: legAny.swapLabel ?? null,
     qty: String(leg.amount ?? 0),
     priceUsdAtTs:
       leg.amountUsdAtTx && leg.amount ? leg.amountUsdAtTx / leg.amount : null,
     usdAtTs: leg.amountUsdAtTx ?? null,
-    counterparty: leg.to
+    counterparty: isGas
+      ? { address: null, label: "Network fee" }
+      : leg.to
       ? {
           address:
             leg.direction === "in" ? (leg.from as string) : (leg.to as string),
@@ -75,7 +80,7 @@ export function mapLegToTxRow(
         }
       : null,
     fee:
-      gasUsd != null
+      !isGas && gasUsd != null
         ? { asset: "NATIVE", qty: null, priceUsdAtTs: null, usdAtTs: gasUsd }
         : null,
     isApprox: false,

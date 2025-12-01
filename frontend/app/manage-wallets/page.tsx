@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ArrowLeft, Plus, Trash2, Edit2, Wallet, RefreshCw, Crown } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Edit2,
+  Wallet,
+  RefreshCw,
+  Crown,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -38,8 +46,21 @@ import {
 } from "wagmi/chains";
 
 const ManageWallets = () => {
-  const { connectedWallets, switchNetwork, currentNetwork, getWalletBalance, isConnected, userWallet } = useWallet();
-  const { wallets: userWallets, loading: walletsLoading, addWallet: addUserWallet, removeWallet: removeUserWallet, updateWallet } = useWallets();
+  const {
+    connectedWallets,
+    switchNetwork,
+    currentNetwork,
+    getWalletBalance,
+    isConnected,
+    userWallet,
+  } = useWallet();
+  const {
+    wallets: userWallets,
+    loading: walletsLoading,
+    addWallet: addUserWallet,
+    removeWallet: removeUserWallet,
+    updateWallet,
+  } = useWallets();
   const { toast } = useToast();
   const router = useRouter();
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -47,7 +68,10 @@ const ManageWallets = () => {
   const [newWalletName, setNewWalletName] = useState("");
   const [newWalletNetwork, setNewWalletNetwork] = useState("ethereum");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [editingWallet, setEditingWallet] = useState<{ address: string; name: string } | null>(null);
+  const [editingWallet, setEditingWallet] = useState<{
+    address: string;
+    name: string;
+  } | null>(null);
   const [editWalletName, setEditWalletName] = useState("");
   const [isSwitchingNetwork, setIsSwitchingNetwork] = useState(false);
   const [availableNetworks, setAvailableNetworks] = useState<
@@ -161,7 +185,7 @@ const ManageWallets = () => {
       try {
         const networksWithFunds = [];
         const currentAccount = window.ethereum.selectedAddress;
-        
+
         if (!currentAccount && !isConnected) {
           toast({
             title: "No Account Selected",
@@ -173,7 +197,7 @@ const ManageWallets = () => {
           setIsDetectingNetworks(false);
           return;
         }
-        
+
         // If connected via Web3Auth but no MetaMask account, just show popular networks
         if (!currentAccount && isConnected) {
           setAvailableNetworks(popularNetworks);
@@ -222,10 +246,12 @@ const ManageWallets = () => {
                   });
                 }
               } catch (balanceError) {
-                console.log(
-                  `Could not get balance for ${network.label}:`,
-                  balanceError
-                );
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(
+                    `Could not get balance for ${network.label}:`,
+                    balanceError
+                  );
+                }
               }
             }
           }
@@ -247,7 +273,9 @@ const ManageWallets = () => {
           });
         }
       } catch (error) {
-        console.error("Error detecting networks with funds:", error);
+        if (process.env.NODE_ENV === 'development') {
+          console.error("Error detecting networks with funds:", error);
+        }
         // Fallback to showing popular networks
         setAvailableNetworks(popularNetworks);
         toast({
@@ -269,18 +297,26 @@ const ManageWallets = () => {
   }, []);
 
   const handleSwitchNetwork = async (chainId: number) => {
-    console.log("handleSwitchNetwork called with chainId:", chainId);
+    if (process.env.NODE_ENV === 'development') {
+      console.log("handleSwitchNetwork called with chainId:", chainId);
+    }
     setIsSwitchingNetwork(true);
     try {
-      console.log("Calling switchNetwork function");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("Calling switchNetwork function");
+      }
       await switchNetwork(chainId);
-      console.log("switchNetwork completed successfully");
+      if (process.env.NODE_ENV === 'development') {
+        console.log("switchNetwork completed successfully");
+      }
       toast({
         title: "Network Switched",
         description: "Successfully switched network!",
       });
     } catch (error: any) {
-      console.error("switchNetwork failed:", error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error("switchNetwork failed:", error);
+      }
       toast({
         title: "Network Switch Failed",
         description:
@@ -320,8 +356,12 @@ const ManageWallets = () => {
 
     try {
       // Get chainId from network value
-      const networkConfig = networks.find(n => n.value === newWalletNetwork);
-      await addUserWallet(newWalletAddress, newWalletName, networkConfig?.chainId || 1);
+      const networkConfig = networks.find((n) => n.value === newWalletNetwork);
+      await addUserWallet(
+        newWalletAddress,
+        newWalletName,
+        networkConfig?.chainId || 1
+      );
 
       toast({
         title: "Wallet added",
@@ -393,7 +433,8 @@ const ManageWallets = () => {
   };
 
   // Check if wallet name has changed
-  const hasNameChanged = editingWallet && editWalletName.trim() !== editingWallet.name;
+  const hasNameChanged =
+    editingWallet && editWalletName.trim() !== editingWallet.name;
 
   const getNetworkBadgeColor = (network: string) => {
     const colors: Record<string, string> = {
@@ -506,7 +547,7 @@ const ManageWallets = () => {
                       value={editWalletName}
                       onChange={(e) => setEditWalletName(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                        if (e.key === "Enter") {
                           handleUpdateWallet();
                         }
                       }}
@@ -518,18 +559,21 @@ const ManageWallets = () => {
                     )}
                   </div>
                   <div className="flex gap-2 pt-4">
-                    <Button 
-                      onClick={handleUpdateWallet} 
+                    <Button
+                      onClick={handleUpdateWallet}
                       className="flex-1"
                       disabled={!hasNameChanged || !editWalletName.trim()}
                     >
                       Update Wallet
                     </Button>
-                    <Button variant="outline" onClick={() => {
-                      setIsEditDialogOpen(false);
-                      setEditingWallet(null);
-                      setEditWalletName("");
-                    }}>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setIsEditDialogOpen(false);
+                        setEditingWallet(null);
+                        setEditWalletName("");
+                      }}
+                    >
                       Cancel
                     </Button>
                   </div>
@@ -585,54 +629,80 @@ const ManageWallets = () => {
                         (network) => showTestnets || network.type === "mainnet"
                       )
                       .map((network) => {
-                      // Check if current network matches this network
-                      const isCurrentNetwork = currentNetwork?.toLowerCase().includes(network.value.toLowerCase()) || 
-                                             network.label.toLowerCase() === currentNetwork?.toLowerCase();
-                      
-                      return (
-                        <button
-                          key={network.value}
-                          onClick={() => handleSwitchNetwork(network.chainId)}
-                          disabled={isSwitchingNetwork}
-                          className={`
+                        // Check if current network matches this network
+                        const isCurrentNetwork =
+                          currentNetwork
+                            ?.toLowerCase()
+                            .includes(network.value.toLowerCase()) ||
+                          network.label.toLowerCase() ===
+                            currentNetwork?.toLowerCase();
+
+                        return (
+                          <button
+                            key={network.value}
+                            onClick={() => handleSwitchNetwork(network.chainId)}
+                            disabled={isSwitchingNetwork}
+                            className={`
                             relative flex flex-col items-start justify-between gap-2 px-4 py-3 rounded-lg border-2 transition-all duration-200 min-w-[140px] text-left
-                            ${isCurrentNetwork 
-                              ? 'bg-blue-600 border-blue-600 text-white shadow-md' 
-                              : 'bg-white border-slate-200 text-slate-700 hover:border-blue-400 hover:shadow-sm'
+                            ${
+                              isCurrentNetwork
+                                ? "bg-blue-600 border-blue-600 text-white shadow-md"
+                                : "bg-white border-slate-200 text-slate-700 hover:border-blue-400 hover:shadow-sm"
                             }
-                            ${isSwitchingNetwork ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                            ${network.type === 'testnet' && !isCurrentNetwork ? 'border-orange-200 bg-orange-50' : ''}
+                            ${
+                              isSwitchingNetwork
+                                ? "opacity-50 cursor-not-allowed"
+                                : "cursor-pointer"
+                            }
+                            ${
+                              network.type === "testnet" && !isCurrentNetwork
+                                ? "border-orange-200 bg-orange-50"
+                                : ""
+                            }
                           `}
-                        >
-                          <div className="flex items-center justify-between w-full gap-2">
-                            <span className="font-semibold text-sm truncate">
-                              {isSwitchingNetwork ? "Switching..." : network.label}
-                            </span>
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              {network.type === 'testnet' && (
-                                <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded uppercase tracking-wide">
-                                  TEST
-                                </span>
-                              )}
-                              {network.isPopular && !network.balance && !isCurrentNetwork && (
-                                <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase tracking-wide">
-                                  Popular
-                                </span>
-                              )}
+                          >
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span className="font-semibold text-sm truncate">
+                                {isSwitchingNetwork
+                                  ? "Switching..."
+                                  : network.label}
+                              </span>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {network.type === "testnet" && (
+                                  <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                    TEST
+                                  </span>
+                                )}
+                                {network.isPopular &&
+                                  !network.balance &&
+                                  !isCurrentNetwork && (
+                                    <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                      Popular
+                                    </span>
+                                  )}
+                              </div>
                             </div>
-                          </div>
-                          {network.balance ? (
-                            <span className={`text-xs font-medium ${isCurrentNetwork ? 'text-blue-100' : 'text-slate-500'}`}>
-                              {network.balance.toFixed(4)} {network.type === 'testnet' ? 'Test ETH' : 'ETH'}
-                            </span>
-                          ) : network.isPopular && !isCurrentNetwork ? (
-                            <span className="text-xs text-slate-400">
-                              Click to add to wallet
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })
+                            {network.balance ? (
+                              <span
+                                className={`text-xs font-medium ${
+                                  isCurrentNetwork
+                                    ? "text-blue-100"
+                                    : "text-slate-500"
+                                }`}
+                              >
+                                {network.balance.toFixed(4)}{" "}
+                                {network.type === "testnet"
+                                  ? "Test ETH"
+                                  : "ETH"}
+                              </span>
+                            ) : network.isPopular && !isCurrentNetwork ? (
+                              <span className="text-xs text-slate-400">
+                                Click to add to wallet
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })
                   ) : (
                     <div className="text-center text-slate-500 py-4">
                       <p className="text-sm">No networks detected</p>
@@ -648,7 +718,10 @@ const ManageWallets = () => {
 
           <div className="grid gap-4">
             {userWallets.map((wallet) => (
-              <Card key={wallet.address} className="hover:shadow-md transition-shadow">
+              <Card
+                key={wallet.address}
+                className="hover:shadow-md transition-shadow"
+              >
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -657,16 +730,29 @@ const ManageWallets = () => {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg">{wallet.name}</h3>
-                          {wallet.address.toLowerCase() === userWallet?.toLowerCase() && (
-                            <Crown className="w-4 h-4 text-amber-500" title="Main Wallet" />
+                          <h3 className="font-semibold text-lg">
+                            {wallet.name}
+                          </h3>
+                          {wallet.address.toLowerCase() ===
+                            userWallet?.toLowerCase() && (
+                            <span title="Main Wallet">
+                              <Crown
+                                className="w-4 h-4 text-amber-500"
+                              />
+                            </span>
                           )}
                         </div>
-                        <p className="text-slate-600 font-mono text-sm">{wallet.address}</p>
+                        <p className="text-slate-600 font-mono text-sm">
+                          {wallet.address}
+                        </p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getNetworkBadgeColor('ethereum')}`}>
-                          Chain ID: {wallet.chain_id}
-                        </span>
+                          <span
+                            className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${getNetworkBadgeColor(
+                              "ethereum"
+                            )}`}
+                          >
+                            Chain ID: {wallet.chain_id}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -679,21 +765,27 @@ const ManageWallets = () => {
                       >
                         <RefreshCw className="w-4 h-4" />
                       </Button>
-                      {wallet.address.toLowerCase() !== userWallet?.toLowerCase() && (
-                        <Button 
-                          variant="ghost" 
+                      {wallet.address.toLowerCase() !==
+                        userWallet?.toLowerCase() && (
+                        <Button
+                          variant="ghost"
                           size="sm"
-                          onClick={() => handleEditWallet(wallet.address, wallet.name)}
+                          onClick={() =>
+                            handleEditWallet(wallet.address, wallet.name)
+                          }
                           title="Edit Wallet Name"
                         >
                           <Edit2 className="w-4 h-4" />
                         </Button>
                       )}
-                      {wallet.address.toLowerCase() !== userWallet?.toLowerCase() && (
+                      {wallet.address.toLowerCase() !==
+                        userWallet?.toLowerCase() && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemoveWallet(wallet.address, wallet.name)}
+                          onClick={() =>
+                            handleRemoveWallet(wallet.address, wallet.name)
+                          }
                           className="text-red-600 hover:text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -709,8 +801,13 @@ const ManageWallets = () => {
           {!walletsLoading && userWallets.length === 0 && (
             <Card className="p-12 text-center">
               <Wallet className="w-16 h-16 text-slate-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-slate-600 mb-2">No wallets connected</h3>
-              <p className="text-slate-500">Add your first wallet to start tracking transactions using the button above</p>
+              <h3 className="text-xl font-semibold text-slate-600 mb-2">
+                No wallets connected
+              </h3>
+              <p className="text-slate-500">
+                Add your first wallet to start tracking transactions using the
+                button above
+              </p>
             </Card>
           )}
         </div>

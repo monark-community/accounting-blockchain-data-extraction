@@ -19,7 +19,6 @@ import {
 import {
   PieChart as RechartsPieChart,
   Cell,
-  ResponsiveContainer,
   BarChart,
   Bar,
   XAxis,
@@ -74,7 +73,9 @@ const Hero = () => {
           clearTimeout(timeout);
         }
       } catch (error) {
-        console.log("Dependencies not ready yet:", error);
+        if (process.env.NODE_ENV === 'development') {
+          console.log("Dependencies not ready yet:", error);
+        }
       }
     };
 
@@ -162,7 +163,9 @@ const Hero = () => {
       // Don't show success toast here - let the useEffect handle it
       // when isConnected becomes true
     } catch (error: any) {
-      console.error("Connection error:", error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error("Connection error:", error);
+      }
       toast({
         title: "Connection Failed",
         description:
@@ -221,6 +224,10 @@ const Hero = () => {
       label: "binance.eth",
       address: "0xF977814e90dA44bFA03b6295A0616a897441aceC",
     },
+    {
+      label: "1inch.eth",
+      address: "0x111111125421ca6dc452d289314280a0f8842a65",
+    },
   ];
 
   const short = (a: string) =>
@@ -229,12 +236,10 @@ const Hero = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!address) return;
-    // console.log("Hero: Submitting search for address:", address);
     router.push(`/dashboard?address=${encodeURIComponent(address)}`);
   };
 
   const handlePick = (addr: string) => {
-    // console.log("Hero: Picked address from suggestions:", addr);
     setAddress(addr);
     setOpenSuggest(false);
   };
@@ -497,45 +502,43 @@ const Hero = () => {
                     config={chartConfig}
                     className="h-full w-full"
                   >
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={areaData}>
-                        <defs>
-                          <linearGradient
-                            id="colorValue"
-                            x1="0"
-                            y1="0"
-                            x2="0"
-                            y2="1"
-                          >
-                            <stop
-                              offset="5%"
-                              stopColor="#10b981"
-                              stopOpacity={0.3}
-                            />
-                            <stop
-                              offset="95%"
-                              stopColor="#10b981"
-                              stopOpacity={0}
-                            />
-                          </linearGradient>
-                        </defs>
-                        <XAxis
-                          dataKey="month"
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fill: "#94a3b8", fontSize: 12 }}
-                        />
-                        <YAxis hide />
-                        <Area
-                          type="monotone"
-                          dataKey="value"
-                          stroke="#10b981"
-                          strokeWidth={2}
-                          fillOpacity={1}
-                          fill="url(#colorValue)"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <AreaChart data={areaData}>
+                      <defs>
+                        <linearGradient
+                          id="colorValue"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="5%"
+                            stopColor="#10b981"
+                            stopOpacity={0.3}
+                          />
+                          <stop
+                            offset="95%"
+                            stopColor="#10b981"
+                            stopOpacity={0}
+                          />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="month"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      />
+                      <YAxis hide />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorValue)"
+                      />
+                    </AreaChart>
                   </ChartContainer>
                 </div>
               </CardContent>
@@ -595,27 +598,25 @@ const Hero = () => {
                     config={chartConfig}
                     className="h-full w-full"
                   >
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={barData}>
-                        <XAxis
-                          dataKey="month"
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fill: "#94a3b8", fontSize: 12 }}
-                        />
-                        <YAxis hide />
-                        <Bar
-                          dataKey="income"
-                          fill="#3b82f6"
-                          radius={[2, 2, 0, 0]}
-                        />
-                        <Bar
-                          dataKey="expenses"
-                          fill="#f59e0b"
-                          radius={[2, 2, 0, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <BarChart data={barData}>
+                      <XAxis
+                        dataKey="month"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#94a3b8", fontSize: 12 }}
+                      />
+                      <YAxis hide />
+                      <Bar
+                        dataKey="income"
+                        fill="#3b82f6"
+                        radius={[2, 2, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="expenses"
+                        fill="#f59e0b"
+                        radius={[2, 2, 0, 0]}
+                      />
+                    </BarChart>
                   </ChartContainer>
                 </div>
               </CardContent>

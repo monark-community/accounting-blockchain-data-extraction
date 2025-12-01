@@ -1,8 +1,58 @@
+# Dependencies
 node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.build
+
+# Next.js build output
+.next
+out
+build
 dist
+
+# Testing
+coverage
+.nyc_output
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+__mocks__
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs
+*.log
+
+# Git
 .git
 .gitignore
-Dockerfile
-npm-debug.log
-.vscode
-.DS_Store
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+docs
+
+# Misc
+.prettierrc
+.eslintrc
+.eslintrc.json
+eslint.config.js
+.editorconfig
+
+# Public files (will be copied separately)
+.vercel

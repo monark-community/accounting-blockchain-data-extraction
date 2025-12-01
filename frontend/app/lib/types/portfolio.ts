@@ -17,6 +17,7 @@ export type PricedHolding = {
   valueUsd: number;
   delta24hUsd?: number | null;
   delta24hPct?: number | null;
+  priceSource: "native" | "map" | "tokenapi" | "unknown";
 };
 
 export type OverviewResponse = {
@@ -37,4 +38,10 @@ export type OverviewResponse = {
     weightPct: number;
     chain: PricedHolding["chain"];
   }[];
+  warnings?: {
+    defiLlamaRateLimited?: boolean;
+    defiLlamaRetryAfterMs?: number;
+    tokenApiRateLimited?: boolean;
+    tokenApiRetryAfterMs?: number;
+  };
 };

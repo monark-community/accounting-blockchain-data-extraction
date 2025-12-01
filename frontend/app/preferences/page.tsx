@@ -128,7 +128,10 @@ const Preferences = () => {
         setNewUserName(data.name || "");
       }
     } catch (error) {
-      console.error('Failed to load user name:', error);
+      // Silently fail - user name is optional, app can function without it
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to load user name:', error);
+      }
     } finally {
       setIsLoadingName(false);
     }
@@ -203,7 +206,9 @@ const Preferences = () => {
         setMfaEnabled(data.enabled);
       }
     } catch (error) {
-      console.error('Failed to check MFA status:', error);
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Failed to check MFA status:', error);
+      }
     } finally {
       setLoadingMFA(false);
     }
@@ -286,14 +291,18 @@ const Preferences = () => {
             credentials: 'include',
           });
         } catch (error) {
-          console.error('Logout cleanup error:', error);
+          if (process.env.NODE_ENV === 'development') {
+            console.error('Logout cleanup error:', error);
+          }
         }
 
         // Disconnect wallet connections (Web3Auth and MetaMask)
         try {
           await disconnectWallet();
         } catch (error) {
-          console.error('Wallet disconnect error:', error);
+          if (process.env.NODE_ENV === 'development') {
+            console.error('Wallet disconnect error:', error);
+          }
         }
 
         // Manually clear any remaining session cookies

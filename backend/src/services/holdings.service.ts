@@ -6,11 +6,17 @@ import { getDelta24hValueByContract, getPrevQtyMap } from "./delta24h.service";
 import { SPAM_FILTER_MODE, scoreSpam, cleanSymbol } from "../config/filters";
 import {
   getPricesFor,
+  getPricesForWithSource,
   NATIVE_SENTINEL,
   getNativePriceUsd,
   normalizeContractKey,
   getPricesAtTimestamp,
+  getPricingWarnings,
 } from "./pricing.service";
+import {
+  markTokenApiRateLimited,
+  getTokenApiWarnings,
+} from "./tokenApiStatus";
 
 const TOKEN_API_BASE =
   process.env.TOKEN_API_BASE_URL ?? "https://token-api.thegraph.com/v1";
@@ -36,6 +42,12 @@ type PricedHolding = {
   valueUsd: number;
   delta24hUsd?: number | null;
   delta24hPct?: number | null;
+  priceSource: "native" | "map" | "tokenapi" | "unknown";
+};
+
+type PricingWarnings = {
+  defiLlamaRateLimited?: boolean;
+  defiLlamaRetryAfterMs?: number;
 };
 
 type OverviewResponse = {
@@ -56,6 +68,7 @@ type OverviewResponse = {
     weightPct: number;
     chain: EvmNetwork;
   }[];
+  warnings?: PricingWarnings;
 };
 
 async function tokenApiGET<T>(
@@ -75,6 +88,9 @@ async function tokenApiGET<T>(
   if (!res.ok) {
     const text = await res.text();
     console.error(`TokenAPI ${path} ${res.status}: ${text}`);
+    if (res.status === 429) {
+      markTokenApiRateLimited();
+    }
     throw new Error(`TokenAPI ${path} ${res.status}`);
   }
   return res.json() as Promise<{ data: T }>;
@@ -147,13 +163,15 @@ export async function getHoldingsOverview(
   }
 
   const priceMap = new Map<string, number>(); // `${net}:${contract}`
+  const priceSrc = new Map<string, string>(); // `${net}:${contract}` -> 'defillama' | 'dexscreener'
   for (const [net, list] of byNet) {
     const erc20s = list
       .filter((x) => x.contract.toLowerCase() !== NATIVE_SENTINEL)
       .map((x) => x.contract.toLowerCase());
     const unique = [...new Set(erc20s)];
-    const m = await getPricesFor(net, unique, true);
-    m.forEach((v, k) => priceMap.set(k, v));
+    const { prices, sources } = await getPricesForWithSource(net, unique);
+    prices.forEach((v, k) => priceMap.set(k, v));
+    sources.forEach((src, k) => priceSrc.set(k, src));
   }
 
   // 2b) add native prices
@@ -195,7 +213,7 @@ export async function getHoldingsOverview(
     isSpam?: boolean;
     spamReasons?: string[];
   })[] = rows
-    .map((r) => {
+    .map((r: any) => {
       const qty = toFloat(r.amount, r.decimals);
 
       // ETH debug log (optional)
@@ -213,11 +231,35 @@ export async function getHoldingsOverview(
       const displaySymbol = cleanSymbol(r.symbol);
 
       // pick the right price source
-      let priceUsd =
-        (typeof r.price_usd === "number" ? r.price_usd : undefined) ??
-        (isNative
-          ? nativePriceMap.get(r.network) ?? 0
-          : priceMap.get(key) ?? 0);
+      let priceUsd = 0 as number;
+      let priceSource: "native" | "map" | "tokenapi" | "unknown" = "unknown";
+
+      if (isNative) {
+        const p = nativePriceMap.get(r.network);
+        if (p != null) {
+          priceUsd = p;
+          priceSource = "native";
+        } else if (typeof r.price_usd === "number") {
+          priceUsd = r.price_usd;
+          priceSource = "tokenapi";
+        }
+      } else {
+        const p = priceMap.get(key);
+        if (p != null) {
+          priceUsd = p;
+          priceSource = (priceSrc.get(key) as any) || "map";
+        } else if (typeof r.price_usd === "number") {
+          priceUsd = r.price_usd;
+          priceSource = "tokenapi";
+        }
+      }
+
+      // // optional sanity guard against absurd ERC‑20 prices
+      // if (!isNative && priceSource === "tokenapi" && priceUsd > 1_000_000) {
+      //   // drop to 0 or keep but mark clearly
+      //   // priceUsd = 0;
+      //   // priceSource = 'unknown';
+      // }
 
       const qtyNow = toFloat(r.amount, r.decimals);
       const valueUsd = qtyNow * (priceUsd || 0);
@@ -235,18 +277,21 @@ export async function getHoldingsOverview(
         const contractKey = normalizeContractKey(r.contract); // '__native__' or actual address lower
         const key24 = isNative ? `${r.network}:${NATIVE_SENTINEL}` : key;
 
-        const price24 = p24Map.get(key24) ?? 0;
-        const prevQty = prevMap.get(contractKey)?.prevQty ?? qtyNow; // fallback: assume same qty
+        const hasPrevQty = prevMap.has(contractKey);
+        const hasPrice24 = p24Map.has(key24);
+        const prevQty = hasPrevQty ? prevMap.get(contractKey)!.prevQty : qtyNow; // assume unchanged qty if missing
+        const price24 = hasPrice24 ? (p24Map.get(key24) as number) : 0;
 
         const valueNow = qtyNow * (priceUsd || 0);
-        const value24 = prevQty * (price24 || 0);
-        delta24hUsd = valueNow - value24;
-        delta24hPct =
-          value24 > 0
-            ? (delta24hUsd / value24) * 100
-            : valueNow > 0
-            ? 100
-            : null;
+        if (hasPrice24) {
+          const value24 = prevQty * price24;
+          delta24hUsd = valueNow - value24;
+          delta24hPct = value24 > 0 ? (delta24hUsd / value24) * 100 : null;
+        } else {
+          // Without a 24h price, both USD delta and pct are unreliable
+          delta24hUsd = null as unknown as number; // keep type, but will serialize as null
+          delta24hPct = null;
+        }
 
         // if (!p24Map.has(key24) && valueNow > 0) {
         //   console.log("[Δ24h miss:price24]", {
@@ -275,6 +320,7 @@ export async function getHoldingsOverview(
           valueUsd,
           delta24hUsd,
           delta24hPct,
+          priceSource,
         };
 
       if (spamMode !== "off" && spamEval.score >= 2) {
@@ -294,9 +340,35 @@ export async function getHoldingsOverview(
 
   // 5) KPIs & allocation
   const totalValueUsd = holdings.reduce((s, h) => s + h.valueUsd, 0);
-  const deltaAggUsd = holdings.reduce((s, h) => s + (h.delta24hUsd ?? 0), 0);
+  // Compute 24h KPI only from tokens with a known 24h price
+  let valueNowSum24 = 0;
+  let value24Sum = 0;
+  let have24 = false;
+  for (const h of holdings) {
+    const net = h.chain;
+    const p24Map = price24ByNet.get(net) ?? new Map<string, number>();
+    const isNative = h.contract == null;
+    const contractKey = isNative
+      ? NATIVE_SENTINEL
+      : (h.contract as string).toLowerCase();
+    const key24 = isNative
+      ? `${net}:${NATIVE_SENTINEL}`
+      : `${net}:${contractKey}`;
+    const price24 = p24Map.get(key24);
+    if (typeof price24 === "number" && price24 > 0) {
+      have24 = true;
+      valueNowSum24 += h.valueUsd;
+      const prevMap =
+        prevQtyByNet.get(net) ??
+        new Map<string, { prevQty: number; decimals: number }>();
+      const prevQty =
+        prevMap.get(contractKey)?.prevQty ?? parseFloat(h.qty || "0");
+      value24Sum += prevQty * price24;
+    }
+  }
+  const deltaAggUsd = have24 ? valueNowSum24 - value24Sum : 0;
   const deltaAggPct =
-    totalValueUsd > 0 ? (deltaAggUsd / (totalValueUsd - deltaAggUsd)) * 100 : 0;
+    have24 && value24Sum > 0 ? (deltaAggUsd / value24Sum) * 100 : 0;
 
   const allocation = holdings
     .map((h) => ({ symbol: h.symbol, valueUsd: h.valueUsd, chain: h.chain }))
@@ -317,5 +389,9 @@ export async function getHoldingsOverview(
     holdings,
     allocation,
     topHoldings,
+    warnings: {
+      ...getPricingWarnings(),
+      ...getTokenApiWarnings(),
+    },
   };
 }

@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   webpack: (config) => {
+    const path = require("path");
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,
@@ -15,8 +16,8 @@ const nextConfig = {
       assert: false,
       os: false,
       path: false,
-      buffer: require.resolve("buffer"),
-      process: require.resolve("process/browser"),
+      buffer: path.join(process.cwd(), "node_modules", "buffer", "index.js"),
+      process: path.join(process.cwd(), "node_modules", "process", "browser.js"),
       // Add fallbacks for packages that are not needed in browser
       "@react-native-async-storage/async-storage": false,
       "pino-pretty": false,
@@ -24,7 +25,16 @@ const nextConfig = {
     return config;
   },
   async rewrites() {
-    const base = process.env.API_BASE ?? "http://backend-dev:8080";
+    // Use backend URL from environment
+    const base = process.env.API_BASE;
+    
+    if (!base) {
+      throw new Error("API_BASE environment variable is required. Please set it in your environment variables.");
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log("[Next.js] API_BASE configured:", base);
+    }
 
     return [
       {

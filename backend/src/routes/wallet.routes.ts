@@ -13,8 +13,29 @@ const router = Router();
 router.use(requireAuth);
 
 /**
- * GET /api/wallets
- * Get all wallets for the authenticated user
+ * @openapi
+ * /wallets:
+ *   get:
+ *     summary: List wallets for the authenticated user
+ *     tags: [Wallets]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Wallet list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 wallets:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       401:
+ *         description: Not authenticated
+ *       500:
+ *         description: Server error
  */
 router.get("/", async (req, res) => {
   try {
@@ -29,9 +50,35 @@ router.get("/", async (req, res) => {
 });
 
 /**
- * POST /api/wallets
- * Add a new wallet to the user's account
- * Body: { address, name, chainId }
+ * @openapi
+ * /wallets:
+ *   post:
+ *     summary: Add a wallet to the authenticated user
+ *     tags: [Wallets]
+ *     security:
+ *       - cookieAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [address, name]
+ *             properties:
+ *               address:
+ *                 type: string
+ *               name:
+ *                 type: string
+ *               chainId:
+ *                 type: integer
+ *                 default: 1
+ *     responses:
+ *       200:
+ *         description: Wallet added
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Not authenticated
  */
 router.post("/", async (req, res) => {
   try {
@@ -57,8 +104,27 @@ router.post("/", async (req, res) => {
 });
 
 /**
- * DELETE /api/wallets/:address
- * Remove a wallet from the user's account
+ * @openapi
+ * /wallets/{address}:
+ *   delete:
+ *     summary: Remove a wallet from the authenticated user's account
+ *     tags: [Wallets]
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Wallet address to remove
+ *     responses:
+ *       200:
+ *         description: Wallet removed
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Not authenticated
  */
 router.delete("/:address", async (req, res) => {
   try {
@@ -79,9 +145,37 @@ router.delete("/:address", async (req, res) => {
 });
 
 /**
- * PATCH /api/wallets/:address
- * Update a wallet's name
- * Body: { name }
+ * @openapi
+ * /wallets/{address}:
+ *   patch:
+ *     summary: Update a wallet's name
+ *     tags: [Wallets]
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: address
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Wallet address to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name]
+ *             properties:
+ *               name:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Wallet updated
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Not authenticated
  */
 router.patch("/:address", async (req, res) => {
   try {

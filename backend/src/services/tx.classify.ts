@@ -25,6 +25,19 @@ function sumUsd(legs: TxLegs) {
   return legs.reduce((s, l) => s + (l.amountUsdAtTx ?? 0), 0);
 }
 
+function shortAddr(addr?: string | null) {
+  if (!addr) return "unknown";
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+function describeAsset(leg?: NormalizedLegRow) {
+  if (!leg) return "unknown";
+  const symbol = leg.asset?.symbol?.trim();
+  if (symbol) return symbol;
+  if (leg.asset?.contract) return shortAddr(leg.asset.contract);
+  return leg.kind === "native" ? "NATIVE" : "asset";
+}
+
 /**
  * Classify legs with simple intents:
  * - SWAP: both in & out contain fungible (erc20/native)
@@ -32,7 +45,7 @@ function sumUsd(legs: TxLegs) {
  * - NFT SELL: erc721/1155 OUT and fungible IN
  * - TRANSFER_IN/OUT: only single-direction fungible
  * - INCOME/EXPENSE: fallback labels when value exists but no counter-leg
- * Gas is handled in summary via gasUsdByTx; we don't mark legs "gas".
+ * Gas legs are synthesized later (after receipts) so they don't pass through here.
  */
 export function classifyLegs(legs: TxLegs): void {
   const inFungible = legsIn(legs).filter(
@@ -53,8 +66,19 @@ export function classifyLegs(legs: TxLegs): void {
   const hasNftSell = outNft.length > 0 && inFungible.length > 0;
 
   if (hasSwapPattern) {
-    inFungible.forEach((l) => (l.class = "swap_in"));
-    outFungible.forEach((l) => (l.class = "swap_out"));
+    const fromLeg = outFungible[0] ?? inFungible[0];
+    const toLeg = inFungible[0] ?? outFungible[0];
+    const fromAsset = describeAsset(fromLeg);
+    const toAsset = describeAsset(toLeg);
+    const swapLabel = `${fromAsset}→${toAsset}`;
+    inFungible.forEach((l) => {
+      l.class = "swap_in";
+      l.swapLabel = swapLabel;
+    });
+    outFungible.forEach((l) => {
+      l.class = "swap_out";
+      l.swapLabel = swapLabel;
+    });
   }
   if (hasNftBuy) {
     inNft.forEach((l) => (l.class = "nft_buy"));

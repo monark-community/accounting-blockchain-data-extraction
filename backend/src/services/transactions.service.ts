@@ -10,7 +10,11 @@ import {
 } from "./tx.normalize";
 import { fetchReceiptsBatch } from "./tx.enrich.rpc";
 import { parseNetworks, type EvmNetwork } from "../config/networks";
-import type { NormalizedLegRow, PageParams } from "../types/transactions";
+import type {
+  NormalizedLegRow,
+  PageParams,
+  TxCursorPosition,
+} from "../types/transactions";
 import { quoteTokenUsdAtTs, quoteNativeUsdAtTs } from "./tx.pricing";
 import { classifyLegs } from "./tx.classify";
 
@@ -20,8 +24,35 @@ type ListParams = {
   from?: string; // ISO datetime or epoch seconds (string ok)
   to?: string; // ISO datetime or epoch seconds (string ok)
   page?: number; // default 1
-  limit?: number; // default 100
+  limit?: number; // default 20
+  cursor?: TxCursorPosition | null;
 };
+
+const ZERO_ADDRESS: `0x${string}` =
+  "0x0000000000000000000000000000000000000000";
+const NATIVE_SYMBOL: Record<EvmNetwork, string> = {
+  mainnet: "ETH",
+  bsc: "BNB",
+  polygon: "MATIC",
+  optimism: "ETH",
+  base: "ETH",
+  "arbitrum-one": "ETH",
+  avalanche: "AVAX",
+  unichain: "ETH",
+};
+const TX_FETCH_WINDOW_CAP = Number(process.env.TX_FETCH_WINDOW_CAP ?? 80);
+const PRICING_BATCH_SIZE = Number(process.env.PRICING_BATCH_SIZE ?? 50); // Increased to 50 for better throughput (DeFiLlama can handle this)
+const LOGS_DEBUG =
+  String(process.env.LOGS_DEBUG ?? "false").toLowerCase() === "true";
+const debugLog = (...args: any[]) => {
+  if (LOGS_DEBUG) {
+    console.log("[transactions.service]", ...args);
+  }
+};
+
+function nativeSymbolFor(network: EvmNetwork): string {
+  return NATIVE_SYMBOL[network] ?? "ETH";
+}
 
 function toEpochSeconds(v?: string): number | undefined {
   if (!v) return undefined;
@@ -32,12 +63,29 @@ function toEpochSeconds(v?: string): number | undefined {
 }
 
 function sortLegs(a: NormalizedLegRow, b: NormalizedLegRow): number {
-  if (a.timestamp !== b.timestamp) return a.timestamp - b.timestamp;
-  if (a.blockNumber !== b.blockNumber) return a.blockNumber - b.blockNumber;
-  if (a.txHash !== b.txHash) return a.txHash < b.txHash ? -1 : 1;
-  const ai = a.logIndex ?? 0,
-    bi = b.logIndex ?? 0;
-  return ai - bi;
+  if (a.timestamp !== b.timestamp) return b.timestamp - a.timestamp;
+  if (a.blockNumber !== b.blockNumber) return b.blockNumber - a.blockNumber;
+  if (a.txHash !== b.txHash) return a.txHash < b.txHash ? 1 : -1;
+  const ai = a.logIndex ?? 0;
+  const bi = b.logIndex ?? 0;
+  return bi - ai;
+}
+
+/**
+ * Process items in batches to limit concurrency and avoid rate limits
+ */
+async function processInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  processor: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(processor));
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 /** Main listing function: normalized legs + USD pricing + gas USD meta. */
@@ -45,30 +93,66 @@ export async function listTransactionLegs(
   params: ListParams
 ): Promise<NormalizedLegRow[]> {
   const page = Math.max(1, params.page ?? 1);
-  const limit = Math.min(
-    Math.max(1, params.limit ?? Number(process.env.TX_DEFAULT_LIMIT ?? 100)),
-    Number(process.env.TX_MAX_LIMIT ?? 200)
+  const cursor = params.cursor ?? null;
+  const defaultLimit = Number(process.env.TX_DEFAULT_LIMIT ?? 20);
+  const maxLimit = Number(process.env.TX_MAX_LIMIT ?? 40);
+  const pageSize = Math.min(
+    Math.max(1, params.limit ?? defaultLimit),
+    maxLimit
   );
+  const wallet = params.address.toLowerCase() as `0x${string}`;
 
   const nets: EvmNetwork[] = parseNetworks(params.networks ?? undefined);
+  
+  // Calculate fetchWindow per network to produce ~100 legs total across all networks
+  // Target: ~100 legs total (not per network) to reduce backend processing time
+  // We ignore the frontend limit for production - always target ~100 legs
+  // Note: Each network fetches BOTH fungible AND nft transfers, so we divide by 2
+  const TARGET_TOTAL_LEGS = 100;
+  const numNetworks = Math.max(1, nets.length);
+  // Divide by 2 because we fetch both fungible + nft (each creates legs)
+  const fetchWindowPerNetwork = Math.ceil((TARGET_TOTAL_LEGS / numNetworks) / 2);
+  // Ensure minimum buffer per network, but cap to avoid excessive fetching
+  const fetchWindow = Math.max(
+    10, // Minimum buffer per network (reduced since we fetch fungible + nft)
+    Math.min(fetchWindowPerNetwork, TX_FETCH_WINDOW_CAP)
+  );
   const fromTime = toEpochSeconds(params.from);
-  const toTime = toEpochSeconds(params.to);
+  const toTimeRaw = toEpochSeconds(params.to);
+  const cursorTime = cursor?.timestamp;
+  const toTime =
+    cursorTime != null && toTimeRaw != null
+      ? Math.min(cursorTime, toTimeRaw)
+      : cursorTime ?? toTimeRaw;
 
-  // 1) fetch + normalize per network
-  const perNetPromises = nets.map(async (network) => {
+  const serviceStartTime = process.hrtime.bigint();
+
+  // 1) fetch + normalize per network (limit cross-network concurrency)
+  const maxConc = Math.max(
+    1,
+    Number(process.env.NETWORK_FETCH_CONCURRENCY ?? 2)
+  );
+  const queue: EvmNetwork[] = [...nets];
+  const chunksArr: NormalizedLegRow[][] = [];
+
+  async function runForNetwork(network: EvmNetwork) {
+    const networkStartTime = process.hrtime.bigint();
+
     const basePage: PageParams = {
       network,
-      address: params.address.toLowerCase() as `0x${string}`,
+      address: wallet,
       fromTime,
       toTime,
-      page,
-      limit,
+      page: 1,
+      limit: fetchWindow,
     };
 
+    const fetchStartTime = process.hrtime.bigint();
     const [fungible, nft] = await Promise.all([
       fetchFungibleTransfersPage(basePage),
       fetchNftTransfersPage(basePage),
     ]);
+    const fetchTime = Number(process.hrtime.bigint() - fetchStartTime) / 1_000_000;
 
     const legsF = fungible.map((r) =>
       normalizeFungibleTransfer(r, basePage.address, network)
@@ -80,7 +164,23 @@ export async function listTransactionLegs(
 
     // 2) receipts per network (unique tx hashes in this page window)
     const uniqTx = Array.from(new Set(legs.map((l) => l.txHash)));
-    const receipts = await fetchReceiptsBatch(network, uniqTx);
+    const receiptsStartTime = process.hrtime.bigint();
+    
+    // Fetch receipts defensively — failures should not break the listing.
+    let receipts: Record<
+      string,
+      {
+        status: "success" | "reverted" | "unknown";
+        gasUsed: number;
+        effectiveGasPrice: number;
+      }
+    >;
+    try {
+      receipts = await fetchReceiptsBatch(network, uniqTx);
+    } catch (e: any) {
+      console.error(`[Backend] Receipts fetch failed for ${network}:`, e?.message || String(e));
+      receipts = {};
+    }
 
     // 3) fill status
     for (const l of legs) {
@@ -88,33 +188,60 @@ export async function listTransactionLegs(
       if (rc) l.status = rc.status;
     }
 
-    // 4) pricing: per-leg USD at timestamp (pre-warm unique keys in parallel)
+    // 4) pricing: per-leg USD at timestamp (pre-warm unique keys in batches to avoid rate limits)
+    const pricingStartTime = process.hrtime.bigint();
     const uniquePriceKeys = new Map<
       string,
-      { contract?: string; ts: number }
+      { contract?: string; ts: number; legIndices: number[] }
     >();
-    for (const l of legs) {
-      uniquePriceKeys.set(
-        `${(l.asset.contract ?? "native").toLowerCase()}@${l.timestamp}`,
-        {
+    
+    // Group legs by price key to avoid duplicate lookups
+    legs.forEach((l, idx) => {
+      const key = `${(l.asset.contract ?? "native").toLowerCase()}@${l.timestamp}`;
+      if (!uniquePriceKeys.has(key)) {
+        uniquePriceKeys.set(key, {
           contract: l.asset.contract,
           ts: l.timestamp,
-        }
-      );
-    }
-    await Promise.all(
-      Array.from(uniquePriceKeys.values()).map(({ contract, ts }) =>
-        quoteTokenUsdAtTs(network, contract, ts)
-      )
+          legIndices: [],
+        });
+      }
+      uniquePriceKeys.get(key)!.legIndices.push(idx);
+    });
+    
+    // Process price requests in batches to avoid overwhelming DeFiLlama API
+    const priceResults = await processInBatches(
+      Array.from(uniquePriceKeys.entries()),
+      PRICING_BATCH_SIZE,
+      async ([key, { contract, ts }]) => {
+        const price = await quoteTokenUsdAtTs(network, contract, ts);
+        return { key, price };
+      }
     );
-    // assign from warmed cache
-    for (const l of legs) {
-      const px = await quoteTokenUsdAtTs(
+    
+    // Build price map for fast lookup
+    const priceMap = new Map<string, number | undefined>();
+    for (const { key, price } of priceResults) {
+      priceMap.set(key, price);
+    }
+    
+    // Assign prices from map (instant lookup instead of sequential calls)
+    for (const [key, { legIndices }] of uniquePriceKeys.entries()) {
+      const px = priceMap.get(key);
+      if (typeof px === "number") {
+        for (const idx of legIndices) {
+          legs[idx].amountUsdAtTx = legs[idx].amount * px;
+        }
+      }
+    }
+    const pricingTime = Number(process.hrtime.bigint() - pricingStartTime) / 1_000_000;
+    
+    // Log pricing time if significant (>1s) - debug only
+    if (pricingTime > 1000) {
+      debugLog("pricing:time", {
         network,
-        l.asset.contract,
-        l.timestamp
-      );
-      if (typeof px === "number") l.amountUsdAtTx = l.amount * px;
+        uniqueKeys: uniquePriceKeys.size,
+        seconds: Number((pricingTime / 1000).toFixed(1)),
+      });
     }
 
     // 4b) Step 3 — Classify legs per transaction (swap, transfer, nft_buy/sell, …)
@@ -135,23 +262,68 @@ export async function listTransactionLegs(
       if (!sampleLeg) continue;
       const ts = sampleLeg.timestamp;
 
-      let px = nativeUsdCache[ts];
+      const tsForPrice = Math.min(ts, Math.floor(Date.now() / 1000));
+      let px = nativeUsdCache[tsForPrice];
       if (px === undefined) {
-        px = await quoteNativeUsdAtTs(network, ts);
-        nativeUsdCache[ts] = px;
+        px = await quoteNativeUsdAtTs(network, tsForPrice);
+        nativeUsdCache[tsForPrice] = px;
       }
-      if (typeof px === "number") {
-        const ethSpent = (rc.gasUsed * rc.effectiveGasPrice) / 1e18;
-        gasUsdByTx[txHash] = ethSpent * px;
+
+      const ethSpent = (rc.gasUsed * rc.effectiveGasPrice) / 1e18;
+      if (ethSpent <= 0) continue;
+
+      const gasUsdValue = typeof px === "number" ? Number(ethSpent * px) : null;
+      if (gasUsdValue !== null) {
+        gasUsdByTx[txHash] = gasUsdValue;
       }
+
+      const weiSpent = (
+        BigInt(rc.gasUsed ?? 0) * BigInt(rc.effectiveGasPrice ?? 0)
+      ).toString();
+      legs.push({
+        txHash: txHash as `0x${string}`,
+        blockNumber: sampleLeg.blockNumber,
+        timestamp: sampleLeg.timestamp,
+        network,
+        from: wallet,
+        to: ZERO_ADDRESS,
+        direction: "out",
+        kind: "native",
+        asset: {
+          contract: undefined,
+          symbol: nativeSymbolFor(network),
+          decimals: 18,
+          tokenId: null,
+        },
+        amountRaw: weiSpent,
+        amount: ethSpent,
+        amountUsdAtTx: gasUsdValue ?? undefined,
+        status: rc.status,
+        logIndex: Number.MAX_SAFE_INTEGER,
+        source: "rpc",
+        class: "gas",
+      });
     }
+    const networkTime = Number(process.hrtime.bigint() - networkStartTime) / 1_000_000;
     // Attach meta on this chunk
     (legs as any)._gasUsdByTx = gasUsdByTx;
 
     return legs;
-  });
+  }
 
-  const chunks = await Promise.all(perNetPromises);
+  async function worker() {
+    while (queue.length) {
+      const net = queue.shift()!;
+      const legs = await runForNetwork(net);
+      chunksArr.push(legs);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(maxConc, queue.length) }, () =>
+    worker()
+  );
+  await Promise.all(workers);
+  const chunks = chunksArr;
   const all = chunks.flat();
 
   // collect gas meta from chunks (each chunk may have _gasUsdByTx)
@@ -162,7 +334,9 @@ export async function listTransactionLegs(
   }
 
   all.sort(sortLegs);
+  
   // Return both legs and meta so the route can include it
   (all as any)._gasUsdByTx = gasMeta;
+  
   return all;
 }
