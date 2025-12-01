@@ -117,6 +117,7 @@ docker compose --profile prod up --build -d
 ```
 
 Notes:
+
 - Frontend dev maps localhost:3000 → Vite/Next dev server on 5173.
 - Frontend prod proxies `/api/*` to `http://backend:8080` inside the compose network.
 - Backend health: `GET http://localhost:8080/api/health`.
@@ -141,9 +142,46 @@ Notes:
 - Health checks: backend `GET /api/health` (ports: 8080 in-container, 8081 via compose). Frontend serves on port 3000.
 - Production tips: set `NODE_ENV=production`, rotate `SESSION_SECRET`, keep API keys and JWTs in the platform’s secret store (Render Env Vars). Increase container size/worker count if you see timeouts; enable logs to monitor rate-limit issues.
 
+## Environment Reference
+
+- **Backend (`backend/.env`)**
+  - `PORT` / `NODE_ENV` — server port and mode; usually `PORT=8080`, `NODE_ENV=production` in prod.
+  - `DATABASE_URL` — Postgres connection string; from your DB service (Render Postgres or local compose).
+  - `SESSION_SECRET` / `SESSION_NAME` / `SESSION_TTL_SECONDS` — cookie signing and TTL; generate a long random secret.
+  - `FRONTEND_URL` — public URL of the frontend for CORS and cookies.
+  - `ALCHEMY_API_KEY` / `ALCHEMY_NETWORK` — get from alchemy.com; used for helper RPC utilities (optional).
+  - `PINAX_BASE_URL` / `PINAX_API_KEY` / `PINAX_JWT` — from pinax.cloud; used for Pinax REST data.
+  - `TOKEN_API_BASE_URL` / `GRAPH_TOKEN_API_KEY` / `GRAPH_TOKEN_API_JWT` — from The Graph token API; primary transaction source.
+  - `RPC_URL_*` (e.g., `RPC_URL_MAINNET`) — JSON-RPC endpoints per chain; needed for receipts/gas/status.
+  - `ENABLE_*`, `HTTP_TIMEOUT_MS`, `NETWORK_FETCH_CONCURRENCY`, `TOKEN_API_RPM`, `COVALENT_RPM`, `LLAMA_RPM` — feature toggles and rate/timeout tuning.
+  - `ENABLE_SPAM_FILTER`, `SPAM_FILTER_MODE`, `TX_DEFAULT_LIMIT`, `TX_MAX_LIMIT`, `TX_DEFAULT_MIN_USD`, `TX_FETCH_WINDOW_CAP`, `TX_RETURN_CAP` — transaction filtering and pagination defaults.
+  - `COVALENT_API_KEY` / `MORALIS_API_KEY` — fallbacks for token/tx data; get from covalenthq.com / moralis.io.
+  - `DEBUG_TOKEN_API` / `LOGS_DEBUG` — verbose logging switches.
+  - `ANKR_API_KEY` — from ankr.com; used for RPC access and pricing fallbacks.
+- **Frontend (`frontend/.env`)**
+  - `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID` — from web3auth.io; enables Web3Auth login.
+  - `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` — from walletconnect.com; powers WalletConnect.
+  - `NEXT_PUBLIC_ANKR_API_KEY` — from ankr.com; used client-side where required.
+  - `NEXT_PUBLIC_TRANSACTIONS_TIMEOUT_MS` — UI request timeout for long-running tx fetches.
+  - `API_BASE` — backend URL the UI calls; set to the API host (e.g., `http://localhost:8080` or Render URL).
+
 ## Documentation
 
-- TODO: link API reference, data model docs, and architectural diagrams.
+- **API**
+  - Swagger UI: `GET /api/docs` (served from backend).
+  - Endpoints: auth (`/api/auth/*`), wallets (`/api/wallets` CRUD), transactions (`/api/transactions/:address` with filters/cursor), holdings (`/api/holdings/:address`), analytics (`/api/analytics/historical/:address`), networks (`/api/networks/activity/:address`), MFA (`/api/mfa/*`), health (`/api/health`).
+- **Data model (Postgres)**
+  - `users`: wallet_address (PK), name, MFA fields, timestamps; indexes on wallet_address and MFA.
+  - `user_wallets`: (main_wallet_address, address) PK, name, chain_id, is_active, timestamps; indexes on main_wallet_address and address.
+- **Flow & operations**
+  - Fetch tx data via The Graph Token API (`TOKEN_API_*`), with Pinax/Alchemy helpers and chain RPCs (`RPC_URL_*`) for receipts/gas.
+  - Normalize, spam-filter (`ENABLE_SPAM_FILTER` / `SPAM_FILTER_MODE`), then price via DeFiLlama (`ENABLE_DEFI_LLAMA`, `LLAMA_RPM`) with fallbacks (Ankr, DexScreener, Covalent/Moralis if keys set).
+  - Timeouts/concurrency/rate limits: `HTTP_TIMEOUT_MS`, `NETWORK_FETCH_CONCURRENCY`, `TOKEN_API_RPM`, `COVALENT_RPM`.
+  - Health check: `GET /api/health`. Long requests allowed up to 5 minutes server-side.
+- **Dev & testing**
+  - Backend dev: `cd backend && npm run dev` (8080). Frontend dev: `cd frontend && npm run dev` (3000; set `API_BASE`).
+  - Docker Compose dev: `docker compose --profile dev up --build` (Postgres auto-inits from `db/init/*.sql`; backend reruns migrations idempotently).
+  - Testing: no automated suite yet; recommended to add API tests (Jest/Vitest + supertest) for auth/wallets/transactions and UI tests (Testing Library/Playwright) for auth + wallet flows.
 
 ## Contribution
 
