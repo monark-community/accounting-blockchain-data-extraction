@@ -123,13 +123,23 @@ Notes:
 
 ## Available Scripts
 
-- TODO: document package scripts for frontend and backend.
+- **Frontend (`frontend/`)**
+  - `npm run dev` — start the Next.js dev server on port 3000.
+  - `npm run build` — create a production build in `.next/`.
+  - `npm run start` — run the production server from the built assets.
+  - `npm run lint` — lint the frontend codebase.
+- **Backend (`backend/`)**
+  - `npm run dev` — run the Express API with `ts-node-dev` and hot reload on port 8080.
+  - `npm run build` — compile TypeScript sources to `dist/`.
+  - `npm run start` — run the compiled API from `dist/index.js`.
 
 ## Deployment
 
-- Render.com: use `render.yaml` (see README-RENDER.md for step-by-step).
-- Docker Compose: `docker compose --profile prod up --build -d`.
-- TODO: add cloud-specific notes (env vars, secrets, and storage).
+- Render.com: use `render.yaml` (see README-RENDER.md for step-by-step). Set backend env vars: `DATABASE_URL` (from Render Postgres), `SESSION_SECRET`, `SESSION_NAME` (optional), `SESSION_TTL_SECONDS` (optional), `FRONTEND_URL`, `ALCHEMY_API_KEY`, `ANKR_API_KEY`, `GRAPH_TOKEN_API_JWT`/`GRAPH_TOKEN_API_KEY`, optional `PINAX_RPC_URL` or per-chain `RPC_URL_*`. Set frontend env vars: `API_BASE` (backend URL), `NEXT_PUBLIC_WEB3AUTH_CLIENT_ID`, `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`, `NEXT_PUBLIC_ANKR_API_KEY`, and any other `NEXT_PUBLIC_*` values used in the UI.
+- Docker Compose: `docker compose --profile prod up --build -d` (frontend on 3000, backend on 8081 → 8080 in-container, Postgres on 5432). Provide env files in `backend/.env` and `frontend/.env` or override via `environment` in the compose file.
+- Database: Postgres initializes from `db/init/*.sql` on first boot; backend also runs the same migrations at startup (idempotent). Persist data with the `pg_data` volume.
+- Health checks: backend `GET /api/health` (ports: 8080 in-container, 8081 via compose). Frontend serves on port 3000.
+- Production tips: set `NODE_ENV=production`, rotate `SESSION_SECRET`, keep API keys and JWTs in the platform’s secret store (Render Env Vars). Increase container size/worker count if you see timeouts; enable logs to monitor rate-limit issues.
 
 ## Documentation
 
