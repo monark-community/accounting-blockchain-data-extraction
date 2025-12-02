@@ -1,4 +1,7 @@
 import swaggerJsdoc from "swagger-jsdoc";
+import path from "path";
+
+const routesGlob = path.resolve(__dirname, "../routes/**/*.{ts,js}");
 
 export const swaggerSpec = swaggerJsdoc({
   definition: {
@@ -26,5 +29,6 @@ export const swaggerSpec = swaggerJsdoc({
     ],
   },
   // JSDoc blocks in routes and services
-  apis: ["./src/routes/**/*.ts"],
+  // Use compiled JS in prod (Render) and TS in dev via a single glob
+  apis: [routesGlob],
 });
