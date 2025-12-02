@@ -37,9 +37,10 @@ export function scoreSpam(symbol?: string | null): {
   let score = 0;
   const s = (symbol ?? "").trim();
 
-  if (!s) {
-    score += 0.5;
-    reasons.push("empty-symbol");
+  // Missing or placeholder symbol is extremely suspicious (typical for spam airdrops)
+  if (!s || /\(unknown\)/i.test(s) || /^unknown$/i.test(s)) {
+    score += 3;
+    reasons.push("missing-symbol");
   }
   if (SYMBOL_WHITELIST.has(s.toUpperCase())) return { score: 0, reasons };
 
