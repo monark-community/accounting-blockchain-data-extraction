@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { OverviewResponse, PricedHolding } from "@/lib/types/portfolio";
 import type { HistoricalPoint } from "@/lib/api/analytics";
-import { fmtUSD, fmtPct, CHAIN_LABEL, CHAIN_STACK_COLORS } from "@/lib/portfolioUtils";
+import { fmtUSD, fmtUSDCompact, fmtPct, CHAIN_LABEL, CHAIN_STACK_COLORS } from "@/lib/portfolioUtils";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -954,9 +954,9 @@ const GraphsTab = ({
                 interval="preserveStartEnd"
               />
               <YAxis
-                tickFormatter={(v) => fmtUSD(v)}
+                tickFormatter={(v) => fmtUSDCompact(v)}
                 tick={{ fontSize: 12 }}
-                width={70}
+                width={80}
                 domain={["dataMin", "dataMax"]}
               />
               <RechartsTooltip
@@ -1013,7 +1013,7 @@ const GraphsTab = ({
           <BarChart data={netFlowData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-            <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+            <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
             <RechartsTooltip
               formatter={(value: number) => fmtUSD(value)}
               labelFormatter={(label) => `Date: ${label}`}
@@ -1053,7 +1053,7 @@ const GraphsTab = ({
           <AreaChart data={chainHistory.data} stackOffset="expand">
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-            <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fontSize: 12 }} width={50} />
+            <YAxis tickFormatter={(v) => `${Math.round(v * 100)}%`} tick={{ fontSize: 12 }} width={50} domain={[0, 1]} />
             <RechartsTooltip
               formatter={(value: number, name: string) => [
                 `${value.toFixed(1)}%`,
@@ -1148,10 +1148,10 @@ const GraphsTab = ({
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="label" tick={{ fontSize: 12 }} />
             <YAxis
-              tickFormatter={(v) => fmtUSD(v)}
+              tickFormatter={(v) => fmtUSDCompact(v)}
               domain={["auto", "auto"]}
               tick={{ fontSize: 12 }}
-              width={70}
+              width={80}
             />
             <RechartsTooltip
               formatter={(v: any, _n: any, e: any) => [
@@ -1223,17 +1223,17 @@ const GraphsTab = ({
             ]}
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis tickFormatter={(v) => fmtUSD(v)} />
-            <RechartsTooltip
-              formatter={(value: number, _name: string, props: any) => [
-                `${fmtUSD(value)} (${
-                  props.payload.pct >= 0 ? "+" : ""
-                }${fmtPct(props.payload.pct)})`,
-                "24h Change",
-              ]}
-            />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
+                <RechartsTooltip
+                  formatter={(value: number, _name: string, props: any) => [
+                    `${fmtUSD(value)} (${
+                      props.payload.pct >= 0 ? "+" : ""
+                    }${fmtPct(props.payload.pct)})`,
+                    "24h Change",
+                  ]}
+                />
             <Bar dataKey="value">
               {[...movers.gainers, ...movers.losers].map((h, index) => (
                 <Cell
@@ -1392,7 +1392,7 @@ const GraphsTab = ({
                   <BarChart data={liquidityData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+                    <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${fmtUSD(value)} (${props.payload.percentage.toFixed(
@@ -1466,14 +1466,14 @@ const GraphsTab = ({
             </div>
           ) : (
             <>
-              <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={priceSourceData}
                   layout="vertical"
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} />
+                  <XAxis type="number" tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} />
                   <YAxis
                     type="category"
                     dataKey="label"
@@ -1575,7 +1575,7 @@ const GraphsTab = ({
                 <BarChart data={reserveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+                  <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
                   <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
                   <Bar dataKey="value">
                     {reserveData.map((entry) => (
@@ -1876,7 +1876,7 @@ const GraphsTab = ({
                   <BarChart data={crossChainData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+                    <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${fmtUSD(value)} (${props.payload.percentage}%)`,

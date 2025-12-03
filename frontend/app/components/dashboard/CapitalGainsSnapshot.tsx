@@ -8,7 +8,7 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import { fmtUSD, fmtPct } from "@/utils/transactionHelpers";
+import { fmtUSD, fmtUSDCompact, fmtPct } from "@/utils/transactionHelpers";
 import type { useTransactionStats } from "@/hooks/useTransactionStats";
 
 type StatsReturn = ReturnType<typeof useTransactionStats>;
@@ -182,7 +182,7 @@ export function CapitalGainsSnapshot({
                     interval="preserveStartEnd"
                     minTickGap={24}
                   />
-                  <YAxis tickFormatter={(value: number) => fmtUSD(value)} />
+                  <YAxis tickFormatter={(value: number) => fmtUSDCompact(value)} width={80} tick={{ fontSize: 12 }} />
                   <RechartsTooltip
                     formatter={(value: number) => fmtUSD(value)}
                     labelFormatter={(value) =>
