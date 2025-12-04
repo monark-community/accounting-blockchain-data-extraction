@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { OverviewResponse, PricedHolding } from "@/lib/types/portfolio";
 import type { HistoricalPoint } from "@/lib/api/analytics";
-import { fmtUSD, fmtPct, CHAIN_LABEL, CHAIN_STACK_COLORS } from "@/lib/portfolioUtils";
+import { fmtUSD, fmtUSDCompact, fmtPct, CHAIN_LABEL, CHAIN_STACK_COLORS } from "@/lib/portfolioUtils";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -26,58 +26,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { TrendingUp, BarChart3, PieChart, DollarSign, Activity, Briefcase, Calendar, Link2, AlertTriangle, HelpCircle } from "lucide-react";
-
-// Helper function to create active shape for Pie charts
-const createActiveShape = (activeOuterRadius: number) => (props: any) => {
-  const {
-    cx,
-    cy,
-    innerRadius,
-    startAngle,
-    endAngle,
-    fill,
-  } = props;
-  
-  // Convert angles from degrees to radians
-  const RADIAN = Math.PI / 180;
-  const sin = Math.sin(-RADIAN * startAngle);
-  const cos = Math.cos(-RADIAN * startAngle);
-  const sinEnd = Math.sin(-RADIAN * endAngle);
-  const cosEnd = Math.cos(-RADIAN * endAngle);
-  
-  // Calculate path for outer arc
-  const x1 = cx + activeOuterRadius * cos;
-  const y1 = cy + activeOuterRadius * sin;
-  const x2 = cx + activeOuterRadius * cosEnd;
-  const y2 = cy + activeOuterRadius * sinEnd;
-  
-  // Calculate path for inner arc
-  const x3 = cx + innerRadius * cosEnd;
-  const y3 = cy + innerRadius * sinEnd;
-  const x4 = cx + innerRadius * cos;
-  const y4 = cy + innerRadius * sin;
-  
-  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
-  
-  const path = [
-    `M ${x1} ${y1}`,
-    `A ${activeOuterRadius} ${activeOuterRadius} 0 ${largeArcFlag} 0 ${x2} ${y2}`,
-    `L ${x3} ${y3}`,
-    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${x4} ${y4}`,
-    'Z',
-  ].join(' ');
-  
-  return (
-    <g>
-      <path
-        d={path}
-        fill={fill}
-        stroke="#1e293b"
-        strokeWidth={2}
-      />
-    </g>
-  );
-};
 
 interface AllocationRow {
   name: string;
@@ -335,7 +283,8 @@ const GraphsTab = ({
                       return `${entry.name.slice(0, 8)}${entry.name.length > 8 ? '...' : ''}`;
                     }}
                     labelLine={{ strokeWidth: 1 }}
-                    activeShape={createActiveShape(82)}
+                    stroke="#fff"
+                    strokeWidth={2}
                   >
                     {chartData.map((entry, index) => {
                       const colors = [
@@ -353,6 +302,7 @@ const GraphsTab = ({
                         <Cell
                           key={`asset-dist-${index}`}
                           fill={entry.name === "Others" ? "#94a3b8" : colors[index % colors.length]}
+                          style={{ cursor: 'pointer' }}
                         />
                       );
                     })}
@@ -569,7 +519,8 @@ const GraphsTab = ({
                       return `${entry.name.slice(0, 10)}${entry.name.length > 10 ? '...' : ''}`;
                     }}
                     labelLine={{ strokeWidth: 1 }}
-                    activeShape={createActiveShape(82)}
+                    stroke="#fff"
+                    strokeWidth={2}
                   >
                     {accountingData.map((entry, index) => {
                       const colors = [
@@ -585,6 +536,7 @@ const GraphsTab = ({
                         <Cell
                           key={`acc-cell-${index}`}
                           fill={entry.name === "Others" ? "#94a3b8" : colors[index % colors.length]}
+                          style={{ cursor: 'pointer' }}
                         />
                       );
                     })}
@@ -954,9 +906,9 @@ const GraphsTab = ({
                 interval="preserveStartEnd"
               />
               <YAxis
-                tickFormatter={(v) => fmtUSD(v)}
+                tickFormatter={(v) => fmtUSDCompact(v)}
                 tick={{ fontSize: 12 }}
-                width={70}
+                width={80}
                 domain={["dataMin", "dataMax"]}
               />
               <RechartsTooltip
@@ -1013,7 +965,7 @@ const GraphsTab = ({
           <BarChart data={netFlowData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-            <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+            <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
             <RechartsTooltip
               formatter={(value: number) => fmtUSD(value)}
               labelFormatter={(label) => `Date: ${label}`}
@@ -1053,7 +1005,7 @@ const GraphsTab = ({
           <AreaChart data={chainHistory.data} stackOffset="expand">
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-            <YAxis tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fontSize: 12 }} width={50} />
+            <YAxis tickFormatter={(v) => `${Math.round(v * 100)}%`} tick={{ fontSize: 12 }} width={50} domain={[0, 1]} />
             <RechartsTooltip
               formatter={(value: number, name: string) => [
                 `${value.toFixed(1)}%`,
@@ -1148,10 +1100,10 @@ const GraphsTab = ({
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="label" tick={{ fontSize: 12 }} />
             <YAxis
-              tickFormatter={(v) => fmtUSD(v)}
+              tickFormatter={(v) => fmtUSDCompact(v)}
               domain={["auto", "auto"]}
               tick={{ fontSize: 12 }}
-              width={70}
+              width={80}
             />
             <RechartsTooltip
               formatter={(v: any, _n: any, e: any) => [
@@ -1223,17 +1175,17 @@ const GraphsTab = ({
             ]}
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis tickFormatter={(v) => fmtUSD(v)} />
-            <RechartsTooltip
-              formatter={(value: number, _name: string, props: any) => [
-                `${fmtUSD(value)} (${
-                  props.payload.pct >= 0 ? "+" : ""
-                }${fmtPct(props.payload.pct)})`,
-                "24h Change",
-              ]}
-            />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
+                <RechartsTooltip
+                  formatter={(value: number, _name: string, props: any) => [
+                    `${fmtUSD(value)} (${
+                      props.payload.pct >= 0 ? "+" : ""
+                    }${fmtPct(props.payload.pct)})`,
+                    "24h Change",
+                  ]}
+                />
             <Bar dataKey="value">
               {[...movers.gainers, ...movers.losers].map((h, index) => (
                 <Cell
@@ -1392,7 +1344,7 @@ const GraphsTab = ({
                   <BarChart data={liquidityData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                    <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+                    <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${fmtUSD(value)} (${props.payload.percentage.toFixed(
@@ -1466,14 +1418,14 @@ const GraphsTab = ({
             </div>
           ) : (
             <>
-              <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={priceSourceData}
                   layout="vertical"
                   margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} />
+                  <XAxis type="number" tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} />
                   <YAxis
                     type="category"
                     dataKey="label"
@@ -1575,7 +1527,7 @@ const GraphsTab = ({
                 <BarChart data={reserveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+                  <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
                   <RechartsTooltip formatter={(value: number) => fmtUSD(value)} />
                   <Bar dataKey="value">
                     {reserveData.map((entry) => (
@@ -1876,7 +1828,7 @@ const GraphsTab = ({
                   <BarChart data={crossChainData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={(v) => fmtUSD(v)} tick={{ fontSize: 12 }} width={70} />
+                    <YAxis tickFormatter={(v) => fmtUSDCompact(v)} tick={{ fontSize: 12 }} width={80} />
                     <RechartsTooltip
                       formatter={(value: number, _name: string, props: any) => [
                         `${fmtUSD(value)} (${props.payload.percentage}%)`,

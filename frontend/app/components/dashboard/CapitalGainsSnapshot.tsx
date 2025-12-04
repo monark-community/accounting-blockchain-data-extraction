@@ -8,7 +8,7 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import { fmtUSD, fmtPct } from "@/utils/transactionHelpers";
+import { fmtUSD, fmtUSDCompact, fmtPct } from "@/utils/transactionHelpers";
 import type { useTransactionStats } from "@/hooks/useTransactionStats";
 
 type StatsReturn = ReturnType<typeof useTransactionStats>;
@@ -182,7 +182,7 @@ export function CapitalGainsSnapshot({
                     interval="preserveStartEnd"
                     minTickGap={24}
                   />
-                  <YAxis tickFormatter={(value: number) => fmtUSD(value)} />
+                  <YAxis tickFormatter={(value: number) => fmtUSDCompact(value)} width={80} tick={{ fontSize: 12 }} />
                   <RechartsTooltip
                     formatter={(value: number) => fmtUSD(value)}
                     labelFormatter={(value) =>
@@ -398,7 +398,7 @@ export function CapitalGainsSnapshot({
                     className="flex items-center justify-between text-sm text-slate-700"
                   >
                     <span>{bucket.label}</span>
-                    <span className="font-mono">
+                    <span className="font-mono break-words text-right">
                       {bucket.lots} · {fmtUSD(bucket.usd)}
                     </span>
                   </div>
@@ -426,7 +426,9 @@ export function CapitalGainsSnapshot({
                     className="flex items-center justify-between text-sm text-slate-700"
                   >
                     <span>{entry.label}</span>
-                    <span className="font-mono">{fmtUSD(entry.value)}</span>
+                    <span className="font-mono break-words text-right">
+                      {fmtUSD(entry.value)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -453,13 +455,15 @@ export function CapitalGainsSnapshot({
                 <p className="text-xs uppercase tracking-wide text-slate-500">
                   Proceeds
                 </p>
-                <p className="font-semibold">{fmtUSD(gasVsProceeds.proceeds)}</p>
+                <p className="font-semibold break-words tabular-nums leading-tight">
+                  {fmtUSD(gasVsProceeds.proceeds)}
+                </p>
               </div>
               <div>
                 <p className="text-xs uppercase tracking-wide text-slate-500">
                   Gas
                 </p>
-                <p className="font-semibold text-rose-600">
+                <p className="font-semibold text-rose-600 break-words tabular-nums leading-tight">
                   {fmtUSD(gasVsProceeds.gas)}
                 </p>
               </div>
@@ -468,7 +472,7 @@ export function CapitalGainsSnapshot({
                   Net
                 </p>
                 <p
-                  className={`font-semibold ${
+                  className={`font-semibold break-words tabular-nums leading-tight ${
                     gasVsProceeds.net >= 0
                       ? "text-emerald-600"
                       : "text-rose-600"
@@ -494,7 +498,7 @@ export function CapitalGainsSnapshot({
                 <p className="text-xs uppercase tracking-wide text-slate-500">
                   Inflow
                 </p>
-                <p className="font-semibold text-emerald-600">
+                <p className="font-semibold text-emerald-600 break-words tabular-nums leading-tight">
                   {fmtUSD(stableBufferStats.inflow)}
                 </p>
               </div>
@@ -502,7 +506,7 @@ export function CapitalGainsSnapshot({
                 <p className="text-xs uppercase tracking-wide text-slate-500">
                   Outflow
                 </p>
-                <p className="font-semibold text-rose-600">
+                <p className="font-semibold text-rose-600 break-words tabular-nums leading-tight">
                   {fmtUSD(stableBufferStats.outflow)}
                 </p>
               </div>
@@ -511,7 +515,7 @@ export function CapitalGainsSnapshot({
                   Net
                 </p>
                 <p
-                  className={`font-semibold ${
+                  className={`font-semibold break-words tabular-nums leading-tight ${
                     stableBufferStats.net >= 0
                       ? "text-emerald-600"
                       : "text-rose-600"

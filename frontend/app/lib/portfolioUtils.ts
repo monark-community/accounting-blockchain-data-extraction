@@ -7,6 +7,23 @@ export const fmtUSD = (n: number) =>
     maximumFractionDigits: 2,
   }).format(n);
 
+// Compact USD formatter for chart axes - prevents truncation on large values
+export const fmtUSDCompact = (n: number): string => {
+  const absN = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  
+  if (absN >= 1_000_000_000) {
+    return `${sign}$${(absN / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (absN >= 1_000_000) {
+    return `${sign}$${(absN / 1_000_000).toFixed(1)}M`;
+  }
+  if (absN >= 1_000) {
+    return `${sign}$${(absN / 1_000).toFixed(1)}K`;
+  }
+  return `${sign}$${absN.toFixed(0)}`;
+};
+
 export const fmtPct = (n: number) =>
   new Intl.NumberFormat("en-US", {
     style: "percent",

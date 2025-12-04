@@ -32,58 +32,6 @@ import {
   Crown,
 } from "lucide-react";
 
-// Helper function to create active shape for Pie charts
-const createActiveShape = (activeOuterRadius: number) => (props: any) => {
-  const {
-    cx,
-    cy,
-    innerRadius,
-    startAngle,
-    endAngle,
-    fill,
-  } = props;
-  
-  // Convert angles from degrees to radians
-  const RADIAN = Math.PI / 180;
-  const sin = Math.sin(-RADIAN * startAngle);
-  const cos = Math.cos(-RADIAN * startAngle);
-  const sinEnd = Math.sin(-RADIAN * endAngle);
-  const cosEnd = Math.cos(-RADIAN * endAngle);
-  
-  // Calculate path for outer arc
-  const x1 = cx + activeOuterRadius * cos;
-  const y1 = cy + activeOuterRadius * sin;
-  const x2 = cx + activeOuterRadius * cosEnd;
-  const y2 = cy + activeOuterRadius * sinEnd;
-  
-  // Calculate path for inner arc
-  const x3 = cx + innerRadius * cosEnd;
-  const y3 = cy + innerRadius * sinEnd;
-  const x4 = cx + innerRadius * cos;
-  const y4 = cy + innerRadius * sin;
-  
-  const largeArcFlag = endAngle - startAngle > 180 ? 1 : 0;
-  
-  const path = [
-    `M ${x1} ${y1}`,
-    `A ${activeOuterRadius} ${activeOuterRadius} 0 ${largeArcFlag} 0 ${x2} ${y2}`,
-    `L ${x3} ${y3}`,
-    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 1 ${x4} ${y4}`,
-    'Z',
-  ].join(' ');
-  
-  return (
-    <g>
-      <path
-        d={path}
-        fill={fill}
-        stroke="#1e293b"
-        strokeWidth={2}
-      />
-    </g>
-  );
-};
-
 interface Movers {
   gainers: PricedHolding[];
   losers: PricedHolding[];
@@ -796,12 +744,14 @@ const OverviewTab = ({
                       return `${entry.name.slice(0, 10)}${entry.name.length > 10 ? '...' : ''}`;
                     }}
                     labelLine={{ strokeWidth: 1 }}
-                    activeShape={createActiveShape(82)}
+                    stroke="#fff"
+                    strokeWidth={2}
                   >
                       {finalChainData.map((entry, idx) => (
                         <Cell
                           key={entry.chain}
                           fill={entry.chain === "others" ? OTHER_CHAIN_COLOR : getChainColor(entry.chain, idx)}
+                          style={{ cursor: 'pointer' }}
                         />
                       ))}
                     </Pie>
