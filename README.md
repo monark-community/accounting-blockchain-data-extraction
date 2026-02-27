@@ -71,13 +71,35 @@ ledgerlift/
 git clone https://github.com/monark-community/ledgerlift.git
 cd ledgerlift
 
-# Backend setup
-cd backend
+## Backend API Setup
+
+### Local Development
+```bash
+cd services/api
 npm install
 cp .env.example .env
-# Edit .env (DATABASE_URL, API keys)
+# Edit .env with your values
 npx prisma migrate dev
-npm run dev  # Runs on http://localhost:5000
+npm run dev
+```
+
+Backend runs on http://localhost:5000
+
+### With Docker
+```bash
+# From project root
+docker-compose up -d
+```
+
+### API Endpoints
+
+- Health: `GET /health`
+- Documentation: http://localhost:5000/api-docs
+
+## Team - Backend
+
+- **Demba Pathe Ba** - Backend & DevOps (Express, PostgreSQL, Docker)
+- **Vassy Kourouma** - Data Blockchain (Pinax API, CoinGecko, Classification)
 
 # Frontend setup (new terminal)
 cd frontend
