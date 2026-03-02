@@ -1,0 +1,51 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ledgerlift-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ledgerlift
+      POSTGRES_PASSWORD: ledgerlift_password_123
+      POSTGRES_DB: ledgerlift
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerlift"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ledgerlift-network
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: ledgerlift-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://ledgerlift:ledgerlift_password_123@postgres:5432/ledgerlift
+      PORT: 5000
+      NODE_ENV: development
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/api:/app
+      - /app/node_modules
+    networks:
+      - ledgerlift-network
+    command: npm run dev
+
+volumes:
+  postgres_data:
+
+networks:
+  ledgerlift-network:
+    driver: bridge

@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+  
+  wallets   Wallet[]
+  
+  @@map("users")
+}
+
+model Wallet {
+  id           String   @id @default(uuid())
+  userId       String
+  address      String
+  chain        String
+  label        String?
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastSynced   DateTime?
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  
+  @@unique([address, chain])
+  @@index([userId])
+  @@index([address])
+  @@map("wallets")
+}
+
+model Transaction {
+  id           String    @id @default(uuid())
+  walletId     String
+  hash         String
+  chain        String
+  blockNumber  BigInt?
+  timestamp    DateTime
+  fromAddress  String?
+  toAddress    String?
+  tokenSymbol  String?
+  tokenAddress String?
+  amount       Decimal?  @db.Decimal(36, 18)
+  amountFiat   Decimal?  @db.Decimal(18, 2)
+  gasUsed      BigInt?
+  gasPrice     Decimal?  @db.Decimal(36, 18)
+  gasCostFiat  Decimal?  @db.Decimal(18, 2)
+  category     String?
+  isInternal   Boolean   @default(false)
+  notes        String?   @db.Text
+  rawData      Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  wallet       Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  tags         TransactionTag[]
+  
+  @@unique([hash, chain])
+  @@index([walletId])
+  @@index([timestamp])
+  @@index([category])
+  @@map("transactions")
+}
+
+model TransactionTag {
+  id            String      @id @default(uuid())
+  transactionId String
+  tag           String
+  createdAt     DateTime    @default(now())
+  
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  
+  @@unique([transactionId, tag])
+  @@index([tag])
+  @@map("transaction_tags")
+}
+
+model PriceCache {
+  id           String   @id @default(uuid())
+  tokenSymbol  String
+  tokenAddress String?
+  chain        String?
+  date         DateTime @db.Date
+  priceUsd     Decimal? @db.Decimal(18, 8)
+  priceCad     Decimal? @db.Decimal(18, 8)
+  priceEur     Decimal? @db.Decimal(18, 8)
+  source       String?
+  createdAt    DateTime @default(now())
+  
+  @@unique([tokenSymbol, chain, date])
+  @@index([tokenSymbol])
+  @@index([date])
+  @@map("price_cache")
+}

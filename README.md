@@ -1,103 +1,182 @@
-# How to Use This Template
-
-This template helps you quickly start a **Monark project** with the **standard monorepo structure**, pre-configured licenses, policies, and workflows. It includes:
-
-- Standardized **monorepo structure** for Monark projects.
-- Predefined **issue templates** and **labels** for consistent project management.
-- Guidance to get started with **Monark workflows**.
-
-> **Tip:** Once you’ve completed these setup steps, you can delete this section from your repository.
-
----
-
-## Setup Steps
-
-1. **Replace placeholders** in your project files:  
-   - `{{PROJECT_NAME}}` → Your project name  
-   - `{{PROJECT_DESCRIPTION}}` → Short description of the project  
-   - `{{PROJECT_REPOSITORY_NAME}}` → GitHub repository name  
-   - `{{START_YEAR}}` → Project start year  
-   - `{{CURRENT_YEAR}}` → Current year  
-
-2. **Sync repository labels with the template repository**  
-   1. Make sure your **workflow permissions** are set to **Read & Write**:  
-      [GitHub Actions workflow permissions](https://github.com/marketplace/actions/github-label-sync-action#403-resource-not-accessible-by-integration)  
-   2. Go to the **Actions** tab in your repository and run the **`Apply Template Labels`** workflow.  
-   3. Confirm that the repository now contains the **standard Monark labels** (for example, check that `P0 🟣` exists).
-
-
----
-
-# {{PROJECT_NAME}}
+# LedgerLift
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-![GitHub Issues](https://img.shields.io/github/issues/monark-community/{{PROJECT_NAME}})
-![GitHub Issues](https://img.shields.io/github/issues-pr/monark-community/{{PROJECT_NAME}})
-![GitHub Stars](https://img.shields.io/github/stars/monark-community/{{PROJECT_NAME}})
-![GitHub Forks](https://img.shields.io/github/forks/monark-community/{{PROJECT_NAME}})
+![GitHub Issues](https://img.shields.io/github/issues/monark-community/ledgerlift)
 
-{{PROJECT_NAME}} is {{PROJECT_DESCRIPTION}}...
+**Solution d'analyse blockchain transformant les transactions crypto en rapports financiers conformes.**
 
-## Overview
+## 📋 Overview
 
-TODO
+LedgerLift permet aux utilisateurs de connecter leurs portefeuilles blockchain, récupérer leurs transactions, les classifier et générer des rapports financiers exploitables pour la comptabilité et la fiscalité.
 
-## Key Features
+**Cibles :** Investisseurs, DAOs, entreprises crypto, comptables.
 
-- 🚀 Feature 1
-- ✅ Feature 2
-- 📃 Feature 3
+## ✨ Key Features
 
-## Project Structure
+- 🔐 Authentification Web3 (MetaMask, WalletConnect)
+- ⛓️ Multi-chaînes (Ethereum, Polygon, BSC, Arbitrum, Optimism, Solana)
+- 💵 Enrichissement prix historiques (CoinGecko)
+- 🏷️ Classification (Revenus, Dépenses, Swaps, Gas, etc.)
+- 📊 Rapports & Statistiques (Plus-values/Moins-values)
+- 💾 Export CSV/JSON
 
+## 🏗️ Project Structure
 ```
-{{PROJECT_REPOSITORY_NAME}}/
-├── packages/
-│   ├── shared/                   # Shared types and utilities
-│   ├── smart-contracts/          # Solidity contracts + ZK circuits
-│   │   ├── contracts/            # Smart contracts
-│   │   ├── circuits/             # Circom ZK circuits
-│   │   └── test/                 # Contract tests
-│   └── subgraph/                 # The Graph indexing
-├── services/
-│   ├── api/                      # Backend API (Node.js + PostgreSQL)
-│   │   ├── src/controllers/      # API endpoints
-│   │   └── src/middlewares/      # Auth, validation
-│   │   ├── src/models/           # Data Models
-│   │   ├── src/routes/           # API Routes with OpenAPI documentation
-│   │   ├── src/services/         # Business logic
-│   └── web/                      # Frontend (Next.js + React)
-│       ├── app/                  # App router pages
-│       ├── components/           # UI components
-│       └── services/             # API clients, blockchain
-└── infra/
-    └── docker-compose.yaml       # Optional global infrastructure
+ledgerlift/
+├── backend/                # Express + TypeScript + PostgreSQL
+│   ├── src/
+│   │   ├── controllers/    # API endpoints
+│   │   ├── services/       # Business logic (auth, blockchain, price, reports)
+│   │   ├── models/         # Database models (Prisma)
+│   │   └── routes/         # API routes + Swagger
+│   └── prisma/             # Database schema
+│
+├── frontend/               # Next.js + TypeScript + Tailwind
+│   ├── app/                # Pages (dashboard, transactions, reports)
+│   ├── components/         # UI components (shadcn-ui)
+│   └── lib/                # API client, Web3 connectors
+│
+├── docker/
+│   └── docker-compose.yml  # Full stack
+│
+└── docs/
+    ├── SRS.pdf             # Requirements
+    └── API.md              # API documentation
 ```
 
-## Getting Started
+## 👥 Team
 
-TODO
+### 🔧 Binôme A : Backend & Data
+- **Demba Pathe Ba** - Backend & DevOps (Express, PostgreSQL, Docker, Auth)
+- **Priscilia Vassy** - Data Blockchain (Pinax API, CoinGecko, Normalisation)
 
-## Available Scripts
+### 🎨 Binôme B : Frontend & UI
+- **Hassanatou Diallo** - Frontend Lead (Next.js, Tailwind, shadcn-ui, Composants)
+- **Hazem Ben Chouikha** - Web3 Integrator (Wallets, API Integration, Exports)
 
-TODO
+**Superviseur :** Loucas Pelletier  
+**Client :** Monark Inc.
 
-## Deployment
+## 🚀 Getting Started
 
-TODO
+### Prerequisites
 
-## Documentation
+- Node.js 20+
+- Docker & Docker Compose
+- PostgreSQL 15+
 
-TODO
+### Quick Start
+```bash
+# Clone
+git clone https://github.com/monark-community/ledgerlift.git
+cd ledgerlift
 
-## Contribution
+## Backend API Setup
 
-See [CONTRIBUTION.md](./CONTRIBUTION.md) to learn about contributions guidelines.
+### Local Development
+```bash
+cd services/api
+npm install
+cp .env.example .env
+# Edit .env with your values
+npx prisma migrate dev
+npm run dev
+```
 
-## Code of Conduct
+Backend runs on http://localhost:5000
 
-See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) to learn about the code of conduct.
+### With Docker
+```bash
+# From project root
+docker-compose up -d
+```
 
-## License
+### API Endpoints
 
-See the [LICENSE](./LICENSE) file to learn more about this project's licensing.
+- Health: `GET /health`
+- Documentation: http://localhost:5000/api-docs
+
+## Team - Backend
+
+- **Demba Pathe Ba** - Backend & DevOps (Express, PostgreSQL, Docker)
+- **Vassy Kourouma** - Data Blockchain (Pinax API, CoinGecko, Classification)
+
+# Frontend setup (new terminal)
+cd frontend
+npm install
+cp .env.example .env.local
+# Edit NEXT_PUBLIC_API_URL=http://localhost:5000
+npm run dev  # Runs on http://localhost:3000
+```
+
+### Using Docker
+```bash
+docker-compose up -d
+# Frontend: http://localhost:3000
+# Backend: http://localhost:5000
+```
+
+## 🔌 API Endpoints
+```
+POST   /api/auth/wallet              # Connect wallet
+GET    /api/wallets                  # List wallets
+POST   /api/wallets/:id/sync         # Sync transactions
+GET    /api/transactions             # List (paginated, filtered)
+PUT    /api/transactions/:id         # Update (category, notes)
+GET    /api/reports/summary          # Statistics
+POST   /api/export/csv               # Generate CSV
+```
+
+**Full docs:** http://localhost:5000/api-docs
+
+## 📜 Scripts
+
+**Backend:**
+```bash
+npm run dev      # Development
+npm run build    # Build
+npm test         # Tests (60% coverage min)
+```
+
+**Frontend:**
+```bash
+npm run dev      # Development
+npm run build    # Production build
+```
+
+## 🤝 Git Workflow
+```bash
+# Create branch
+git checkout -b feature/your-name-feature
+
+# Commit
+git commit -m "feat: add wallet sync"
+
+# Push & PR
+git push origin feature/your-name-feature
+```
+
+**Commit types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+
+## 📋 Roadmap
+
+**Phase 1 - MVP (12 weeks)**
+- Auth Web3 + Transactions (EVM/Solana)
+- Classification + Reports + Export
+
+**Phase 2 - Post-MVP (4 weeks)**
+- More chains + Auto-classification + Tax reports
+
+## 📚 Documentation
+
+- [SRS (Requirements)](./docs/SRS.pdf)
+- [Architecture](./docs/ARCHITECTURE.md)
+- [API Reference](./docs/API.md)
+
+
+
+## 📄 License
+
+Apache License 2.0 - see [LICENSE](./LICENSE)
+
+---
