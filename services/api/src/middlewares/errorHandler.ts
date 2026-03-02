@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { ErrorRequestHandler } from 'express';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 
@@ -7,11 +7,11 @@ import logger from '../utils/logger';
  * Catches all errors and sends appropriate HTTP responses
  * Must be the last middleware in the chain
  */
-export const errorHandler = (
-  err: Error,
-  req: Request,
-  res: Response,
-  _next: NextFunction
+export const errorHandler: ErrorRequestHandler = (
+  err,
+  req,
+  res,
+  _next
 ) => {
   // Log the error with context
   logger.error('Error occurred:', {
@@ -38,7 +38,7 @@ export const errorHandler = (
     });
   }
 
-  // Handle validation errors from libraries
+  // Handle validation errors
   if (err.name === 'ValidationError') {
     return res.status(400).json({
       status: 'error',
@@ -46,11 +46,12 @@ export const errorHandler = (
     });
   }
 
-  // Default to 500 Internal Server Error for unknown errors
-  res.status(500).json({
+  // Default 500 error
+  return res.status(500).json({
     status: 'error',
-    message: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
-      : err.message,
+    message:
+      process.env.NODE_ENV === 'production'
+        ? 'Internal server error'
+        : err.message,
   });
 };
