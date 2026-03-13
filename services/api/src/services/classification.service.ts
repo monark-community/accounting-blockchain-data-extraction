@@ -20,19 +20,27 @@ export class ClassificationService {
 
     if (tags && tags.length > 0) {
       await prisma.transactionTag.deleteMany({ where: { transactionId } });
+
       await prisma.transactionTag.createMany({
-        data: tags.map(tag => ({ transactionId, tag }))
+        data: tags.map(tag => ({
+          transactionId,
+          tag
+        }))
       });
     }
 
     logger.info('Transaction classified', { transactionId, category });
   }
 
-  async bulkClassify(transactionIds: string[], category: TransactionCategory): Promise<number> {
+  async bulkClassify(
+    transactionIds: string[],
+    category: TransactionCategory
+  ): Promise<number> {
     const result = await prisma.transaction.updateMany({
       where: { id: { in: transactionIds } },
       data: { category }
     });
+
     return result.count;
   }
 }
