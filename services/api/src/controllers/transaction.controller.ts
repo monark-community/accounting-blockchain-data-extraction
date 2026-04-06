@@ -13,6 +13,10 @@ export const listTransactions = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const {
       page = '1',
       limit = '50',
@@ -45,7 +49,6 @@ export const listTransactions = async (
         take: limitNum,
         orderBy: { timestamp: 'desc' },
         include: {
-          tags: true,
           wallet: {
             select: { address: true, chain: true }
           }
@@ -63,6 +66,7 @@ export const listTransactions = async (
         pages: Math.ceil(total / limitNum)
       }
     });
+
   } catch (error) {
     next(error);
   }
@@ -74,6 +78,10 @@ export const updateTransaction = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const { id } = req.params;
     const { category, isInternal, notes, tags } = req.body;
 
@@ -95,6 +103,7 @@ export const updateTransaction = async (
     );
 
     res.json({ message: 'Transaction updated' });
+
   } catch (error) {
     next(error);
   }
@@ -113,7 +122,11 @@ export const bulkClassify = async (
       category
     );
 
-    res.json({ message: 'Bulk classification completed', count });
+    res.json({
+      message: 'Bulk classification completed',
+      count
+    });
+
   } catch (error) {
     next(error);
   }

@@ -19,14 +19,23 @@ export const exportData = async (
       select: { id: true }
     });
 
+    const walletIds = wallets.map(w => w.id);
+
     const where: any = {
-      walletId: walletId ? walletId : { in: wallets.map(w => w.id) }
+      walletId: walletId ? walletId : { in: walletIds }
     };
 
+    // Filtre par date
     if (startDate || endDate) {
       where.timestamp = {};
-      if (startDate) where.timestamp.gte = new Date(startDate as string);
-      if (endDate) where.timestamp.lte = new Date(endDate as string);
+
+      if (startDate) {
+        where.timestamp.gte = new Date(startDate as string);
+      }
+
+      if (endDate) {
+        where.timestamp.lte = new Date(endDate as string);
+      }
     }
 
     const transactions = await prisma.transaction.findMany({
@@ -50,8 +59,13 @@ export const exportData = async (
     }
 
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`
+    );
+
     res.send(content);
+
   } catch (error) {
     next(error);
   }

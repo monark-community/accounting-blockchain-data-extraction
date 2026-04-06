@@ -14,10 +14,15 @@ export const listWallets = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const wallets = await prisma.wallet.findMany({
       where: { userId: req.userId },
       orderBy: { createdAt: 'desc' }
     });
+
     res.json(wallets);
   } catch (error) {
     next(error);
@@ -30,14 +35,16 @@ export const createWallet = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const { address, chain, label } = req.body;
 
-    const existing = await prisma.wallet.findUnique({
+    const existing = await prisma.wallet.findFirst({
       where: {
-        address_chain: {
-          address: address.toLowerCase(),
-          chain
-        }
+        address: address.toLowerCase(),
+        chain
       }
     });
 
@@ -47,7 +54,7 @@ export const createWallet = async (
 
     const wallet = await prisma.wallet.create({
       data: {
-        userId: req.userId!,
+        userId: req.userId,
         address: address.toLowerCase(),
         chain,
         label
@@ -55,6 +62,7 @@ export const createWallet = async (
     });
 
     res.status(201).json(wallet);
+
   } catch (error) {
     next(error);
   }
@@ -66,6 +74,10 @@ export const deleteWallet = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const { id } = req.params;
 
     const wallet = await prisma.wallet.findUnique({ where: { id } });
@@ -77,6 +89,7 @@ export const deleteWallet = async (
     await prisma.wallet.delete({ where: { id } });
 
     res.json({ message: 'Wallet deleted' });
+
   } catch (error) {
     next(error);
   }
@@ -88,6 +101,10 @@ export const syncWallet = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const { id } = req.params;
 
     const wallet = await prisma.wallet.findUnique({ where: { id } });
@@ -98,22 +115,19 @@ export const syncWallet = async (
 
     logger.info('Starting wallet sync', { walletId: wallet.id });
 
-    const rawTransactions = await blockchainService.fetchTransactions(
+    const transactions = await blockchainService.fetchTransactions(
       wallet.address,
       wallet.chain as any
     );
 
     let created = 0;
 
-    for (const raw of rawTransactions) {
-      const normalized = blockchainService.normalize(raw, wallet.chain as any);
+    for (const tx of transactions) {
 
-      const existing = await prisma.transaction.findUnique({
+      const existing = await prisma.transaction.findFirst({
         where: {
-          hash_chain: {
-            hash: normalized.hash,
-            chain: normalized.chain
-          }
+          hash: tx.hash,
+          chain: tx.chain
         }
       });
 
@@ -121,19 +135,17 @@ export const syncWallet = async (
         await prisma.transaction.create({
           data: {
             walletId: wallet.id,
-            hash: normalized.hash,
-            chain: normalized.chain,
-            timestamp: normalized.timestamp,
-            fromAddress: normalized.fromAddress,
-            toAddress: normalized.toAddress,
-            tokenSymbol: normalized.tokenSymbol,
-            tokenAddress: normalized.tokenAddress,
-            amount: normalized.amount,
-            gasUsed: normalized.gasUsed ? BigInt(normalized.gasUsed) : null,
-            gasPrice: normalized.gasPrice,
-            blockNumber: normalized.blockNumber ? BigInt(normalized.blockNumber) : null
+            hash: tx.hash,
+            chain: tx.chain,
+            timestamp: tx.timestamp,
+            fromAddress: tx.fromAddress,
+            toAddress: tx.toAddress,
+            tokenSymbol: tx.tokenSymbol,
+            tokenAddress: tx.tokenAddress,
+            amount: tx.amount ? tx.amount.toString() : "0",
           }
         });
+
         created++;
       }
     }
@@ -145,7 +157,11 @@ export const syncWallet = async (
 
     logger.info('Sync completed', { transactionsAdded: created });
 
-    res.json({ message: 'Sync completed', transactionsAdded: created });
+    res.json({
+      message: 'Sync completed',
+      transactionsAdded: created
+    });
+
   } catch (error) {
     next(error);
   }

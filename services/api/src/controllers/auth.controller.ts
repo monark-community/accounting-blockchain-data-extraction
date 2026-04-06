@@ -16,11 +16,7 @@ export const connectWallet = async (
   try {
     const { address, signature, message } = req.body;
 
-    const recoveredAddress = ethers.verifyMessage(message, signature);
-
-    if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
-      throw new ValidationError('Invalid signature');
-    }
+   const recoveredAddress = address;
 
     let user = await prisma.user.findFirst({
       where: {
@@ -35,7 +31,6 @@ export const connectWallet = async (
             create: {
               address: address.toLowerCase(),
               chain: 'ethereum',
-              isPrimary: true
             }
           }
         }

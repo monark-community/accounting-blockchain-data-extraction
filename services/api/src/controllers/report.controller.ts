@@ -11,15 +11,20 @@ export const getSummary = async (
   next: NextFunction
 ) => {
   try {
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
     const { startDate, endDate } = req.query;
 
     const summary = await reportService.calculateSummary(
-      req.userId!,
+      req.userId,
       startDate ? new Date(startDate as string) : undefined,
       endDate ? new Date(endDate as string) : undefined
     );
 
     res.json(summary);
+
   } catch (error) {
     next(error);
   }
@@ -31,8 +36,14 @@ export const getByCategory = async (
   next: NextFunction
 ) => {
   try {
-    const data = await reportService.getByCategory(req.userId!);
+    if (!req.userId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const data = await reportService.getByCategory(req.userId);
+
     res.json(data);
+
   } catch (error) {
     next(error);
   }

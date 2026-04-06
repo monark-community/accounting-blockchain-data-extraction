@@ -1,0 +1,8 @@
+POST http://localhost:5000/api/auth/connect
+Content-Type: application/json
+
+{
+  "address": "0x742d35cc6634c0532925a3b844bc9e7595f0beb",
+  "signature": "test",
+  "message": "test"
+}

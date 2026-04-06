@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticateJWT } from '../middlewares/auth';
+import { authenticate } from '../middlewares/auth.middleware'; // ✅ corrigé
 import {
   listWallets,
   createWallet,
@@ -11,8 +11,15 @@ import Joi from 'joi';
 import { SUPPORTED_CHAINS } from '../types';
 
 const router = Router();
-router.use(authenticateJWT);
 
+/**
+ * Middleware d'authentification (appliqué à toutes les routes)
+ */
+router.use(authenticate);
+
+/**
+ * Validation schema
+ */
 const createWalletSchema = Joi.object({
   address: Joi.string()
     .pattern(/^0x[a-fA-F0-9]{40}$/)
@@ -23,9 +30,19 @@ const createWalletSchema = Joi.object({
   label: Joi.string().optional()
 });
 
+/**
+ * Routes
+ */
 router.get('/', listWallets);
-router.post('/', validate(createWalletSchema), createWallet);
+
+router.post(
+  '/',
+  validate(createWalletSchema),
+  createWallet
+);
+
 router.delete('/:id', deleteWallet);
+
 router.post('/:id/sync', syncWallet);
 
 export default router;

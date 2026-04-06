@@ -13,7 +13,7 @@ const connectWalletSchema = Joi.object({
   message: Joi.string().required()
 });
 
-router.post('/wallet', validate(connectWalletSchema), connectWallet);
+router.post('/connect', validate(connectWalletSchema), connectWallet);
 router.post('/logout', logout);
 
 export default router;

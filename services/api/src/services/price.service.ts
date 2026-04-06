@@ -34,13 +34,11 @@ export class PriceService {
 
   private async getFromCache(tokenSymbol: string, date: Date): Promise<PriceData | null> {
     try {
-      const cached = await prisma.priceCache.findUnique({
+      const cached = await prisma.priceCache.findFirst({
         where: {
-          tokenSymbol_chain_date: {
-            tokenSymbol: tokenSymbol.toUpperCase(),
-            chain: null,
-            date: this.dateOnly(date)
-          }
+          tokenSymbol: tokenSymbol.toUpperCase(),
+          chain: null,
+          date: this.dateOnly(date)
         }
       });
 
@@ -109,10 +107,17 @@ export class PriceService {
 
   private mapSymbolToCoinId(symbol: string): string {
     const mapping: Record<string, string> = {
-      ETH: 'ethereum', BTC: 'bitcoin', MATIC: 'matic-network',
-      BNB: 'binancecoin', SOL: 'solana', AVAX: 'avalanche-2',
-      USDC: 'usd-coin', USDT: 'tether', DAI: 'dai'
+      ETH: 'ethereum',
+      BTC: 'bitcoin',
+      MATIC: 'matic-network',
+      BNB: 'binancecoin',
+      SOL: 'solana',
+      AVAX: 'avalanche-2',
+      USDC: 'usd-coin',
+      USDT: 'tether',
+      DAI: 'dai'
     };
+
     return mapping[symbol.toUpperCase()] || symbol.toLowerCase();
   }
 
