@@ -19,7 +19,7 @@ export const PINAX_ENDPOINTS: Record<string, PinaxEndpointConfig> = {
   polygon: {
     baseUrl: BASE_URL,
     network: 'matic'
-  },
+  },  // ← VIRGULE AJOUTÉE ICI
 
   bsc: {
     baseUrl: BASE_URL,
@@ -40,8 +40,6 @@ export const PINAX_ENDPOINTS: Record<string, PinaxEndpointConfig> = {
     baseUrl: BASE_URL,
     network: 'avalanche'
   }
-
-  
 };
 
 /**
